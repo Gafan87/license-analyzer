@@ -1,0 +1,36 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+venv/
+env/
+.env
+
+# База данных
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+
+# Логи
+logs/
+*.log
+
+# Бэкапы
+backups/
+
+# VS Code
+.vscode/
+*.code-workspace
+
+# Временные файлы
+temp_*.xlsx
+*.tmp
+
+# Конфиг с паролями
+config.json
+
+# Локальная БД
+local_licenses.db

@@ -1,0 +1,556 @@
+{% extends "base.html" %}
+
+{% block title %}Настройки{% endblock %}
+
+{% block content %}
+<!-- Карточки-вкладки настроек -->
+<div class="settings-nav-cards">
+    <div class="settings-nav-card" data-tab="general">
+        <i class="fas fa-list-ul"></i>
+        <div class="card-info">
+            <span class="card-title">📋 Общие</span>
+            <span class="card-desc">Логирование, интерфейс, бэкапы</span>
+        </div>
+    </div>
+    <div class="settings-nav-card" data-tab="operators">
+        <i class="fas fa-network-wired"></i>
+        <div class="card-info">
+            <span class="card-title">📡 Операторы</span>
+            <span class="card-desc">Пути к папкам и настройки</span>
+        </div>
+    </div>
+    <div class="settings-nav-card" data-tab="storage">
+        <i class="fas fa-database"></i>
+        <div class="card-info">
+            <span class="card-title">💾 Хранилище</span>
+            <span class="card-desc">Сетевая папка и структура</span>
+        </div>
+    </div>
+    <div class="settings-nav-card" data-tab="system">
+        <i class="fas fa-microchip"></i>
+        <div class="card-info">
+            <span class="card-title">🖥️ Система</span>
+            <span class="card-desc">Тестирование и информация</span>
+        </div>
+    </div>
+</div>
+
+<!-- Вкладка: Общие (включая бэкапы) -->
+<div id="tab-general" class="tab-content active">
+    <div class="card">
+        <h1>Общие настройки</h1>
+        
+        <h3>🎨 Интерфейс</h3>
+        <div style="display: flex; gap: 1rem; align-items: center; flex-wrap: wrap; margin-bottom: 1.5rem;">
+            <button id="themeToggleBtn" class="secondary-btn">🌓 Переключить тему</button>
+            <span class="text-muted">Текущая тема: <span id="currentTheme">светлая</span></span>
+            <a href="/style_guide" class="secondary-btn" style="margin-left: auto;">
+                <i class="fas fa-palette"></i> 📖 Гайдлайн стилей
+            </a>
+        </div>
+        
+        <h3>📝 Логирование</h3>
+        <form method="post" action="/settings/log_level" style="margin-bottom: 1.5rem;">
+            <div style="display: flex; gap: 1rem; align-items: flex-end; flex-wrap: wrap;">
+                <div class="filter-group">
+                    <label>Уровень детализации</label>
+                    <select name="level" class="filter-select">
+                        <option value="DEBUG">🐛 DEBUG - Максимальная детализация</option>
+                        <option value="INFO">ℹ️ INFO - Стандартный режим</option>
+                        <option value="WARNING">⚠️ WARNING - Только важное</option>
+                        <option value="ERROR">❌ ERROR - Только ошибки</option>
+                    </select>
+                </div>
+                <button type="submit" class="btn-primary">Сохранить</button>
+            </div>
+        </form>
+        
+        <h3>📀 Резервное копирование</h3>
+        <div style="display: flex; gap: 1rem; margin-bottom: 1rem; flex-wrap: wrap;">
+            <button id="createBackupBtn" class="btn-primary">📀 Создать бэкап сейчас</button>
+            <button id="restoreBackupBtn" class="btn-secondary">🔄 Восстановить из бэкапа</button>
+        </div>
+        
+        <div id="backupResult" class="hidden" style="margin-bottom: 1rem;"></div>
+        
+        <h3>📋 Список бэкапов</h3>
+        <div id="backupList" class="info-card">
+            <div class="text-muted">Загрузка...</div>
+        </div>
+        
+        <div class="info-row" style="margin-top: 1rem;">
+            <span class="info-label">Авто-бэкап:</span>
+            <span class="badge enabled">Включён (каждые 7 дней)</span>
+        </div>
+    </div>
+</div>
+
+<!-- Вкладка: Операторы -->
+<div id="tab-operators" class="tab-content">
+    <div class="card">
+        <h1>Настройки операторов</h1>
+        
+        <form method="post" action="/settings/update_paths">
+            {% for op in operators %}
+            <div class="operator-card">
+                <div class="operator-header">
+                    <span class="operator-icon">📡</span>
+                    <span class="operator-name">{{ op.title }}</span>
+                    <span class="operator-code">{{ op.name }}</span>
+                </div>
+                <div style="margin-bottom: 0.75rem;">
+                    <label class="text-muted" style="font-size: 0.7rem; display: block; margin-bottom: 0.25rem;">Путь для сканирования</label>
+                    <input type="text" name="path_{{ op.name }}" value="{{ op.local_scan_path or '' }}" class="filter-select" style="width: 100%;">
+                </div>
+                <div>
+                    <label class="text-muted" style="font-size: 0.7rem; display: block; margin-bottom: 0.25rem;">Папка для входящих файлов</label>
+                    <input type="text" name="incoming_{{ op.name }}" value="{{ op.incoming_folder or '' }}" class="filter-select" style="width: 100%;">
+                    <small class="text-muted">Сюда кладутся "сырые" файлы для переименования</small>
+                </div>
+            </div>
+            {% endfor %}
+            <button type="submit" class="btn-primary">💾 Сохранить пути</button>
+        </form>
+    </div>
+</div>
+
+<!-- Вкладка: Хранилище -->
+<div id="tab-storage" class="tab-content">
+    <div class="card">
+        <h1>Сетевое хранилище</h1>
+        
+        <div class="info-card">
+            <div class="info-row">
+                <span class="info-label">Путь к шаре:</span>
+                <code>{{ network_storage }}</code>
+            </div>
+            <div class="info-row">
+                <span class="info-label">Статус:</span>
+                <span id="storageStatus" class="status-badge checking">Проверка...</span>
+            </div>
+        </div>
+        <p class="text-muted" style="font-size: 0.75rem;">Для изменения пути к сетевому хранилищу отредактируйте файл <code>config.json</code></p>
+        
+        <h3>📁 Структура папок</h3>
+        <div class="folder-tree">
+            <div>📁 {{ network_storage }}/</div>
+            <div style="margin-left: 1.5rem;">├── 📁 DB/</div>
+            <div style="margin-left: 3rem;">└── 📄 master_licenses.db</div>
+            <div style="margin-left: 1.5rem;">├── 📁 mapping/</div>
+            <div style="margin-left: 3rem;">└── 📄 esn_mapping.xlsx</div>
+            <div style="margin-left: 1.5rem;">├── 📁 license_details/</div>
+            <div style="margin-left: 3rem;">├── 📄 PS_license_details.xlsx</div>
+            <div style="margin-left: 3rem;">├── 📄 vEPC_license_details.xlsx</div>
+            <div style="margin-left: 3rem;">└── 📄 {NE_type}_license_details.xlsx</div>
+            <div style="margin-left: 1.5rem;">└── 📁 {оператор}/</div>
+            <div style="margin-left: 3rem;">└── 📁 {ne_type}/ → 📁 {city}/ → 📁 {site}/ → 📁 {year}/</div>
+        </div>
+        
+        <h3>📋 Настройка маппинга Excel файлов</h3>
+        
+        <!-- ESN маппинг -->
+        <div class="info-card" style="margin-bottom: 1rem;">
+            <div class="info-row" style="margin-bottom: 0.75rem;">
+                <span class="info-label">ESN маппинг:</span>
+                <span class="badge" style="background: var(--huawei-red);">esn_mapping.xlsx</span>
+                <button id="saveEsnMappingConfigBtn" class="secondary-btn" style="margin-left: auto;">💾 Сохранить настройки</button>
+            </div>
+            <div id="esnMappingColumnsContainer" style="display: grid; grid-template-columns: repeat(7, 1fr); gap: 0.5rem; font-size: 0.7rem;">
+                <!-- Сюда будет сгенерирован список колонок динамически -->
+            </div>
+            <button id="configureEsnMappingBtn" class="secondary-btn" style="margin-top: 0.75rem; width: auto;">📂 Перейти к маппингу</button>
+        </div>
+        
+        <!-- Описания CapacityKey -->
+        <div class="info-card">
+            <div class="info-row" style="margin-bottom: 0.75rem;">
+                <span class="info-label">Описания CapacityKey:</span>
+                <span class="badge" style="background: var(--huawei-red);">license_details/{NE_type}_license_details.xlsx</span>
+                <button id="saveCapacityMappingConfigBtn" class="secondary-btn" style="margin-left: auto;">💾 Сохранить настройки</button>
+            </div>
+            <div id="capacityMappingColumnsContainer" style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.5rem; font-size: 0.7rem;">
+                <!-- Сюда будет сгенерирован список колонок динамически -->
+            </div>
+            <button id="configureLicenseDetailsBtn" class="secondary-btn" style="margin-top: 0.75rem; width: auto;">📂 Перейти к описаниям</button>
+        </div>
+    </div>
+</div>
+
+<!-- Вкладка: Система -->
+<div id="tab-system" class="tab-content">
+    <div class="card">
+        <h1>Системная информация</h1>
+        
+        <h3>🧪 Тестирование системы</h3>
+        <div style="display: flex; gap: 1rem; align-items: center; margin-bottom: 1rem; flex-wrap: wrap;">
+            <button id="runTestsBtn" class="btn-primary">▶️ Запустить тестирование</button>
+            <span id="testStatus" class="text-muted"></span>
+        </div>
+        
+        <div id="testResults" class="hidden"></div>
+        
+        <h3>ℹ️ Информация о системе</h3>
+        <div class="info-card">
+            <div class="info-row">
+                <span class="info-label">Версия программы:</span>
+                <span>2.0.0</span>
+            </div>
+            <div class="info-row">
+                <span class="info-label">Python версия:</span>
+                <span id="pythonVersion">—</span>
+            </div>
+            <div class="info-row">
+                <span class="info-label">Путь к программе:</span>
+                <code>{{ app_path }}</code>
+            </div>
+            <div class="info-row">
+                <span class="info-label">Локальная БД:</span>
+                <code>local_licenses.db</code>
+            </div>
+            <div class="info-row">
+                <span class="info-label">Логи:</span>
+                <code>logs/app.log</code>
+            </div>
+        </div>
+        
+        <div class="stats-grid">
+            <div class="stat-card-mini">
+                <div class="value">{{ stats.licenses_count or 0 }}</div>
+                <div class="label">Всего лицензий</div>
+            </div>
+            <div class="stat-card-mini">
+                <div class="value">{{ stats.operators_count or 0 }}</div>
+                <div class="label">Операторов</div>
+            </div>
+            <div class="stat-card-mini">
+                <div class="value">{{ stats.db_size or '0' }}</div>
+                <div class="label">Размер БД (MB)</div>
+            </div>
+        </div>
+        
+        <h3>🔄 Действия</h3>
+        <div style="display: flex; gap: 1rem; flex-wrap: wrap;">
+            <button id="clearLogsBtn" class="btn-warning">🗑️ Очистить логи</button>
+            <button id="resetDbBtn" class="btn-secondary">⚠️ Сбросить локальную БД</button>
+        </div>
+    </div>
+</div>
+
+<script>
+    window.operator = '{{ current_operator }}';
+    
+    // Переключение вкладок настроек
+    document.querySelectorAll('.settings-nav-card').forEach(card => {
+        card.addEventListener('click', () => {
+            document.querySelectorAll('.settings-nav-card').forEach(c => c.classList.remove('active'));
+            document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
+            card.classList.add('active');
+            document.getElementById(`tab-${card.dataset.tab}`).classList.add('active');
+        });
+    });
+    
+    // Тема
+    const themeBtn = document.getElementById('themeToggleBtn');
+    if (themeBtn) {
+        themeBtn.addEventListener('click', () => {
+            document.body.classList.toggle('dark');
+            localStorage.setItem('theme', document.body.classList.contains('dark') ? 'dark' : 'light');
+            document.getElementById('currentTheme').innerText = document.body.classList.contains('dark') ? 'тёмная' : 'светлая';
+        });
+    }
+    
+    if (localStorage.getItem('theme') === 'dark') {
+        document.body.classList.add('dark');
+        document.getElementById('currentTheme').innerText = 'тёмная';
+    }
+    
+    // Тестирование
+    document.getElementById('runTestsBtn')?.addEventListener('click', async function() {
+        const btn = this;
+        const testResults = document.getElementById('testResults');
+        const testStatus = document.getElementById('testStatus');
+        
+        btn.disabled = true;
+        btn.innerHTML = '⏳ Тестирование...';
+        testStatus.innerHTML = 'Запуск тестов...';
+        testResults.classList.add('hidden');
+        
+        try {
+            const resp = await fetch('/run_tests', { 
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' }
+            });
+            const data = await resp.json();
+            
+            testResults.classList.remove('hidden');
+            
+            const summaryDiv = document.createElement('div');
+            const listDiv = document.createElement('div');
+            
+            if (data.success) {
+                summaryDiv.className = 'test-summary success';
+                summaryDiv.innerHTML = `✅ Все тесты пройдены! (${data.passed}/${data.total}) за ${data.duration} сек.`;
+                testStatus.innerHTML = '✅ Все тесты пройдены';
+            } else {
+                summaryDiv.className = 'test-summary failed';
+                summaryDiv.innerHTML = `❌ Пройдено ${data.passed}/${data.total} тестов. ${data.failed} ошибок за ${data.duration} сек.`;
+                testStatus.innerHTML = '❌ Есть ошибки';
+            }
+            
+            listDiv.className = 'test-list';
+            listDiv.innerHTML = data.results.map(r => `
+                <div class="test-item ${r.status ? 'passed' : 'failed'}">
+                    <div>
+                        <div class="test-name">${r.name}</div>
+                        ${!r.status ? `<div class="test-message">❌ ${r.message}</div>` : ''}
+                    </div>
+                    <span class="test-status ${r.status ? 'passed' : 'failed'}">
+                        ${r.status ? '✅' : '❌'}
+                    </span>
+                </div>
+            `).join('');
+            
+            testResults.innerHTML = '';
+            testResults.appendChild(summaryDiv);
+            testResults.appendChild(listDiv);
+            
+        } catch(e) {
+            testStatus.innerHTML = '❌ Ошибка запуска тестов';
+            testResults.classList.remove('hidden');
+            testResults.innerHTML = `<div class="test-summary failed">❌ Ошибка: ${e.message}</div>`;
+        } finally {
+            btn.disabled = false;
+            btn.innerHTML = '▶️ Запустить тестирование';
+            setTimeout(() => { testStatus.innerHTML = ''; }, 3000);
+        }
+    });
+    
+    // Проверка хранилища
+    fetch('/settings/check_storage')
+        .then(r => r.json())
+        .then(data => {
+            const statusEl = document.getElementById('storageStatus');
+            if (data.exists) {
+                statusEl.innerHTML = '✅ Доступно';
+                statusEl.className = 'status-badge online';
+            } else {
+                statusEl.innerHTML = '❌ Недоступно';
+                statusEl.className = 'status-badge offline';
+            }
+        })
+        .catch(() => {
+            const statusEl = document.getElementById('storageStatus');
+            statusEl.innerHTML = '⚠️ Ошибка проверки';
+            statusEl.className = 'status-badge offline';
+        });
+    
+    // Настройка ESN маппинга
+    document.getElementById('configureEsnMappingBtn')?.addEventListener('click', () => {
+        const operator = window.operator || 'mts';
+        window.location.href = `/${operator}/esn_mapping`;
+    });
+    
+    // Настройка описаний лицензий
+    document.getElementById('configureLicenseDetailsBtn')?.addEventListener('click', () => {
+        // Переход на страницу управления описаниями CapacityKey
+        window.location.href = '/capacity_keys_mapping';
+    });
+    
+    // Бэкапы
+    document.getElementById('createBackupBtn')?.addEventListener('click', async () => {
+        const resultDiv = document.getElementById('backupResult');
+        resultDiv.className = 'test-summary';
+        resultDiv.innerHTML = '⏳ Создание бэкапа...';
+        resultDiv.classList.remove('hidden');
+        
+        const resp = await fetch('/backup_db', { method: 'POST' });
+        const data = await resp.json();
+        
+        if (data.success) {
+            resultDiv.className = 'test-summary success';
+            resultDiv.innerHTML = `✅ ${data.message}`;
+            loadBackupList();
+        } else {
+            resultDiv.className = 'test-summary failed';
+            resultDiv.innerHTML = `❌ ${data.message}`;
+        }
+        setTimeout(() => resultDiv.classList.add('hidden'), 5000);
+    });
+    
+    async function loadBackupList() {
+        const resp = await fetch('/settings/backup_list');
+        const data = await resp.json();
+        const listDiv = document.getElementById('backupList');
+        if (data.backups && data.backups.length > 0) {
+            listDiv.innerHTML = data.backups.map(b => `
+                <div class="info-row" style="justify-content: space-between;">
+                    <span>📀 ${b.name}</span>
+                    <span>${b.size} MB</span>
+                    <button class="backup-restore" data-file="${b.name}" style="background: none; border: none; color: var(--huawei-red); cursor: pointer;">Восстановить</button>
+                </div>
+            `).join('');
+            
+            document.querySelectorAll('.backup-restore').forEach(btn => {
+                btn.addEventListener('click', async () => {
+                    const resp = await fetch(`/settings/restore_backup?file=${btn.dataset.file}`, { method: 'POST' });
+                    const result = await resp.json();
+                    alert(result.message);
+                    if (result.success) location.reload();
+                });
+            });
+        } else {
+            listDiv.innerHTML = '<div class="text-muted">Нет бэкапов</div>';
+        }
+    }
+    loadBackupList();
+    
+    // Python версия
+    fetch('/settings/system_info')
+        .then(r => r.json())
+        .then(data => {
+            document.getElementById('pythonVersion').innerText = data.python_version;
+        });
+    
+    // Очистка логов
+    document.getElementById('clearLogsBtn')?.addEventListener('click', async () => {
+        if (confirm('Удалить все логи? Это действие необратимо.')) {
+            const resp = await fetch('/settings/clear_logs', { method: 'POST' });
+            const result = await resp.json();
+            alert(result.message);
+        }
+    });
+    
+    // Сброс БД
+    document.getElementById('resetDbBtn')?.addEventListener('click', async () => {
+        if (confirm('⚠️ ВНИМАНИЕ! Это удалит всю локальную БД. Данные на сервере не пострадают. Продолжить?')) {
+            const resp = await fetch('/settings/reset_db', { method: 'POST' });
+            const result = await resp.json();
+            alert(result.message);
+            if (result.success) location.reload();
+        }
+    });
+
+// ========== НАСТРОЙКИ МАППИНГА КОЛОНОК (ДИНАМИЧЕСКИЕ) ==========
+
+// Поля для ESN маппинга (из БД)
+const ESN_MAPPING_FIELDS = [
+    { value: 'esn', label: 'ESN' },
+    { value: 'lsn', label: 'LSN' },
+    { value: 'operator', label: 'Оператор' },
+    { value: 'domain', label: 'Домен' },
+    { value: 'ne_type', label: 'NE тип' },
+    { value: 'city', label: 'Город' },
+    { value: 'site', label: 'Сайт' },
+    { value: 'ignore', label: 'Игнорировать' }
+];
+
+// Поля для CapacityKey маппинга
+const CAPACITY_MAPPING_FIELDS = [
+    { value: 'capacity_key', label: 'CapacityKey' },
+    { value: 'description', label: 'Description' },
+    { value: 'unit', label: 'Unit' },
+    { value: 'ignore', label: 'Игнорировать' }
+];
+
+// Генерация выпадающего списка
+function generateSelect(options, selectedValue) {
+    return `<select class="filter-select" style="width: 100%; margin-top: 4px;">
+        ${options.map(opt => `<option value="${opt.value}" ${selectedValue === opt.value ? 'selected' : ''}>${opt.label}</option>`).join('')}
+    </select>`;
+}
+
+// Генерация колонок для ESN маппинга
+function renderEsnMappingColumns() {
+    const container = document.getElementById('esnMappingColumnsContainer');
+    if (!container) return;
+    
+    const savedConfig = localStorage.getItem('esn_mapping_columns');
+    const defaultConfig = ['esn', 'lsn', 'operator', 'domain', 'ne_type', 'city', 'site'];
+    const config = savedConfig ? JSON.parse(savedConfig) : defaultConfig;
+    
+    const columns = ['A', 'B', 'C', 'D', 'E', 'F', 'G'];
+    
+    container.innerHTML = columns.map((col, idx) => `
+        <div>
+            <strong>Колонка ${col}</strong>
+            ${generateSelect(ESN_MAPPING_FIELDS, config[idx] || 'ignore')}
+        </div>
+    `).join('');
+    
+    // Сохраняем при изменении
+    container.querySelectorAll('select').forEach((select, idx) => {
+        select.addEventListener('change', () => {
+            const newConfig = [];
+            container.querySelectorAll('select').forEach(s => newConfig.push(s.value));
+            localStorage.setItem('esn_mapping_columns', JSON.stringify(newConfig));
+        });
+    });
+}
+
+// Генерация колонок для CapacityKey маппинга
+function renderCapacityMappingColumns() {
+    const container = document.getElementById('capacityMappingColumnsContainer');
+    if (!container) return;
+    
+    const savedConfig = localStorage.getItem('capacity_mapping_columns');
+    const defaultConfig = ['capacity_key', 'description', 'unit'];
+    const config = savedConfig ? JSON.parse(savedConfig) : defaultConfig;
+    
+    const columns = ['A', 'B', 'C'];
+    
+    container.innerHTML = columns.map((col, idx) => `
+        <div>
+            <strong>Колонка ${col}</strong>
+            ${generateSelect(CAPACITY_MAPPING_FIELDS, config[idx] || 'ignore')}
+        </div>
+    `).join('');
+    
+    // Сохраняем при изменении
+    container.querySelectorAll('select').forEach((select, idx) => {
+        select.addEventListener('change', () => {
+            const newConfig = [];
+            container.querySelectorAll('select').forEach(s => newConfig.push(s.value));
+            localStorage.setItem('capacity_mapping_columns', JSON.stringify(newConfig));
+        });
+    });
+}
+
+// Функции сохранения (можно оставить для явного сохранения)
+function saveEsnMappingConfig() {
+    const container = document.getElementById('esnMappingColumnsContainer');
+    if (!container) return;
+    const config = [];
+    container.querySelectorAll('select').forEach(s => config.push(s.value));
+    localStorage.setItem('esn_mapping_columns', JSON.stringify(config));
+    alert('Настройки маппинга ESN сохранены');
+}
+
+function saveCapacityMappingConfig() {
+    const container = document.getElementById('capacityMappingColumnsContainer');
+    if (!container) return;
+    const config = [];
+    container.querySelectorAll('select').forEach(s => config.push(s.value));
+    localStorage.setItem('capacity_mapping_columns', JSON.stringify(config));
+    alert('Настройки маппинга CapacityKey сохранены');
+}
+
+// Инициализация
+renderEsnMappingColumns();
+renderCapacityMappingColumns();
+
+// Обработчики кнопок сохранения
+document.getElementById('saveEsnMappingConfigBtn')?.addEventListener('click', saveEsnMappingConfig);
+document.getElementById('saveCapacityMappingConfigBtn')?.addEventListener('click', saveCapacityMappingConfig);
+
+// Переход к страницам
+document.getElementById('configureEsnMappingBtn')?.addEventListener('click', () => {
+    const operator = window.operator || 'mts';
+    window.location.href = `/${operator}/esn_mapping`;
+});
+
+document.getElementById('configureLicenseDetailsBtn')?.addEventListener('click', () => {
+    window.location.href = '/capacity_keys_mapping';
+});
+
+</script>
+{% endblock %}

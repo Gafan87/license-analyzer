@@ -1,0 +1,582 @@
+{% extends "base.html" %}
+
+{% block title %}Детали лицензии{% endblock %}
+
+{% block extra_css %}
+<style>
+/* Двухколоночный макет */
+.license-detail-container {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1.5rem;
+}
+
+.left-column, .right-column {
+    display: flex;
+    flex-direction: column;
+    gap: 1.5rem;
+}
+
+/* Информационные блоки */
+.info-block {
+    background: var(--bg-primary);
+    border-radius: var(--radius-lg);
+    border: 1px solid var(--border-light);
+    overflow: hidden;
+}
+
+.info-block-header {
+    background: var(--bg-secondary);
+    padding: 0.75rem 1rem;
+    border-bottom: 1px solid var(--border-light);
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-weight: 600;
+    font-size: 0.9rem;
+    color: var(--text-primary);
+}
+
+.info-block-header i {
+    color: var(--huawei-red);
+    font-size: 1rem;
+}
+
+.info-block-content {
+    padding: 1rem;
+}
+
+/* Таблица информации */
+.info-table {
+    width: 100%;
+    border-collapse: collapse;
+}
+
+.info-table tr {
+    border-bottom: 1px solid var(--border-light);
+}
+
+.info-table tr:last-child {
+    border-bottom: none;
+}
+
+.info-table td {
+    padding: 0.6rem 0;
+    vertical-align: top;
+}
+
+.info-table td:first-child {
+    font-weight: 600;
+    color: var(--text-secondary);
+    width: 120px;
+}
+
+.info-table td:last-child {
+    color: var(--text-primary);
+    word-break: break-all;
+}
+
+/* Ресурсы */
+.resources-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.8rem;
+}
+
+.resources-table th,
+.resources-table td {
+    padding: 0.5rem;
+    text-align: left;
+    border-bottom: 1px solid var(--border-light);
+}
+
+.resources-table th {
+    background: var(--bg-secondary);
+    font-weight: 600;
+    color: var(--text-secondary);
+}
+
+/* Комментарии */
+.comment-item {
+    padding: 0.75rem;
+    border-bottom: 1px solid var(--border-light);
+}
+
+.comment-item:last-child {
+    border-bottom: none;
+}
+
+.comment-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 0.5rem;
+    font-size: 0.7rem;
+}
+
+.comment-author {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-weight: 500;
+    color: var(--text-secondary);
+}
+
+.comment-date {
+    color: var(--text-muted);
+}
+
+.comment-text {
+    font-size: 0.85rem;
+    color: var(--text-primary);
+    line-height: 1.4;
+}
+
+.comment-form {
+    margin-top: 1rem;
+    display: flex;
+    gap: 0.5rem;
+}
+
+.comment-form input {
+    flex: 1;
+    padding: 0.5rem 0.75rem;
+    border: 1px solid var(--border-light);
+    border-radius: var(--radius-md);
+    background: var(--bg-primary);
+}
+
+/* Теги */
+.tags-container {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    align-items: center;
+}
+
+.tag {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+    padding: 0.25rem 0.75rem;
+    border-radius: 20px;
+    font-size: 0.7rem;
+    font-weight: 500;
+}
+
+.tag-remove {
+    cursor: pointer;
+    opacity: 0.6;
+    margin-left: 0.25rem;
+}
+
+.tag-remove:hover {
+    opacity: 1;
+}
+
+.add-tag-btn {
+    background: none;
+    border: 1px dashed var(--border-light);
+    padding: 0.25rem 0.75rem;
+    border-radius: 20px;
+    font-size: 0.7rem;
+    cursor: pointer;
+    color: var(--text-secondary);
+}
+
+.add-tag-btn:hover {
+    border-color: var(--huawei-red);
+    color: var(--huawei-red);
+}
+
+/* Кнопка назад */
+.back-button {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.5rem 1rem;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-light);
+    border-radius: var(--radius-md);
+    text-decoration: none;
+    color: var(--text-secondary);
+    font-size: 0.85rem;
+    transition: var(--transition);
+    margin-bottom: 1rem;
+}
+
+.back-button:hover {
+    border-color: var(--huawei-red);
+    color: var(--huawei-red);
+    transform: translateX(-3px);
+}
+
+    /* Стиль для выбранной версии */
+    .selected-version {
+        background: var(--huawei-red-light, rgba(230, 0, 18, 0.1));
+    }
+    .info-block:has(.fa-code-branch) .resources-table tbody tr:hover {
+        background: var(--bg-hover);
+    }
+
+/* Адаптивность */
+@media (max-width: 768px) {
+    .license-detail-container {
+        grid-template-columns: 1fr;
+        gap: 1rem;
+    }
+    
+    .info-table td:first-child {
+        width: 100px;
+    }
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<!-- Кнопка назад -->
+<a href="/{{ current_operator }}/" class="back-button">
+    <i class="fas fa-arrow-left"></i> Назад к списку
+</a>
+
+<div class="license-detail-container">
+    <!-- Левая колонка -->
+    <div class="left-column">
+       
+        <!-- Основная информация -->
+        <div class="info-block">
+            <div class="info-block-header">
+                <i class="fas fa-info-circle"></i> Основная информация
+            </div>
+            <div class="info-block-content">
+                <table class="info-table">
+                    <tr><td>LSN</td><td><code>{{ license.lsn or '-' }}</code></td></tr>
+                    <tr><td>Продукт</td><td>{{ license.product or '-' }}</td></tr>
+                    <tr><td>Версия</td><td>{{ license.version or '-' }}</td></tr>
+                    <tr><td>Оператор</td><td>{{ license.operator or '-' }}</td></tr>
+                    <tr><td>NE тип</td><td>{{ license.ne_type or '-' }}</td></tr>
+                    <tr><td>Город</td><td>{{ license.city or '-' }}</td></tr>
+                    <tr><td>Сайт</td><td>{{ license.site or '-' }}</td></tr>
+                    <tr><td>Год действия</td><td>{% if license.year == 'permanent' %}♾️ бессрочная{% else %}{{ license.year or '-' }}{% endif %}</td></tr>
+                    <tr><td>Дата создания</td><td>{{ license.create_time or '-' }}</td></tr>
+                    <tr><td>ESN</td><td><code>{{ license.esn or '-' }}</code></td></tr>
+                    <tr><td>Узел</td><td>{{ license.node or '-' }}</td></tr>
+                    <tr><td>Имя файла</td><td><code>{{ license.filename or '-' }}</code></td></tr>
+                </table>
+            </div>
+        </div>
+        
+        <!-- Ресурсы -->
+        <div class="info-block">
+            <div class="info-block-header">
+                <i class="fas fa-chart-bar"></i> Ресурсы (CapacityKey)
+            </div>
+            <div class="info-block-content" style="padding: 0;">
+                <table class="resources-table">
+                    <thead>
+                        <tr><th>CapacityKey</th><th>Значение</th><th>Действителен до</th></tr>
+                    </thead>
+                    <tbody>
+                        {% for res in license.resources %}
+                        <tr>
+                            <td><code>{{ res.name }}</code></td>
+                            <td>{{ res.value }}</td>
+                            <td>{{ res.valid_date }}</td>
+                            <td class="capacity-description">
+                                <small class="text-muted">
+                                    {% if res.description %}
+                                        {{ res.description }}
+                                        {% if res.unit %} ({{ res.unit }}){% endif %}
+                                    {% else %}
+                                        —
+                                    {% endif %}
+                                </small>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+        <!-- ДИНАМИЧЕСКИЕ ПОЛЯ-->
+        <div class="info-block">
+            <div class="info-block-header">
+                <i class="fas fa-puzzle-piece"></i> Дополнительные поля
+            </div>
+            <div class="info-block-content">
+                <table class="info-table">
+                    {% for field_name, field_data in license.dynamic_values.items() %}
+                    <tr>
+                        <td>{{ field_data.display_name }}</td>
+                        <td>{{ field_data.value or '-' }}</td>
+                    </tr>
+                    {% else %}
+                    <tr><td colspan="2" class="text-muted">Нет дополнительных полей</td></tr>
+                    {% endfor %}
+                </table>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Правая колонка -->
+    <div class="right-column">
+        <!-- Теги -->
+        <div class="info-block">
+            <div class="info-block-header">
+                <i class="fas fa-tags"></i> Теги
+            </div>
+            <div class="info-block-content">
+                <div class="tags-container" id="tagsContainer">
+                    {% for tag in license.tags %}
+                    <span class="tag" style="background: {{ tag.color }}20; color: {{ tag.color }};">
+                        <i class="fas fa-tag"></i> {{ tag.name }}
+                        <span class="tag-remove" data-tag-id="{{ tag.id }}">✕</span>
+                    </span>
+                    {% endfor %}
+                    <button class="add-tag-btn" id="addTagBtn">
+                        <i class="fas fa-plus"></i> Добавить тег
+                    </button>
+                </div>
+            </div>
+        </div>
+        <!-- Комментарии -->
+        <div class="info-block">
+            <div class="info-block-header">
+                <i class="fas fa-comments"></i> Комментарии
+            </div>
+            <div class="info-block-content">
+                <div id="commentsList">
+                    {% for comment in license.comments %}
+                    <div class="comment-item">
+                        <div class="comment-header">
+                            <span class="comment-author">
+                                <i class="fas fa-user-circle"></i> {{ comment.user_name }}
+                            </span>
+                            <span class="comment-date">{{ comment.created_at }}</span>
+                        </div>
+                        <div class="comment-text">{{ comment.comment }}</div>
+                    </div>
+                    {% else %}
+                    <div class="text-muted" style="text-align: center; padding: 1rem;">Нет комментариев</div>
+                    {% endfor %}
+                </div>
+                
+                <form method="post" action="/{{ current_operator }}/license/{{ license.id }}/comments" class="comment-form">
+                    <input type="text" name="comment" placeholder="Написать комментарий..." required>
+                    <input type="hidden" name="user_name" value="{{ current_operator_title }}">
+                    <button type="submit" class="btn-primary" style="padding: 0.5rem 1rem;">
+                        <i class="fas fa-paper-plane"></i> Отправить
+                    </button>
+                </form>
+            </div>
+        </div>
+
+        <!-- Добавить после блока с ресурсами в левой колонке или в правой колонке -->
+        <div class="info-block">
+            <div class="info-block-header">
+                <i class="fas fa-code-branch"></i> Все версии (LSN) для ESN {{ esn }}
+            </div>
+            <div class="info-block-content" style="padding: 0;">
+                <table class="resources-table">
+                    <thead>
+                        <tr><th>LSN</th><th>Файл</th><th>Продукт</th><th>Версия</th><th>Создан</th><th>Действует до</th></tr>
+                    </thead>
+                    <tbody>
+                        {% for lic in all_licenses_for_esn %}
+                        <tr data-license-id="{{ lic.id }}" style="cursor: pointer;">
+                            <td><code>{{ lic.lsn or '-' }}</code></td>
+                            <td>{{ lic.filename or '-' }}</td>
+                            <td>{{ lic.product or '-' }}</td>
+                            <td>{{ lic.version or '-' }}</td>
+                            <td>{{ lic.create_time or '-' }}</td>
+                            <td>{{ lic.valid_date or '-' }}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+        
+        <!-- Дополнительная информация (можно добавить позже) -->
+        <div class="info-block">
+            <div class="info-block-header">
+                <i class="fas fa-history"></i> Дополнительно
+            </div>
+            <div class="info-block-content">
+                <table class="info-table">
+                    <tr><td>Последнее изменение</td><td>{{ license.last_modified or '-' }}</td></tr>
+                    <tr><td>Кем изменено</td><td>{{ license.modified_by or '-' }}</td></tr>
+                    {% if license.file_hash %}
+                    <tr><td>Хеш файла</td><td><code>{{ license.file_hash[:16] }}...</code></td></tr>
+                    {% endif %}
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    // Добавление тега
+    document.getElementById('addTagBtn')?.addEventListener('click', async () => {
+        const tagName = prompt('Введите название тега:');
+        if (tagName && tagName.trim()) {
+            const resp = await fetch(`/{{ current_operator }}/tags/create`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ name: tagName.trim() })
+            });
+            const data = await resp.json();
+            if (data.success) {
+                // Добавляем тег к лицензии
+                const addResp = await fetch(`/{{ current_operator }}/license/{{ license.id }}/tags/add`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ tag_id: data.tag_id })
+                });
+                if (addResp.ok) {
+                    location.reload();
+                }
+            } else {
+                alert('Ошибка: ' + (data.error || 'Неизвестная ошибка'));
+            }
+        }
+    });
+    
+    // Удаление тега
+    document.querySelectorAll('.tag-remove').forEach(btn => {
+        btn.addEventListener('click', async () => {
+            const tagId = btn.dataset.tagId;
+            const resp = await fetch(`/{{ current_operator }}/license/{{ license.id }}/tags/remove`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ tag_id: tagId })
+            });
+            if (resp.ok) {
+                location.reload();
+            }
+        });
+    });
+
+    // ========== ДИНАМИЧЕСКАЯ ЗАГРУЗКА РЕСУРСОВ ПРИ ВЫБОРЕ LSN ==========
+    
+    // Функция загрузки ресурсов для выбранной лицензии
+    async function loadLicenseResources(licenseId) {
+        try {
+            // Показываем индикатор загрузки
+            const resourcesTable = document.querySelector('.resources-table tbody');
+            if (resourcesTable) {
+                resourcesTable.innerHTML = '<tr><td colspan="4" class="text-center">⏳ Загрузка ресурсов...</td></tr>';
+            }
+            
+            const response = await fetch(`/api/license/${licenseId}/resources`);
+            const data = await response.json();
+            
+            if (response.ok) {
+                // Обновляем ресурсы
+                updateResourcesTable(data.resources);
+                
+                // Обновляем динамические поля
+                updateDynamicFields(data.dynamic_values);
+                
+                // Обновляем valid_date и year
+                if (data.valid_date) {
+                    const validDateElement = document.querySelector('.info-table td:contains("Действует до") + td');
+                    if (validDateElement) {
+                        validDateElement.textContent = data.valid_date;
+                    }
+                }
+            } else {
+                console.error('Ошибка загрузки ресурсов:', data.error);
+                if (resourcesTable) {
+                    resourcesTable.innerHTML = '<tr><td colspan="4" class="text-center">❌ Ошибка загрузки ресурсов</td></tr>';
+                }
+            }
+        } catch (error) {
+            console.error('Ошибка:', error);
+            const resourcesTable = document.querySelector('.resources-table tbody');
+            if (resourcesTable) {
+                resourcesTable.innerHTML = '<tr><td colspan="4" class="text-center">❌ Ошибка загрузки ресурсов</td></tr>';
+            }
+        }
+    }
+    
+    // Функция обновления таблицы ресурсов
+    function updateResourcesTable(resources) {
+        const resourcesTable = document.querySelector('.resources-table tbody');
+        if (!resourcesTable) return;
+        
+        if (!resources || resources.length === 0) {
+            resourcesTable.innerHTML = '<tr><td colspan="4" class="text-center">Нет ресурсов</td></tr>';
+            return;
+        }
+        
+        resourcesTable.innerHTML = resources.map(res => `
+            <tr>
+                <td><code>${escapeHtml(res.name || '')}</code></td>
+                <td>${res.value || 0}</td>
+                <td>${res.valid_date || '-'}</td>
+                <td class="capacity-description">
+                    <small class="text-muted">
+                        ${res.description ? escapeHtml(res.description) + (res.unit ? ' (' + escapeHtml(res.unit) + ')' : '') : '—'}
+                    </small>
+                </td>
+            </tr>
+        `).join('');
+    }
+    
+    // Функция обновления динамических полей
+    function updateDynamicFields(dynamicValues) {
+        const dynamicFieldsTable = document.querySelector('.info-block:has(.fa-puzzle-piece) .info-table tbody');
+        if (!dynamicFieldsTable) return;
+        
+        if (!dynamicValues || Object.keys(dynamicValues).length === 0) {
+            dynamicFieldsTable.innerHTML = '<tr><td colspan="2" class="text-muted">Нет дополнительных полей</td></tr>';
+            return;
+        }
+        
+        dynamicFieldsTable.innerHTML = Object.entries(dynamicValues).map(([name, data]) => `
+            <tr>
+                <td>${escapeHtml(data.display_name || name)}</td>
+                <td>${escapeHtml(data.value || '-')}</td>
+            </tr>
+        `).join('');
+    }
+    
+    // Вспомогательная функция для экранирования HTML
+    function escapeHtml(str) {
+        if (!str) return '';
+        return str.replace(/[&<>]/g, function(m) {
+            if (m === '&') return '&amp;';
+            if (m === '<') return '&lt;';
+            if (m === '>') return '&gt;';
+            return m;
+        });
+    }
+    
+    // Добавляем обработчики на строки с LSN в таблице "Все версии"
+    document.addEventListener('DOMContentLoaded', function() {
+        const rows = document.querySelectorAll('.info-block:has(.fa-code-branch) .resources-table tbody tr');
+        rows.forEach(row => {
+            row.style.cursor = 'pointer';
+            row.addEventListener('click', function(e) {
+                // Не срабатывает при клике на ссылки или кнопки внутри
+                if (e.target.tagName === 'A' || e.target.tagName === 'BUTTON') return;
+                
+                // Находим ID лицензии (можно добавить data-id в строку)
+                const firstCell = this.querySelector('td:first-child');
+                if (firstCell) {
+                    // Ищем ID - можно добавить data-id атрибут при рендеринге
+                    const licenseId = this.getAttribute('data-license-id');
+                    if (licenseId) {
+                        // Убираем подсветку с других строк
+                        rows.forEach(r => r.classList.remove('selected-version'));
+                        this.classList.add('selected-version');
+                        loadLicenseResources(parseInt(licenseId));
+                    }
+                }
+            });
+        });
+    });
+
+</script>
+{% endblock %}

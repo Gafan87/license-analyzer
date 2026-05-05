@@ -1,0 +1,49 @@
+{% extends "base.html" %}
+
+{% block title %}Базовые цели{% endblock %}
+
+{% block content %}
+<div class="card">
+    <h1>🎯 Настройка базовых целей</h1>
+    
+    <form method="get" style="display: flex; gap: 1rem; flex-wrap: wrap; margin-bottom: 2rem;">
+        <select name="ne_type">
+            <option value="">NE тип</option>
+            {% for ne, city, site in sites %}
+            <option value="{{ ne }}" {% if ne == selected_ne %}selected{% endif %}>{{ ne }}</option>
+            {% endfor %}
+        </select>
+        <select name="city">
+            <option value="">Город</option>
+            {% for ne, city, site in sites %}
+            <option value="{{ city }}" {% if city == selected_city %}selected{% endif %}>{{ city }}</option>
+            {% endfor %}
+        </select>
+        <select name="site">
+            <option value="">Сайт</option>
+            {% for ne, city, site in sites %}
+            <option value="{{ site }}" {% if site == selected_site %}selected{% endif %}>{{ site }}</option>
+            {% endfor %}
+        </select>
+        <button type="submit">Загрузить</button>
+    </form>
+    
+    {% if selected_ne and selected_city and selected_site %}
+    <form method="post">
+        <h3>Цели для {{ selected_ne }}/{{ selected_city }}/{{ selected_site }}</h3>
+        <table>
+            <thead><tr><th>CapacityKey</th><th>Целевое значение</th></tr></thead>
+            <tbody>
+                <tr><td>LKV2UPTR01 <br><small>(пропускная способность)</small></td>
+                    <td><input type="number" name="target_LKV2UPTR01" value="{{ targets.get('LKV2UPTR01', '') }}"></td></tr>
+                <tr><td>LKV2WSUBS01 <br><small>(абоненты)</small></td>
+                    <td><input type="number" name="target_LKV2WSUBS01" value="{{ targets.get('LKV2WSUBS01', '') }}"></td></tr>
+                <tr><td>LKV2LTESAU01 <br><small>(LTE сессии)</small></td>
+                    <td><input type="number" name="target_LKV2LTESAU01" value="{{ targets.get('LKV2LTESAU01', '') }}"></td></tr>
+            </tbody>
+        </table>
+        <button type="submit">💾 Сохранить</button>
+    </form>
+    {% endif %}
+</div>
+{% endblock %}

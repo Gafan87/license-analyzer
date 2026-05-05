@@ -1,0 +1,71 @@
+{% extends "base.html" %}
+
+{% block title %}ESN маппинг{% endblock %}
+
+{% block content %}
+<div class="card">
+    <h1>🗺️ ESN маппинг</h1>
+    
+    <form method="post" enctype="multipart/form-data" style="display: flex; gap: 1rem; margin-bottom: 2rem;">
+        <input type="file" name="upload_file" accept=".xlsx">
+        <button type="submit">📤 Загрузить Excel</button>
+    </form>
+    
+    <form method="post" style="margin-bottom: 2rem;">
+        <input type="hidden" name="export" value="1">
+        <button type="submit">📥 Экспортировать Excel</button>
+    </form>
+
+    <form method="post" action="/{{ current_operator }}/apply_mapping" style="margin-bottom: 2rem;">
+        <input type="hidden" name="apply" value="1">
+        <button type="submit" class="btn-primary">📝 Применить маппинг к лицензиям</button>
+    </form>
+    
+    <h3>Текущий маппинг (первые 100 записей)</h3>
+    <div style="overflow-x: auto;">
+        <table>
+            <thead>
+                <tr>
+                    <th>ESN</th>
+                    <th>LSN</th>
+                    <th>Оператор</th>
+                    <th>Домен</th>
+                    <th>NE тип</th>
+                    <th>Город</th>
+                    <th>Сайт</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for m in mappings %}
+                <tr>
+                    <td><code>{{ m[0][:30] }}{% if m[0]|length > 30 %}...{% endif %}</code></td>
+                    <td>{{ m[1] or '-' }}</td>
+                    <td>{{ m[2] or '-' }}</td>
+                    <td>{{ m[3] or '-' }}</td>
+                    <td>{{ m[4] or '-' }}</td>
+                    <td>{{ m[5] or '-' }}</td>
+                    <td>{{ m[6] or '-' }}</td>
+                </tr>
+                {% else %}
+                <tr><td colspan="7" class="text-center">Нет данных. Загрузите Excel файл с маппингом (7 колонок: ESN, LSN, Оператор, Домен, NE тип, Город, Сайт)</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    
+    <div class="info-card" style="margin-top: 1rem;">
+        <h4>📌 Формат Excel файла</h4>
+        <p>Файл должен содержать 7 колонок в следующем порядке:</p>
+        <ol style="font-size: 0.8rem;">
+            <li><strong>ESN</strong> - обязательное поле</li>
+            <li><strong>LSN</strong> - опционально</li>
+            <li><strong>Оператор</strong> (mts/veon)</li>
+            <li><strong>Домен</strong> - опционально</li>
+            <li><strong>NE тип</strong> (vEPC, PSCORE, PCRF)</li>
+            <li><strong>Город</strong></li>
+            <li><strong>Сайт</strong></li>
+        </ol>
+        <p class="text-muted" style="font-size: 0.7rem;">Первая строка — заголовки (могут быть любыми), данные со 2-й строки.</p>
+    </div>
+</div>
+{% endblock %}

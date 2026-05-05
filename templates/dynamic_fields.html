@@ -1,0 +1,457 @@
+{% extends "base.html" %}
+
+{% block title %}Динамические поля{% endblock %}
+
+{% block content %}
+<div class="card">
+    <h1>🔧 Управление динамическими полями</h1>
+    <p class="text-muted">Добавляйте произвольные колонки, которые извлекаются из лицензионных файлов</p>
+    
+    <!-- Вкладки -->
+    <div style="display: flex; gap: 0.5rem; margin-bottom: 1.5rem; border-bottom: 1px solid var(--border-light);">
+        <button class="tab-btn active" data-tab="columns">📊 Колонки</button>
+        <button class="tab-btn" data-tab="rules">📚 Банк правил</button>
+    </div>
+    
+    <!-- Вкладка: Колонки -->
+    <div id="tab-columns" class="tab-pane active">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+            <h3>Существующие колонки</h3>
+            <button id="addColumnBtn" class="btn-primary">➕ Добавить колонку</button>
+        </div>
+        
+        <div class="table-wrapper">
+            <table class="licenses-table">
+                <thead>
+                    <tr>
+                        <th>Имя колонки</th>
+                        <th>Отображение</th>
+                        <th>Источник</th>
+                        <th>Активна</th>
+                        <th>Действия</th>
+                    </tr>
+                </thead>
+                <tbody id="columnsList">
+                    <tr><td colspan="5" class="text-center">Загрузка...</td></tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+    
+    <!-- Вкладка: Банк правил -->
+    <div id="tab-rules" class="tab-pane">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+            <h3>Правила извлечения</h3>
+            <button id="addRuleBtn" class="btn-primary">➕ Добавить правило</button>
+        </div>
+        
+        <div class="table-wrapper">
+            <table class="licenses-table">
+                <thead>
+                    <tr>
+                        <th>ID правила</th>
+                        <th>Отображение</th>
+                        <th>Regex (DAT)</th>
+                        <th>XPath (XML)</th>
+                        <th>Тип</th>
+                    </tr>
+                </thead>
+                <tbody id="rulesList">
+                    <tr><td colspan="5" class="text-center">Загрузка...</td></tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- Модальное окно добавления колонки -->
+<div id="addColumnModal" class="modal" style="display: none;">
+    <div class="modal-content">
+        <span class="modal-close">&times;</span>
+        <h3>➕ Добавить колонку</h3>
+        <form id="addColumnForm">
+            <div class="filter-group">
+                <label>Имя колонки (латиницей) *</label>
+                <input type="text" id="colColumnName" required placeholder="например: tech_park">
+            </div>
+            <div class="filter-group">
+                <label>Отображаемое имя *</label>
+                <input type="text" id="colDisplayName" required placeholder="например: Технологическая площадка">
+            </div>
+            <div class="filter-group">
+                <label>Тип источника</label>
+                <select id="colSourceType">
+                    <option value="rule">Правило из банка</option>
+                    <option value="capacity">CapacityKey (фича)</option>
+                </select>
+            </div>
+            <div class="filter-group" id="ruleSelectGroup">
+                <label>Выберите правило</label>
+                <select id="colRuleId"></select>
+            </div>
+            <div class="filter-group" id="capacitySelectGroup" style="display: none;">
+                <label>Выберите CapacityKey</label>
+                <select id="colCapacityKey"></select>
+            </div>
+            <div class="filter-group">
+                <label>Стратегия агрегации</label>
+                <select id="colAggregation">
+                    <option value="sum">Сумма (для фич)</option>
+                    <option value="first">Первое значение</option>
+                    <option value="last">Последнее значение</option>
+                    <option value="join">Объединить</option>
+                </select>
+            </div>
+            <button type="submit" class="btn-primary">Создать колонку</button>
+        </form>
+    </div>
+</div>
+
+<!-- Модальное окно добавления правила -->
+<div id="addRuleModal" class="modal" style="display: none;">
+    <div class="modal-content">
+        <span class="modal-close">&times;</span>
+        <h3>➕ Добавить правило</h3>
+        <form id="addRuleForm">
+            <div class="filter-group">
+                <label>ID правила (латиницей) *</label>
+                <input type="text" id="ruleId" required placeholder="например: custom_field">
+            </div>
+            <div class="filter-group">
+                <label>Отображаемое имя *</label>
+                <input type="text" id="ruleDisplayName" required placeholder="например: Пользовательское поле">
+            </div>
+            <div class="filter-group">
+                <label>Regex для DAT файлов</label>
+                <textarea id="ruleRegex" rows="2" placeholder='r"FieldName[=:]\s*([^\"\n]+)"'></textarea>
+                <small>Оставьте пустым, если не используется</small>
+            </div>
+            <div class="filter-group">
+                <label>XPath для XML файлов</label>
+                <input type="text" id="ruleXpath" placeholder='.//Node[@type="Custom"]/text()'>
+                <small>Оставьте пустым, если не используется</small>
+            </div>
+            <div class="filter-group">
+                <label>Тип данных</label>
+                <select id="ruleValueType">
+                    <option value="text">Текст</option>
+                    <option value="number">Число</option>
+                    <option value="date">Дата</option>
+                </select>
+            </div>
+            <button type="submit" class="btn-primary">Сохранить правило</button>
+        </form>
+    </div>
+</div>
+
+<style>
+.modal {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0,0,0,0.5);
+    z-index: 1000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+.modal-content {
+    background: var(--bg-primary);
+    border-radius: var(--radius-lg);
+    padding: 1.5rem;
+    width: 500px;
+    max-width: 90%;
+    position: relative;
+}
+.modal-close {
+    position: absolute;
+    top: 1rem;
+    right: 1rem;
+    cursor: pointer;
+    font-size: 1.2rem;
+}
+.tab-btn {
+    padding: 0.5rem 1rem;
+    background: none;
+    border: none;
+    cursor: pointer;
+    font-size: 0.9rem;
+    color: var(--text-secondary);
+}
+.tab-btn.active {
+    color: var(--huawei-red);
+    border-bottom: 2px solid var(--huawei-red);
+}
+.tab-pane {
+    display: none;
+}
+.tab-pane.active {
+    display: block;
+}
+</style>
+
+<script>
+    let currentOperator = '{{ current_operator }}';
+    
+    // Загрузка колонок
+    async function loadColumns() {
+        const resp = await fetch('/api/dynamic_columns');
+        const columns = await resp.json();
+        const tbody = document.getElementById('columnsList');
+        
+        if (columns.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="5" class="text-center">Нет динамических колонок</td></tr>';
+            return;
+        }
+        
+        tbody.innerHTML = columns.map(col => `
+            <tr>
+                <td><code>${col.column_name}</code></td>
+                <td>${col.display_name}</td>
+                <td>${col.capacity_key ? `Фича: ${col.capacity_key}` : `Правило: ${col.rule_id || '-'}`}</td>
+                <td>
+                    <label class="switch">
+                        <input type="checkbox" class="toggle-column" data-id="${col.id}" ${col.is_active ? 'checked' : ''}>
+                        <span class="slider"></span>
+                    </label>
+                </td>
+                <td>
+                    <button class="btn-danger delete-column" data-id="${col.id}">🗑️</button>
+                </td>
+            </tr>
+        `).join('');
+        
+        // Обработчики
+        document.querySelectorAll('.toggle-column').forEach(cb => {
+            cb.addEventListener('change', async (e) => {
+                await fetch(`/api/dynamic_columns/${cb.dataset.id}`, {
+                    method: 'PUT',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({is_active: cb.checked ? 1 : 0})
+                });
+            });
+        });
+        
+        document.querySelectorAll('.delete-column').forEach(btn => {
+            btn.addEventListener('click', async (e) => {
+                if (confirm('Удалить колонку? Все данные по ней будут потеряны.')) {
+                    await fetch(`/api/dynamic_columns/${btn.dataset.id}`, {method: 'DELETE'});
+                    loadColumns();
+                }
+            });
+        });
+    }
+    
+    // Загрузка правил
+    async function loadRules() {
+        const resp = await fetch('/api/extraction_rules');
+        const data = await resp.json();
+        const rules = data.rules || {};
+        const tbody = document.getElementById('rulesList');
+        
+        const ruleEntries = Object.entries(rules);
+        if (ruleEntries.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="5" class="text-center">Нет правил</td></tr>';
+            return;
+        }
+        
+        tbody.innerHTML = ruleEntries.map(([id, rule]) => `
+            <tr>
+                <td><code>${id}</code></td>
+                <td>${rule.display_name}</td>
+                <td><small>${(rule.regex_dat || '-').substring(0, 40)}...</small></td>
+                <td><small>${(rule.xpath_xml || '-').substring(0, 40)}...</small></td>
+                <td>${rule.value_type}</td>
+            </tr>
+        `).join('');
+        
+        // Заполняем select для добавления колонки
+        const ruleSelect = document.getElementById('colRuleId');
+        ruleSelect.innerHTML = ruleEntries.map(([id, rule]) => 
+            `<option value="${id}">${rule.display_name} (${id})</option>`
+        ).join('');
+    }
+    
+    // Загрузка CapacityKey
+    async function loadCapacityKeys() {
+        const resp = await fetch(`/api/capacity_keys/${currentOperator}`);
+        const keys = await resp.json();
+        const select = document.getElementById('colCapacityKey');
+        select.innerHTML = keys.map(key => `<option value="${key}">${key}</option>`).join('');
+        if (keys.length === 0) {
+            select.innerHTML = '<option value="">Нет данных</option>';
+        }
+    }
+    
+    // Модальное окно
+    function showModal(modalId) {
+        document.getElementById(modalId).style.display = 'flex';
+    }
+    
+    function hideModal(modalId) {
+        document.getElementById(modalId).style.display = 'none';
+    }
+    
+    // Добавление колонки
+    document.getElementById('addColumnBtn').onclick = () => {
+        loadCapacityKeys();
+        showModal('addColumnModal');
+    };
+    
+    document.getElementById('addColumnForm').onsubmit = async (e) => {
+        e.preventDefault();
+        
+        const sourceType = document.getElementById('colSourceType').value;
+        const data = {
+            column_name: document.getElementById('colColumnName').value.trim(),
+            display_name: document.getElementById('colDisplayName').value.trim(),
+            aggregation_strategy: document.getElementById('colAggregation').value
+        };
+        
+        if (sourceType === 'rule') {
+            data.rule_id = document.getElementById('colRuleId').value;
+        } else {
+            data.capacity_key = document.getElementById('colCapacityKey').value;
+        }
+        
+        const resp = await fetch('/api/dynamic_columns', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(data)
+        });
+        
+        const result = await resp.json();
+        if (resp.ok) {
+            alert(`Колонка добавлена! Обновлено ${result.updated} лицензий`);
+            hideModal('addColumnModal');
+            loadColumns();
+        } else {
+            alert('Ошибка: ' + result.error);
+        }
+    };
+    
+    // Добавление правила
+    document.getElementById('addRuleBtn').onclick = () => showModal('addRuleModal');
+    
+    document.getElementById('addRuleForm').onsubmit = async (e) => {
+        e.preventDefault();
+        
+        const data = {
+            rule_id: document.getElementById('ruleId').value.trim(),
+            display_name: document.getElementById('ruleDisplayName').value.trim(),
+            regex_dat: document.getElementById('ruleRegex').value,
+            xpath_xml: document.getElementById('ruleXpath').value,
+            value_type: document.getElementById('ruleValueType').value
+        };
+        
+        const resp = await fetch('/api/extraction_rules', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(data)
+        });
+        
+        if (resp.ok) {
+            alert('Правило добавлено!');
+            hideModal('addRuleModal');
+            loadRules();
+            document.getElementById('addRuleForm').reset();
+        } else {
+            const err = await resp.json();
+            alert('Ошибка: ' + err.error);
+        }
+    };
+    
+    // Переключение типа источника
+    document.getElementById('colSourceType').onchange = (e) => {
+        const isRule = e.target.value === 'rule';
+        document.getElementById('ruleSelectGroup').style.display = isRule ? 'block' : 'none';
+        document.getElementById('capacitySelectGroup').style.display = isRule ? 'none' : 'block';
+    };
+    
+    // Закрытие модальных окон
+    document.querySelectorAll('.modal-close').forEach(btn => {
+        btn.onclick = () => {
+            btn.closest('.modal').style.display = 'none';
+        };
+    });
+    
+    // Переключение вкладок
+    document.querySelectorAll('.tab-btn').forEach(btn => {
+        btn.onclick = () => {
+            document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+            document.querySelectorAll('.tab-pane').forEach(p => p.classList.remove('active'));
+            btn.classList.add('active');
+            document.getElementById(`tab-${btn.dataset.tab}`).classList.add('active');
+        };
+    });
+    
+    // Инициализация
+    loadColumns();
+    loadRules();
+</script>
+
+<style>
+.switch {
+    position: relative;
+    display: inline-block;
+    width: 40px;
+    height: 20px;
+}
+.switch input {
+    opacity: 0;
+    width: 0;
+    height: 0;
+}
+.slider {
+    position: absolute;
+    cursor: pointer;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background-color: #ccc;
+    border-radius: 20px;
+}
+.slider:before {
+    position: absolute;
+    content: "";
+    height: 16px;
+    width: 16px;
+    left: 2px;
+    bottom: 2px;
+    background-color: white;
+    border-radius: 50%;
+}
+input:checked + .slider {
+    background-color: var(--huawei-red);
+}
+input:checked + .slider:before {
+    transform: translateX(20px);
+}
+.btn-danger {
+    background: #dc3545;
+    color: white;
+    border: none;
+    padding: 4px 8px;
+    border-radius: 4px;
+    cursor: pointer;
+}
+.filter-group {
+    margin-bottom: 1rem;
+}
+.filter-group label {
+    display: block;
+    margin-bottom: 0.25rem;
+    font-weight: 500;
+}
+.filter-group input, .filter-group select, .filter-group textarea {
+    width: 100%;
+    padding: 0.5rem;
+    border: 1px solid var(--border-light);
+    border-radius: var(--radius-sm);
+    background: var(--bg-primary);
+}
+</style>
+{% endblock %}

@@ -1,0 +1,24 @@
+# requirements.txt
+# Основной фреймворк
+Flask==2.3.3
+Werkzeug==2.3.7
+
+# Работа с Excel
+openpyxl==3.1.2
+pandas==2.0.3
+xlrd==2.0.1
+
+# Для парсинга и работы с данными
+python-dateutil==2.8.2
+
+# Для веб-сокетов (опционально, если добавите)
+# flask-socketio==5.3.4
+# python-engineio==4.5.1
+
+# Для продакшн-сервера
+gunicorn==21.2.0
+waitress==2.1.2
+
+# Для тестирования
+pytest==7.4.2
+pytest-cov==4.1.0

@@ -1,0 +1,62 @@
+{
+  "version": 1,
+  "created_at": "2026-04-26T17:48:44.962825",
+  "rules": {
+    "esn": {
+      "display_name": "ESN",
+      "regex_dat": "r\"Esn[=:]\\s*\\\"?([^\\\"]+)\\\"?\"",
+      "xpath_xml": ".//ESN/text()",
+      "value_type": "text",
+      "aggregation_strategy": "first",
+      "join_separator": ", "
+    },
+    "lsn": {
+      "display_name": "LSN",
+      "regex_dat": "r\"LicenseSerialNo[=:]\\s*(\\S+)\"",
+      "xpath_xml": ".//LSN/text()",
+      "value_type": "text",
+      "aggregation_strategy": "first",
+      "join_separator": ", "
+    },
+    "node": {
+      "display_name": "Узел",
+      "regex_dat": "r\"Product[=:]\\s*(\\S+)\"",
+      "xpath_xml": ".//Node/text()",
+      "value_type": "text",
+      "aggregation_strategy": "first",
+      "join_separator": ", "
+    },
+    "create_time": {
+      "display_name": "Дата создания",
+      "regex_dat": "r\"CreatedTime[=:]\\s*([0-9\\-\\s:]+)\"",
+      "xpath_xml": ".//CreateTime/text()",
+      "value_type": "date",
+      "aggregation_strategy": "first",
+      "join_separator": ", "
+    },
+    "product": {
+      "display_name": "Продукт",
+      "regex_dat": "r\"Product[=:]\\s*(\\S+)\"",
+      "xpath_xml": ".//OfferingProduct/@name",
+      "value_type": "text",
+      "aggregation_strategy": "first",
+      "join_separator": ", "
+    },
+    "version": {
+      "display_name": "Версия",
+      "regex_dat": "r\"Version[=:]\\s*(\\S+)\"",
+      "xpath_xml": ".//OfferingProduct/@version",
+      "value_type": "text",
+      "aggregation_strategy": "first",
+      "join_separator": ", "
+    },
+    "tech_park": {
+      "display_name": "Технологическая площадка",
+      "regex_dat": "r\"TechPark[=:]\\s*([^\\\"\\n]+)\"",
+      "xpath_xml": ".//Node[@type='TechPark']/text()",
+      "value_type": "text",
+      "aggregation_strategy": "first",
+      "join_separator": ", "
+    }
+  }
+}

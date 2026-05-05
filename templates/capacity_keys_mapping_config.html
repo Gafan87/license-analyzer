@@ -1,0 +1,101 @@
+{% extends "base.html" %}
+
+{% block title %}Настройка описаний CapacityKey{% endblock %}
+
+{% block content %}
+<div class="card">
+    <h1>📝 Настройка колонок файла описаний CapacityKey</h1>
+    <p class="text-muted">Укажите, в каких колонках Excel файла находятся описания кодов лицензий</p>
+    
+    <form id="capacityKeysConfigForm">
+        <div class="config-grid" style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
+            <div class="filter-group">
+                <label>Колонка с CapacityKey *</label>
+                <input type="text" id="col_key" placeholder="A" value="{{ config.key or 'A' }}" required>
+                <small>Код лицензии (например, LKV2UPTR01)</small>
+            </div>
+            <div class="filter-group">
+                <label>Колонка с Описанием *</label>
+                <input type="text" id="col_description" placeholder="B" value="{{ config.description or 'B' }}" required>
+                <small>Описание (например, "Пропускная способность")</small>
+            </div>
+            <div class="filter-group">
+                <label>Колонка с Единицей измерения</label>
+                <input type="text" id="col_unit" placeholder="C" value="{{ config.unit or 'C' }}">
+                <small>Например, "Гбит/с", "шт"</small>
+            </div>
+        </div>
+        
+        <div class="filter-group" style="margin-top: 1rem;">
+            <label>Первая строка — заголовки?</label>
+            <input type="checkbox" id="has_header" {% if config.has_header %}checked{% endif %}>
+            <small>Если отмечено, чтение начинается со 2-й строки</small>
+        </div>
+        
+        <div class="filter-group" style="margin-top: 1rem;">
+            <label>Путь к файлам описаний</label>
+            <input type="text" id="files_path" placeholder="/mnt/network_storage/license_details/" 
+                   value="{{ config.files_path or '' }}" style="width: 100%;">
+            <small>Шаблон: {NE_type}_license_details.xlsx</small>
+        </div>
+        
+        <div style="display: flex; gap: 1rem; margin-top: 1rem;">
+            <button type="submit" class="btn-primary">💾 Сохранить настройки</button>
+            <button type="button" id="resetDefaultsBtn" class="btn-secondary">↺ Сбросить к стандарту</button>
+            <a href="/settings" class="btn-secondary">← Назад к настройкам</a>
+        </div>
+    </form>
+    
+    <div class="info-card" style="margin-top: 2rem;">
+        <h4>📌 Пример файла описаний (vEPC_license_details.xlsx)</h4>
+        <table style="font-size: 0.7rem; width: 100%; border-collapse: collapse;">
+            <thead>
+                <tr><th>CapacityKey</th><th>Description</th><th>Unit</th></tr>
+            </thead>
+            <tbody>
+                <tr><td>LKV2UPTR01</td><td>Пропускная способность</td><td>Гбит/с</td></tr>
+                <tr><td>LKV2WSUBS01</td><td>Количество абонентов</td><td>тыс. шт</td></tr>
+                <tr><td>LKV2LTESAU01</td><td>LTE сессии</td><td>тыс.</td></tr>
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<script>
+    const form = document.getElementById('capacityKeysConfigForm');
+    
+    form.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        
+        const config = {
+            key: document.getElementById('col_key').value.toUpperCase(),
+            description: document.getElementById('col_description').value.toUpperCase(),
+            unit: document.getElementById('col_unit').value.toUpperCase(),
+            has_header: document.getElementById('has_header').checked,
+            files_path: document.getElementById('files_path').value
+        };
+        
+        const resp = await fetch('/api/capacity_keys_config', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(config)
+        });
+        
+        if (resp.ok) {
+            alert('Настройки сохранены');
+            window.location.href = '/settings';
+        } else {
+            const error = await resp.json();
+            alert('Ошибка: ' + error.error);
+        }
+    });
+    
+    document.getElementById('resetDefaultsBtn').addEventListener('click', () => {
+        document.getElementById('col_key').value = 'A';
+        document.getElementById('col_description').value = 'B';
+        document.getElementById('col_unit').value = 'C';
+        document.getElementById('has_header').checked = true;
+        document.getElementById('files_path').value = '';
+    });
+</script>
+{% endblock %}

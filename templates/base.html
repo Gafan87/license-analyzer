@@ -1,0 +1,375 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}Huawei License Analyzer{% endblock %}</title>
+    
+    <link href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,400;14..32,500;14..32,600;14..32,700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="/static/css/huawei.css">
+    <script src="https://cdn.sheetjs.com/xlsx-0.20.2/package/dist/xlsx.full.min.js"></script>
+    
+    {% block extra_css %}{% endblock %}
+</head>
+<body>
+    <!-- Верхняя панель -->
+<div class="top-bar">
+    <div class="logo">
+        <img src="/static/images/huawei-logo.png" alt="Huawei" class="logo-img" 
+             onerror="this.onerror=null; this.src='data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 width=%2280%22 height=%2232%22 viewBox=%220 0 200 60%22%3E%3Crect x=%220%22 y=%2210%22 width=%2240%22 height=%2240%22 rx=%228%22 fill=%22%23C7000B%22/%3E%3Cpath d=%22M10 20h20v3H10v-3zm0 17h20v3H10v-3z%22 fill=%22white%22/%3E%3Cpath d=%22M15 15h10v30H15V15z%22 fill=%22white%22/%3E%3Ctext x=%2250%22 y=%2238%22 font-family=%22Arial%22 font-size=%2220%22 fill=%22%23333%22%3EHuawei%3C/text%3E%3C/svg%3E';">
+        <span class="logo-text">License Analyzer</span>
+    </div>
+    
+    <!-- Переключение операторов по центру -->
+    {% if request.endpoint != 'settings' and request.endpoint != 'web.settings' %}
+    <div class="operator-tabs-center">
+        {% for op in operators %}
+        <div class="operator-tab {% if op.name == current_operator %}active{% endif %}">
+            <a href="/{{ op.name }}/">
+                <i class="fas fa-network-wired"></i>
+                <span>{{ op.title }}</span>
+            </a>
+        </div>
+        {% endfor %}
+    </div>
+    {% endif %}
+    
+    <!-- Правая панель с компактными кнопками -->
+    <div class="top-bar-actions">
+        {% if request.endpoint != 'settings' and request.endpoint != 'web.settings' %}
+        <button id="scanBtn" class="top-action-btn primary" title="Сканировать">
+            <i class="fas fa-sync-alt"></i>
+            <span>Скан</span>
+        </button>
+<button id="syncBtn" class="top-action-btn success" title="Синхронизировать">
+    <i class="fas fa-cloud-upload-alt"></i>
+    <span>Синхр</span>
+    <span id="syncBadge" class="sync-badge hidden"></span>
+</button>
+        <button id="downloadBtn" class="top-action-btn" title="Загрузить БД">
+            <i class="fas fa-download"></i>
+            <span>БД</span>
+        </button>
+        <a href="/settings" class="top-action-btn" title="Настройки">
+            <i class="fas fa-cog"></i>
+            <span>Настр</span>
+        </a>
+        {% else %}
+        <a href="/{{ current_operator }}/" class="top-action-btn primary" title="Назад">
+            <i class="fas fa-arrow-left"></i>
+            <span>Назад</span>
+        </a>
+        {% endif %}
+        
+        <!-- Импорт Excel -->
+        <a href="#" id="importExcelBtn" class="top-action-btn" title="Импорт Excel">
+            <i class="fas fa-file-excel"></i>
+            <span>Excel</span>
+        </a>
+        
+        <!-- Выбор темы (компактный список) -->
+        <div class="theme-selector">
+            <div class="theme-current" id="themeCurrent">
+                <i class="fas fa-palette"></i>
+                <span id="themeCurrentLabel">Тема</span>
+                <i class="fas fa-chevron-down" style="font-size: 0.7rem;"></i>
+            </div>
+            <div class="theme-dropdown">
+                <div class="theme-option" data-theme="auto">
+                    <i class="fas fa-sync-alt"></i> Авто
+                </div>
+                <div class="theme-option" data-theme="light">
+                    <i class="fas fa-sun"></i> Светлая
+                </div>
+                <div class="theme-option" data-theme="dark">
+                    <i class="fas fa-moon"></i> Тёмная
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+    
+    <div class="container">
+        <!-- Статистика (только на главной, не в настройках) -->
+        {% if request.endpoint == 'web.license_list' %}
+        {% block stats %}{% endblock %}
+        {% endif %}
+        
+        <!-- Панель с основными и вспомогательными кнопками (НЕ показываем в настройках) -->
+        {% if request.endpoint != 'settings' and request.endpoint != 'web.settings' and current_operator %}
+        <div class="action-panels">
+            <div class="main-actions">
+                <a href="/{{ current_operator }}/" class="action-card {% if request.endpoint == 'web.license_list' %}active{% endif %}">
+                    <i class="fas fa-list-ul"></i>
+                    <div class="action-info">
+                        <span class="action-title">Список лицензий</span>
+                        <span class="action-desc">Просмотр всех лицензий</span>
+                    </div>
+                </a>
+                <a href="/{{ current_operator }}/reports" class="action-card {% if request.endpoint == 'web.reports' %}active{% endif %}">
+                    <i class="fas fa-chart-line"></i>
+                    <div class="action-info">
+                        <span class="action-title">Отчёты</span>
+                        <span class="action-desc">Сравнение с эталоном</span>
+                    </div>
+                </a>
+                <a href="/{{ current_operator }}/base_targets" class="action-card {% if request.endpoint == 'web.base_targets' %}active{% endif %}">
+                    <i class="fas fa-bullseye"></i>
+                    <div class="action-info">
+                        <span class="action-title">Базовые цели</span>
+                        <span class="action-desc">Настройка целевых ёмкостей</span>
+                    </div>
+                </a>
+                <a href="/{{ current_operator }}/esn_mapping" class="action-card {% if request.endpoint == 'web.esn_mapping' %}active{% endif %}">
+                    <i class="fas fa-map"></i>
+                    <div class="action-info">
+                        <span class="action-title">ESN маппинг</span>
+                        <span class="action-desc">Соответствие ESN оператору</span>
+                    </div>
+                </a>
+            </div>
+            <div class="secondary-actions">
+                <a href="/{{ current_operator }}/history" class="secondary-btn">
+                    <i class="fas fa-history"></i>
+                    <span>История</span>
+                </a>
+                <a href="/{{ current_operator }}/expiring" class="secondary-btn">
+                    <i class="fas fa-exclamation-triangle"></i>
+                    <span>Истекающие</span>
+                </a>
+                <a href="/{{ current_operator }}/rename_files" class="secondary-btn">
+                    <i class="fas fa-tag"></i>
+                    <span>Переименовать</span>
+                </a>
+                <a href="/dashboard" class="secondary-btn">
+                    <i class="fas fa-chart-pie"></i>
+                    <span>Дашборд</span>
+                </a>
+                <a href="/{{ current_operator }}/report_templates" class="secondary-btn">
+                    <i class="fas fa-template"></i>
+                    <span>Шаблоны</span>
+                </a>
+                <a href="/{{ current_operator }}/dynamic_fields" class="secondary-btn">
+                    <i class="fas fa-puzzle-piece"></i>
+                    <span>Динамика</span>
+                </a>
+            </div>
+        </div>
+        
+        <!-- Текущий оператор -->
+        <div class="current-operator-info">
+            <i class="fas fa-building"></i>
+            <span>Текущий оператор: <strong>{{ current_operator_title }}</strong></span>
+        </div>
+        {% endif %}
+        
+        <!-- Основной контент -->
+        {% block content %}{% endblock %}
+    </div>
+    
+    <script>
+        // ========== УПРАВЛЕНИЕ ТЕМОЙ ==========
+        
+// ========== УПРАВЛЕНИЕ ТЕМОЙ ==========
+
+// Определение системной темы
+function getSystemTheme() {
+    if (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) {
+        return 'dark';
+    }
+    return 'light';
+}
+
+// Проверка наличия отсканированных лицензий при загрузке страницы
+async function checkPendingSync() {
+    const resp = await fetch(`/${operator}/scan_status`);
+    const data = await resp.json();
+    const syncBadge = document.getElementById('syncBadge');
+    if (syncBadge && data.count > 0) {
+        syncBadge.textContent = data.count;
+        syncBadge.classList.remove('hidden');
+    } else if (syncBadge) {
+        syncBadge.classList.add('hidden');
+    }
+}
+checkPendingSync();
+
+// Применение темы
+function applyTheme(theme) {
+    if (theme === 'dark') {
+        document.body.classList.add('dark');
+    } else {
+        document.body.classList.remove('dark');
+    }
+    // Обновляем метку текущей темы
+    const themeLabel = document.getElementById('themeCurrentLabel');
+    if (themeLabel) {
+        if (theme === 'auto') {
+            const systemTheme = getSystemTheme();
+            themeLabel.textContent = systemTheme === 'dark' ? '🌙' : '☀️';
+        } else if (theme === 'light') {
+            themeLabel.textContent = '☀️';
+        } else {
+            themeLabel.textContent = '🌙';
+        }
+    }
+}
+
+// Сохранение выбранной темы
+function saveThemePreference(theme) {
+    localStorage.setItem('user_theme', theme);
+}
+
+// Получение сохранённой темы
+function getSavedTheme() {
+    return localStorage.getItem('user_theme') || 'auto';
+}
+
+// Установка темы на основе сохранённых настроек
+function setThemeFromPreference() {
+    const saved = getSavedTheme();
+    if (saved === 'auto') {
+        applyTheme(getSystemTheme());
+    } else {
+        applyTheme(saved);
+    }
+}
+
+// Слежение за изменением системной темы
+function watchSystemTheme() {
+    const darkModeMediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
+    const handleChange = (e) => {
+        if (getSavedTheme() === 'auto') {
+            applyTheme(e.matches ? 'dark' : 'light');
+        }
+    };
+    darkModeMediaQuery.addEventListener('change', handleChange);
+}
+
+// Установка конкретной темы из меню
+function setTheme(theme) {
+    if (theme === 'auto') {
+        applyTheme(getSystemTheme());
+        saveThemePreference('auto');
+    } else {
+        applyTheme(theme);
+        saveThemePreference(theme);
+    }
+}
+
+// Инициализация темы
+setThemeFromPreference();
+watchSystemTheme();
+
+// Выбор темы из выпадающего меню
+document.querySelectorAll('.theme-option').forEach(opt => {
+    opt.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const theme = opt.dataset.theme;
+        setTheme(theme);
+    });
+});
+
+        // ========== ОСНОВНЫЕ ФУНКЦИИ ==========
+            
+        // Сканирование
+document.getElementById('scanBtn')?.addEventListener('click', async function() {
+    const original = this.innerHTML;
+    this.innerHTML = '<i class="fas fa-spinner fa-pulse"></i><span>Сканирование...</span>';
+    this.disabled = true;
+    try {
+        const resp = await fetch(`/${operator}/scan`, { method: 'POST' });
+        const result = await resp.json();
+        
+        if (result.success) {
+            alert(result.message);
+            // Обновляем страницу, чтобы показать новые лицензии
+            location.reload();
+        } else {
+            alert('Ошибка: ' + result.message);
+        }
+    } catch(e) { 
+        alert('Ошибка: ' + e.message); 
+    }
+    finally { 
+        this.innerHTML = original; 
+        this.disabled = false; 
+    }
+});
+        
+        // Синхронизация
+        document.getElementById('syncBtn')?.addEventListener('click', async function() {
+            const original = this.innerHTML;
+            this.innerHTML = '<i class="fas fa-spinner fa-pulse"></i><span>Синхронизация...</span>';
+            this.disabled = true;
+            try {
+                const resp = await fetch(`/${operator}/sync`, { method: 'POST' });
+                const result = await resp.json();
+                alert(result.message);
+                if (result.success) {
+                    // Обновляем страницу, чтобы показать обновлённые данные
+                    location.reload();
+                }
+            } catch(e) { 
+                alert('Ошибка: ' + e.message); 
+            }
+            finally { 
+                this.innerHTML = original; 
+                this.disabled = false; 
+            }
+        });
+        
+        // Загрузка БД
+        document.getElementById('downloadBtn')?.addEventListener('click', async function() {
+            const original = this.innerHTML;
+            this.innerHTML = '<i class="fas fa-spinner fa-pulse"></i><span>Загрузка...</span>';
+            this.disabled = true;
+            try {
+                const resp = await fetch(`/${operator}/download_db`, { method: 'POST' });
+                const result = await resp.json();
+                alert(result.message);
+                if (result.success) location.reload();
+            } catch(e) { alert('Ошибка: ' + e.message); }
+            finally { this.innerHTML = original; this.disabled = false; }
+        });
+        
+        // Импорт Excel
+        document.getElementById('importExcelBtn')?.addEventListener('click', async (e) => {
+            e.preventDefault();
+            const input = document.createElement('input');
+            input.type = 'file';
+            input.accept = '.xlsx,.xls';
+            input.onchange = async (event) => {
+                const file = event.target.files[0];
+                if (!file) return;
+                
+                const formData = new FormData();
+                formData.append('file', file);
+                
+                const btn = document.getElementById('importExcelBtn');
+                const originalText = btn.innerHTML;
+                btn.innerHTML = '<i class="fas fa-spinner fa-pulse"></i><span>Импорт...</span>';
+                
+                try {
+                    const resp = await fetch(`/${operator}/import_excel`, { method: 'POST', body: formData });
+                    const result = await resp.json();
+                    if (result.success) {
+                        alert(`✅ Импортировано: ${result.imported} лицензий\n❌ Ошибок: ${result.errors?.length || 0}`);
+                        if (result.imported > 0) location.reload();
+                    } else {
+                        alert('❌ Ошибка: ' + (result.error || 'Неизвестная ошибка'));
+                    }
+                } catch(e) {
+                    alert('❌ Ошибка: ' + e.message);
+                } finally {
+                    btn.innerHTML = originalText;
+                }
+            };
+            input.click();
+        });
+    </script>
+    
+    {% block extra_js %}{% endblock %}
+</body>
+</html>

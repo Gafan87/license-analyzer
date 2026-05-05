@@ -1,0 +1,2559 @@
+{% extends "base.html" %}
+
+{% block title %}Лицензии {{ current_operator_title }}{% endblock %}
+
+{% block stats %}
+<div class="stats">
+    <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 0.5rem;">
+        <div>
+            <i class="fas fa-database"></i>
+            Уникальных ESN: <strong id="licensesCount">{{ licenses|length }}</strong>
+            <span id="filteredStats" style="display: none;"> (отфильтровано: <span id="filteredCount"></span>)</span>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block content %}
+<div class="card">
+    <h1>
+        Список лицензий
+        <div class="presets-container" style="margin-left: auto; display: flex; gap: 0.5rem;">
+            <button id="loadPresetBtn" class="action-btn">
+                <i class="fas fa-folder-open"></i> Загрузить ▼
+            </button>
+            <div id="presetsDropdown" class="presets-dropdown" style="display: none;">
+                <div id="presetsList"></div>
+                <hr>
+                <button id="managePresetsBtn" class="presets-manage-btn">✏️ Управление...</button>
+            </div>
+            <button id="savePresetBtn" class="action-btn">
+                <i class="fas fa-save"></i> Сохранить
+            </button>
+            <button id="exportPresetsBtn" class="action-btn">
+                <i class="fas fa-upload"></i> Экспорт
+            </button>
+            <button id="importPresetsBtn" class="action-btn">
+                <i class="fas fa-download"></i> Импорт
+            </button>
+            <button id="exportExcelBtn" class="action-btn">
+                <i class="fas fa-file-excel"></i> Экспорт Excel
+            </button>
+             <button id="colorGroupingBtn" class="action-btn">
+                <i class="fas fa-palette"></i> Цвета
+            </button>
+<div style="position: relative;">
+    <button id="columnSettingsBtn" class="secondary2-btn">
+        <i class="fas fa-columns"></i> Настройки таблицы
+    </button>
+<div id="columnSettingsPanel" class="filter-dropdown" style="display: none; min-width: 320px; right: 0; left: auto;">
+    <div class="filter-list" style="padding: 0.5rem;">
+        <!-- Вкладки -->
+        <div class="settings-tabs" style="display: flex; gap: 0.5rem; margin-bottom: 10px; border-bottom: 1px solid var(--border-light); padding-bottom: 5px;">
+            <button class="settings-tab-btn active" data-tab="columns">📊 Колонки</button>
+            <button class="settings-tab-btn" data-tab="appearance">🎨 Внешний вид</button>
+            <button class="settings-tab-btn" data-tab="font">🔤 Шрифты</button>
+        </div>
+        
+        <!-- Вкладка: Колонки -->
+        <div id="tab-columns" class="settings-tab-pane active">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                <span style="font-size: 0.7rem; font-weight: 600;">Порядок колонок</span>
+                <button id="resetColumnsOrderBtn" class="reset-columns-btn" style="background: none; border: none; color: var(--huawei-red); cursor: pointer; font-size: 0.65rem;">Сбросить порядок</button>
+            </div>
+            <div id="columnsSortableList">
+                <!-- Список колонок будет сгенерирован динамически через JavaScript -->
+            </div>
+            <div class="filter-actions" style="margin-top: 8px;">
+                <button id="resetColumnWidthsBtn" class="btn-secondary" style="flex: 1;">Сбросить ширину</button>
+            </div>
+        </div>
+        
+        <!-- Вкладка: Внешний вид -->
+        <div id="tab-appearance" class="settings-tab-pane" style="display: none;">
+            <div class="appearance-setting" style="margin-bottom: 10px;">
+                <label style="font-size: 0.7rem; display: flex; align-items: center; gap: 8px;">
+                    <input type="checkbox" id="toggleStripedRows">
+                    <span>Чередование строк</span>
+                </label>
+            </div>
+            <div class="appearance-setting" style="margin-bottom: 10px;">
+                <label style="font-size: 0.7rem; display: flex; align-items: center; gap: 8px;">
+                    <input type="checkbox" id="toggleHoverEffect">
+                    <span>Подсветка строки при наведении</span>
+                </label>
+            </div>
+            <div class="appearance-setting" style="margin-bottom: 10px;">
+                <label style="font-size: 0.7rem; display: block; margin-bottom: 4px;">Размер таблицы</label>
+                <select id="tableSize" style="width: 100%; padding: 4px; font-size: 0.7rem;">
+                    <option value="compact">Компактный</option>
+                    <option value="normal" selected>Обычный</option>
+                    <option value="large">Большой</option>
+                </select>
+            </div>
+            <div class="appearance-setting" style="margin-bottom: 10px;">
+                <label style="font-size: 0.7rem; display: block; margin-bottom: 4px;">Высота строки</label>
+                <input type="range" id="rowHeight" min="20" max="60" value="36" step="2" style="width: 100%;">
+                <span id="rowHeightValue" style="font-size: 0.65rem;">36px</span>
+            </div>
+        </div>
+        
+        <!-- Вкладка: Шрифты -->
+        <div id="tab-font" class="settings-tab-pane" style="display: none;">
+            <div class="font-setting" style="margin-bottom: 10px;">
+                <label style="font-size: 0.7rem; display: block; margin-bottom: 4px;">Шрифт в таблице</label>
+                <select id="tableFont" style="width: 100%; padding: 4px; font-size: 0.7rem;">
+                    <option value="system-ui">Системный (по умолчанию)</option>
+                    <option value="'Courier New', monospace">Моноширинный</option>
+                    <option value="'Segoe UI', Arial">Segoe UI</option>
+                    <option value="'Roboto', sans-serif">Roboto</option>
+                    <option value="'Inter', sans-serif">Inter</option>
+                </select>
+            </div>
+            <div class="font-setting" style="margin-bottom: 10px;">
+                <label style="font-size: 0.7rem; display: block; margin-bottom: 4px;">Размер текста</label>
+                <input type="range" id="fontSize" min="10" max="18" value="12" step="1" style="width: 100%;">
+                <span id="fontSizeValue" style="font-size: 0.65rem;">12px</span>
+            </div>
+            <div class="font-setting">
+                <label style="font-size: 0.7rem; display: block; margin-bottom: 4px;">Вес шрифта</label>
+                <select id="fontWeight" style="width: 100%; padding: 4px; font-size: 0.7rem;">
+                    <option value="400">Обычный</option>
+                    <option value="500">Средний</option>
+                    <option value="600">Полужирный</option>
+                    <option value="700">Жирный</option>
+                </select>
+            </div>
+        </div>
+        
+        <div class="filter-actions" style="margin-top: 10px;">
+            <button id="applyColumnsBtn" class="btn-primary" style="flex: 1;">Применить</button>
+            <button id="cancelColumnsBtn" class="btn-secondary" style="flex: 1;">Отмена</button>
+        </div>
+    </div>
+</div>
+</div>
+        </div>
+    </h1>
+        
+    <!-- Основной контейнер с 3 колонками -->
+    <div class="filter-layout">
+        <!-- Колонка 1: Фильтры (сетка, горизонтально с переносом) -->
+        <div class="filter-column">
+            <div class="filters-bar" id="filtersBar"></div>
+        </div>
+        
+    <!-- Колонка 2: Активные фильтры + Поиск и кнопка -->
+<div class="active-column">
+    <div id="activeFilters" class="active-filters"></div>
+    <div class="filter-actions-row">
+        <button id="resetFiltersBtn" class="action-btn">
+            <i class="fas fa-undo-alt"></i> Сбросить
+        </button>
+        <div class="smart-search-container">
+            <input type="text" id="smartSearchInput" class="smart-search-input" 
+                placeholder="🔍 Умный поиск (LKV2UPTR01>1000, tag:важный, expiring:30)">
+            <div id="smartSearchSuggestions" class="smart-search-suggestions"></div>
+        </div>
+    </div>
+</div>
+    
+    </div>
+    
+    <!-- Таблица -->
+<div class="table-wrapper">
+    <table class="licenses-table" id="licensesTable">
+        <thead>
+            <tr>
+                <th class="checkbox-col">
+                    <div class="select-all-container">
+                        <input type="checkbox" id="selectAllCheckbox">
+                    </div>
+                </th>
+                {% if 'ne_type' in visible_columns %}<th data-field="ne_type">NE тип</th>{% endif %}
+                {% if 'city' in visible_columns %}<th data-field="city">Город</th>{% endif %}
+                {% if 'site' in visible_columns %}<th data-field="site">Сайт</th>{% endif %}
+                {% if 'year' in visible_columns %}<th data-field="year">Год</th>{% endif %}
+                {% if 'lsn' in visible_columns %}<th data-field="lsn">LSN</th>{% endif %}
+                {% if 'product' in visible_columns %}<th data-field="product">Продукт</th>{% endif %}
+                {% if 'version' in visible_columns %}<th data-field="version">Версия</th>{% endif %}
+                {% if 'esn' in visible_columns %}<th data-field="esn">ESN</th>{% endif %}
+                {% if 'domain' in visible_columns %}<th data-field="domain">Домен</th>{% endif %}
+                {% if 'tags_agg' in visible_columns %}<th data-field="tags_agg">Теги</th>{% endif %}
+                {% if 'comments_count' in visible_columns %}<th data-field="comments_count">Комментарии</th>{% endif %}
+                <th></th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for lic in licenses %}
+            <tr data-id="{{ lic.id }}"
+                data-ne_type="{{ lic.ne_type or '' }}" 
+                data-city="{{ lic.city or '' }}" 
+                data-site="{{ lic.site or '' }}"
+                data-year="{{ lic.year if lic.year != 'permanent' else 'permanent' }}"
+                data-lsn="{{ lic.lsn or '' }}"
+                data-product="{{ lic.product or '' }}"
+                data-version="{{ lic.version or '' }}"
+                data-esn="{{ lic.esn or '' }}"
+                data-domain="{{ lic.domain or '' }}"
+                data-tags_agg="{{ lic.tags_agg or '' }}"
+                data-comments_count="{{ lic.comments_count or 0 }}">
+                <td class="checkbox-col">
+                    <input type="checkbox" class="license-checkbox" data-id="{{ lic.id }}">
+                </td>
+                {% if 'ne_type' in visible_columns %}
+                <td data-full-value="{{ lic.ne_type or '' }}">{{ lic.ne_type or '-' }}</td>
+                {% endif %}
+                {% if 'city' in visible_columns %}
+                <td data-full-value="{{ lic.city or '' }}">{{ lic.city or '-' }}</td>
+                {% endif %}
+                {% if 'site' in visible_columns %}
+                <td data-full-value="{{ lic.site or '' }}">{{ lic.site or '-' }}</td>
+                {% endif %}
+                {% if 'year' in visible_columns %}
+                <td data-full-value="{{ lic.year if lic.year != 'permanent' else 'permanent' }}">
+                    {% if lic.year == 'permanent' %}♾️{% else %}{{ lic.year or '-' }}{% endif %}
+                </td>
+                {% endif %}
+                {% if 'lsn' in visible_columns %}
+                <td class="lsn-cell" title="{{ lic.lsn or '' }}" data-full-value="{{ lic.lsn or '' }}">
+                    {{ lic.lsn[:25] if lic.lsn else '-' }}{% if lic.lsn and lic.lsn|length > 25 %}...{% endif %}
+                </td>
+                {% endif %}
+                {% if 'product' in visible_columns %}
+                <td data-full-value="{{ lic.product or '' }}">{{ lic.product or '-' }}</td>
+                {% endif %}
+                {% if 'version' in visible_columns %}
+                <td data-full-value="{{ lic.version or '' }}">{{ lic.version or '-' }}</td>
+                {% endif %}
+                {% if 'esn' in visible_columns %}
+                <td class="esn-cell" title="{{ lic.esn or '' }}" data-full-value="{{ lic.esn or '' }}">
+                    {{ lic.esn[:30] if lic.esn else '-' }}{% if lic.esn and lic.esn|length > 30 %}...{% endif %}
+                </td>
+                {% endif %}
+                {% if 'domain' in visible_columns %}
+                <td data-full-value="{{ lic.domain or '' }}">{{ lic.domain or '-' }}</td>
+                {% endif %}
+                {% if 'tags_agg' in visible_columns %}
+                <td data-full-value="{{ lic.tags_agg or '' }}">
+                    <small>{{ lic.tags_agg[:50] if lic.tags_agg else '-' }}</small>
+                </td>
+                {% endif %}
+                {% if 'comments_count' in visible_columns %}
+                <td data-full-value="{{ lic.comments_count or 0 }}">
+                    {% if lic.comments_count > 0 %}
+                    <span class="comments-badge">💬 {{ lic.comments_count }}</span>
+                    {% else %}
+                    -
+                    {% endif %}
+                </td>
+                {% endif %}
+                <td><a href="/{{ current_operator }}/license_by_esn/{{ lic.esn }}" class="action-link"><i class="fas fa-list-ul"></i></a></td>
+            </tr>
+            {% else %}
+            <tr>
+                <td colspan="20" class="text-center">Нет лицензий</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+
+<!-- Панель массовых операций -->
+<div id="bulkPanel" class="bulk-panel">
+    <span class="selected-count">Выбрано: <span id="selectedCount">0</span></span>
+    <button id="bulkAddTagBtn" class="action-btn">➕ Добавить тег</button>
+    <button id="bulkRemoveTagBtn" class="action-btn">❌ Удалить тег</button>
+    <button id="bulkExportBtn" class="action-btn">📊 Экспорт</button>
+    <button id="bulkCloseBtn" class="action-btn">✕</button>
+</div>
+
+<!-- Модальное окно управления предустановками -->
+<div id="managePresetsModal" class="modal" style="display: none;">
+    <div class="modal-content">
+        <span class="modal-close">&times;</span>
+        <h3>✏️ Управление предустановками</h3>
+        <div id="managePresetsList"></div>
+        <hr>
+        <button id="presetDefaultBtn" class="btn-primary">⭐ Сделать "По умолчанию" из текущих</button>
+    </div>
+</div>
+
+<!-- Модальное окно цветовой группировки (упрощённое) -->
+<div id="colorGroupingModal" class="modal" style="display: none;">
+    <div class="modal-content" style="max-width: 300px;">
+        <span class="modal-close">&times;</span>
+        <h3>🎨 Цветовая группировка</h3>
+        <div class="filter-group">
+            <label>Группировать по полю</label>
+            <select id="colorGroupField">
+                <option value="none">Отключено</option>
+                <option value="city">Город</option>
+                <option value="ne_type">NE тип</option>
+                <option value="site">Сайт</option>
+                <option value="domain">Домен</option>
+            </select>
+        </div>
+        <div class="filter-group">
+            <label>
+                <input type="checkbox" id="colorGroupingStriped"> Чередование строк
+            </label>
+        </div>
+        <div style="display: flex; gap: 0.5rem; margin-top: 1rem;">
+            <button id="applyColorGroupingBtn" class="btn-primary" style="flex: 1;">Применить</button>
+            <button id="cancelColorGroupingBtn" class="btn-secondary" style="flex: 1;">Отмена</button>
+        </div>
+    </div>
+</div>
+
+<script>
+// ========== ГЛОБАЛЬНЫЕ ПЕРЕМЕННЫЕ (ТОЛЬКО ОДИН РАЗ) ==========
+const operator = '{{ current_operator }}'; 
+let activeFilters = {};
+let filterValues = {};
+let currentVisibleColumns = {{ visible_columns|tojson }};
+let cachedRows = [];
+let selectedLicenseIds = new Set();
+let colorGroupSettings = { field: 'city', colors: {}, striped: false };
+let currentPresets = [];
+let currentSearchQuery = '';
+let currentSorting = { field: null, direction: 'asc' };
+
+// ========== ФУНКЦИИ ==========
+
+async function checkPendingSync() {
+    try {
+        const resp = await fetch(`/${operator}/scan_status`);
+        const data = await resp.json();
+        const syncBadge = document.getElementById('syncBadge');
+        if (syncBadge && data.count > 0) {
+            syncBadge.textContent = data.count;
+            syncBadge.classList.remove('hidden');
+        } else if (syncBadge) {
+            syncBadge.classList.add('hidden');
+        }
+    } catch(e) {
+        console.error('checkPendingSync error:', e);
+    }
+}
+
+// Вызываем после загрузки (ОДИН РАЗ)
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', () => {
+    });
+} else {}
+
+// ========== КЭШИРОВАНИЕ СТРОК ==========
+function cacheTableData() {
+    cachedRows = [];
+    const rows = document.querySelectorAll('#licensesTable tbody tr');
+    rows.forEach(row => {
+        if (row.cells.length <= 1) return;
+        cachedRows.push({
+            element: row,
+            id: parseInt(row.getAttribute('data-id')),
+            ne_type: row.getAttribute('data-ne_type') || '',
+            city: row.getAttribute('data-city') || '',
+            site: row.getAttribute('data-site') || '',
+            year: row.getAttribute('data-year') || '',
+            lsn: row.getAttribute('data-lsn') || '',
+            product: row.getAttribute('data-product') || '',
+            version: row.getAttribute('data-version') || '',
+            esn: row.getAttribute('data-esn') || '',
+            domain: row.getAttribute('data-domain') || '',
+            tags_agg: row.getAttribute('data-tags_agg') || '',
+            comments_count: parseInt(row.getAttribute('data-comments_count') || 0)
+        });
+    });
+    console.log(`Кэшировано ${cachedRows.length} строк`);
+}
+
+// ========== ФИЛЬТРАЦИЯ ==========
+function initFilters() {
+    const rows = document.querySelectorAll('#licensesTable tbody tr');
+    const filterFields = ['ne_type', 'city', 'site', 'year', 'product', 'version', 'lsn', 'esn', 'domain', 'tags_agg'];
+    
+    for (let col of filterFields) {
+        filterValues[col] = new Set();
+        activeFilters[col] = new Set();
+    }
+    
+    rows.forEach(row => {
+        for (let col in filterValues) {
+            let val = row.getAttribute(`data-${col}`) || '';
+            if (val && val !== '-') {
+                filterValues[col].add(val);
+            }
+        }
+    });
+    
+    buildFiltersBar();
+    cacheTableData();
+}
+
+function buildFiltersBar() {
+    const container = document.getElementById('filtersBar');
+    container.innerHTML = '';
+    
+    const order = ['ne_type', 'city', 'site', 'year', 'product', 'version', 'lsn', 'esn', 'domain', 'tags_agg'];
+    const fieldNames = {
+        ne_type: 'NE тип', city: 'Город', site: 'Сайт', year: 'Год',
+        product: 'Продукт', version: 'Версия', lsn: 'LSN', esn: 'ESN',
+        domain: 'Домен', tags_agg: 'Теги'
+    };
+    
+    for (let col of order) {
+        if (!filterValues[col] || filterValues[col].size === 0) continue;
+        
+        const values = Array.from(filterValues[col]).sort();
+        const selected = activeFilters[col] || new Set();
+        
+        const filterDiv = document.createElement('div');
+        filterDiv.className = 'filter-item';
+        filterDiv.innerHTML = `
+            <label>${fieldNames[col]}</label>
+            <div class="filter-input-wrapper">
+                <input type="text" class="filter-manual-input" data-field="${col}" 
+                       placeholder="Введите значения через запятую..." 
+                       value="${selected.size > 0 ? Array.from(selected).join(', ') : ''}">
+                <button class="filter-dropdown-btn" data-field="${col}">▼</button>
+            </div>
+            <div class="filter-dropdown" id="dropdown-${col}" style="display: none;">
+                <div class="filter-list" id="list-${col}"></div>
+                <div class="filter-actions">
+                    <button class="select-all-btn" data-field="${col}">Выбрать всё</button>
+                    <button class="clear-btn" data-field="${col}">Очистить</button>
+                </div>
+            </div>
+        `;
+        
+        container.appendChild(filterDiv);
+        
+        // Заполняем список чекбоксов
+        const listContainer = filterDiv.querySelector(`#list-${col}`);
+        listContainer.innerHTML = values.map(v => `
+            <div class="filter-list-item">
+                <input type="checkbox" value="${v.replace(/"/g, '&quot;')}" 
+                       id="${col}_${v.replace(/[^a-zA-Z0-9]/g, '_')}" 
+                       ${selected.has(v) ? 'checked' : ''}>
+                <label for="${col}_${v.replace(/[^a-zA-Z0-9]/g, '_')}">${v.length > 30 ? v.substring(0, 27) + '...' : v}</label>
+            </div>
+        `).join('');
+        
+        // Обработчики
+        const manualInput = filterDiv.querySelector('.filter-manual-input');
+        const dropdownBtn = filterDiv.querySelector('.filter-dropdown-btn');
+        const dropdown = filterDiv.querySelector('.filter-dropdown');
+        
+        dropdownBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            // Закрываем все другие дропдауны
+            document.querySelectorAll('.filter-dropdown').forEach(d => {
+                if (d !== dropdown) d.style.display = 'none';
+            });
+            // Переключаем текущий
+            dropdown.style.display = dropdown.style.display === 'none' ? 'block' : 'none';
+        });
+        
+        // Обработка ручного ввода
+        manualInput.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                const items = manualInput.value.split(/[,\n]/).map(s => s.trim()).filter(s => s);
+                selected.clear();
+                items.forEach(item => {
+                    if (filterValues[col].has(item)) selected.add(item);
+                });
+                manualInput.value = selected.size > 0 ? Array.from(selected).join(', ') : '';
+                updateCheckboxes(listContainer, selected);
+            }
+        });
+        
+// При изменении чекбокса
+listContainer.querySelectorAll('input[type="checkbox"]').forEach(cb => {
+    const newCb = cb.cloneNode(true);
+    cb.parentNode.replaceChild(newCb, cb);
+    
+    newCb.addEventListener('change', (e) => {
+        e.stopPropagation();
+        const val = e.target.value;
+        if (e.target.checked) {
+            selected.add(val);
+        } else {
+            selected.delete(val);
+        }
+        manualInput.value = selected.size > 0 ? Array.from(selected).join(', ') : '';
+        activeFilters[col] = selected;
+        applyFiltersFast();
+    });
+});
+
+// При ручном вводе (Enter)
+manualInput.addEventListener('keypress', (e) => {
+    if (e.key === 'Enter') {
+        e.preventDefault();
+        const items = manualInput.value.split(/[,\n]/).map(s => s.trim()).filter(s => s);
+        selected.clear();
+        items.forEach(item => {
+            if (filterValues[col].has(item)) selected.add(item);
+        });
+        manualInput.value = selected.size > 0 ? Array.from(selected).join(', ') : '';
+        updateCheckboxes(listContainer, selected);
+        activeFilters[col] = selected;
+        applyFiltersFast();  // ← Мгновенная фильтрация
+    }
+});
+        
+        // Кнопка "Выбрать всё"
+        filterDiv.querySelector('.select-all-btn').addEventListener('click', (e) => {
+            e.stopPropagation();
+            filterValues[col].forEach(v => selected.add(v));
+            updateCheckboxes(listContainer, selected);
+            manualInput.value = Array.from(selected).join(', ');
+            activeFilters[col] = selected;
+            applyFiltersFast();  // ← Мгновенная фильтрация
+        });
+
+        // Кнопка "Очистить"
+        filterDiv.querySelector('.clear-btn').addEventListener('click', (e) => {
+            e.stopPropagation();
+            selected.clear();
+            updateCheckboxes(listContainer, selected);
+            manualInput.value = '';
+            activeFilters[col] = selected;
+            applyFiltersFast();  // ← Мгновенная фильтрация
+        });
+    }
+    
+    // Вспомогательная функция
+    function updateCheckboxes(container, selectedSet) {
+        container.querySelectorAll('input[type="checkbox"]').forEach(cb => {
+            cb.checked = selectedSet.has(cb.value);
+        });
+    }
+    
+    // Закрытие дропдаунов при клике вне
+    document.addEventListener('click', (e) => {
+        const panel = document.getElementById('columnSettingsPanel');
+        const btn = document.getElementById('columnSettingsBtn');
+        
+        // Проверяем, клик ли по панели или её содержимому
+        if (panel && btn && !panel.contains(e.target) && !btn.contains(e.target)) {
+            panel.style.display = 'none';
+            panel.classList.remove('show');
+        }
+    });
+}
+
+function applyFiltersFast() {
+    // Убеждаемся, что все activeFilters инициализированы
+    for (let col in filterValues) {
+        if (!activeFilters[col]) {
+            activeFilters[col] = new Set();
+        }
+    }
+    let visibleCount = 0;
+    let ids = [];
+    
+    // Парсим умный поиск
+    const searchQuery = currentSearchQuery;
+    let smartFilters = parseSmartSearch(searchQuery);
+    
+    for (let row of cachedRows) {
+        let show = true;
+        
+        // Обычные фильтры
+        for (let col in activeFilters) {
+            const selected = activeFilters[col];
+            if (selected && selected.size > 0) {
+                const rowVal = row[col] || '';
+                if (!selected.has(rowVal)) {
+                    show = false;
+                    break;
+                }
+            }
+        }
+        
+        // Умный поиск
+        if (show && smartFilters) {
+            if (smartFilters.tag && smartFilters.tag.value) {
+                if (!row.tags_agg.includes(smartFilters.tag.value)) show = false;
+            }
+            if (smartFilters.permanent) {
+                if (row.year !== 'permanent') show = false;
+            }
+            if (smartFilters.city && smartFilters.city.value) {
+                if (row.city !== smartFilters.city.value) show = false;
+            }
+            if (smartFilters.site && smartFilters.site.value) {
+                if (row.site !== smartFilters.site.value) show = false;
+            }
+            if (smartFilters.text && smartFilters.text.length > 0) {
+                const searchLower = smartFilters.text.toLowerCase();
+                const matchIn = `${row.ne_type} ${row.city} ${row.site} ${row.lsn} ${row.product} ${row.esn} ${row.tags_agg}`.toLowerCase();
+                if (!matchIn.includes(searchLower)) show = false;
+            }
+        }
+        
+        row.element.style.display = show ? '' : 'none';
+        if (show) {
+            visibleCount++;
+            ids.push(row.id);
+        }
+    }
+    
+    updateActiveFiltersDisplay();
+    updateFiltersCount(visibleCount);
+    
+    // ОБНОВЛЯЕМ ДОСТУПНЫЕ ОПЦИИ ПОСЛЕ ФИЛЬТРАЦИИ
+    updateAllFilterOptions();
+    
+    applyColorGrouping();
+    
+    return ids;
+}
+
+function parseSmartSearch(query) {
+    if (!query) return null;
+    
+    const result = {
+        text: query,
+        capacityKey: null,
+        tag: null,
+        expiring: null,
+        permanent: false,
+        city: null,
+        site: null
+    };
+    
+    // capacity:value>number
+    const capMatch = query.match(/([A-Z0-9_]+)([><=]+)(\d+)/);
+    if (capMatch) {
+        result.capacityKey = { name: capMatch[1], operator: capMatch[2], value: parseInt(capMatch[3]) };
+        result.text = result.text.replace(capMatch[0], '').trim();
+    }
+    
+    // tag:name
+    const tagMatch = query.match(/tag:(\w+)/);
+    if (tagMatch) {
+        result.tag = { value: tagMatch[1] };
+        result.text = result.text.replace(tagMatch[0], '').trim();
+    }
+    
+    // expiring:days
+    const expMatch = query.match(/expiring:(\d+)/);
+    if (expMatch) {
+        result.expiring = parseInt(expMatch[1]);
+        result.text = result.text.replace(expMatch[0], '').trim();
+    }
+    
+    // permanent
+    if (query.includes('permanent') || query.includes('бессрочная')) {
+        result.permanent = true;
+        result.text = result.text.replace(/permanent|бессрочная/g, '').trim();
+    }
+    
+    // city:name
+    const cityMatch = query.match(/city:(\S+)/);
+    if (cityMatch) {
+        result.city = { value: cityMatch[1] };
+        result.text = result.text.replace(cityMatch[0], '').trim();
+    }
+    
+    // site:name
+    const siteMatch = query.match(/site:(\S+)/);
+    if (siteMatch) {
+        result.site = { value: siteMatch[1] };
+        result.text = result.text.replace(siteMatch[0], '').trim();
+    }
+    
+    return result;
+}
+
+function updateActiveFiltersDisplay() {
+    const container = document.getElementById('activeFilters');
+    const activeList = [];
+    const fieldNames = {
+        ne_type: 'NE тип', city: 'Город', site: 'Сайт', year: 'Год',
+        product: 'Продукт', version: 'Версия', lsn: 'LSN', esn: 'ESN',
+        domain: 'Домен', tags_agg: 'Теги'
+    };
+    
+    for (let col in activeFilters) {
+        const selected = activeFilters[col];
+        if (selected && selected.size > 0) {
+            activeList.push({ 
+                field: fieldNames[col] || col, 
+                values: Array.from(selected) 
+            });
+        }
+    }
+    
+    if (currentSearchQuery) {
+        activeList.push({ 
+            field: '🔍 Поиск', 
+            values: [currentSearchQuery.substring(0, 40) + (currentSearchQuery.length > 40 ? '...' : '')] 
+        });
+    }
+    
+    if (activeList.length > 0) {
+        container.innerHTML = activeList.map(f => `
+            <div class="active-filter">
+                <strong>${f.field}:</strong>
+                <span class="active-filter-values" title="${f.values.join(', ')}">${f.values.join(', ').substring(0, 30)}${f.values.join(', ').length > 30 ? '...' : ''}</span>
+                <span class="active-filter-remove" data-field="${f.field}">✕</span>
+            </div>
+        `).join('');
+        
+        container.querySelectorAll('.active-filter-remove').forEach(btn => {
+            btn.addEventListener('click', () => {
+                const fieldName = btn.closest('.active-filter').querySelector('strong').innerText.replace(':', '');
+                
+                if (fieldName === '🔍 Поиск') {
+                    currentSearchQuery = '';
+                    document.getElementById('smartSearchInput').value = '';
+                } else {
+                    let col = null;
+                    for (let c in fieldNames) {
+                        if (fieldNames[c] === fieldName) col = c;
+                    }
+                    if (col && activeFilters[col]) {
+                        activeFilters[col].clear();
+                        const manualInput = document.querySelector(`.filter-manual-input[data-field="${col}"]`);
+                        if (manualInput) manualInput.value = '';
+                        const listContainer = document.getElementById(`list-${col}`);
+                        if (listContainer) {
+                            listContainer.querySelectorAll('input[type="checkbox"]').forEach(cb => cb.checked = false);
+                        }
+                    }
+                }
+                applyFiltersFast();
+            });
+        });
+    } else {
+        container.innerHTML = '<div class="text-muted" style="text-align: center; padding: 0.5rem;">Нет активных фильтров</div>';
+    }
+}
+function updateFiltersCount(visibleCount) {
+    const total = cachedRows.length;
+    const statsSpan = document.getElementById('filteredStats');
+    const filteredSpan = document.getElementById('filteredCount');
+    
+    if (visibleCount !== total) {
+        statsSpan.style.display = 'inline';
+        filteredSpan.innerText = visibleCount;
+    } else {
+        statsSpan.style.display = 'none';
+    }
+    
+    document.getElementById('licensesCount').innerHTML = `${total}${visibleCount !== total ? ` <span style="font-weight: normal;">(отфильтровано: ${visibleCount})</span>` : ''}`;
+}
+
+function resetFilters() {
+    for (let col in activeFilters) {
+        activeFilters[col].clear();
+        const manualInput = document.querySelector(`.filter-manual-input[data-field="${col}"]`);
+        if (manualInput) manualInput.value = '';
+        const listContainer = document.getElementById(`list-${col}`);
+        if (listContainer) {
+            listContainer.querySelectorAll('input[type="checkbox"]').forEach(cb => cb.checked = false);
+        }
+    }
+    currentSearchQuery = '';
+    document.getElementById('smartSearchInput').value = '';
+    applyFiltersFast();  // ← Мгновенная фильтрация
+}
+
+// ========== УМНЫЙ ПОИСК ==========
+const searchInput = document.getElementById('smartSearchInput');
+const suggestionsDiv = document.getElementById('smartSearchSuggestions');
+
+searchInput.addEventListener('input', async () => {
+    const query = searchInput.value;
+    currentSearchQuery = query;
+    
+    if (query.length < 2) {
+        suggestionsDiv.classList.remove('show');
+        return;
+    }
+    
+    const resp = await fetch(`/api/smart_search/${operator}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ query: query })
+    });
+    const data = await resp.json();
+    
+    if (data.suggestions && data.suggestions.length > 0) {
+        suggestionsDiv.innerHTML = data.suggestions.map(s => `
+            <div class="suggestion-item" data-text="${s.text}">
+                <strong>${s.text}</strong>
+                <span class="suggestion-type">${s.type}</span>
+                <small> — ${s.description}</small>
+            </div>
+        `).join('');
+        suggestionsDiv.classList.add('show');
+        
+        document.querySelectorAll('.suggestion-item').forEach(item => {
+            item.addEventListener('click', () => {
+                searchInput.value = item.dataset.text;
+                currentSearchQuery = item.dataset.text;
+                suggestionsDiv.classList.remove('show');
+                applyFiltersFast();
+            });
+        });
+    } else {
+        suggestionsDiv.classList.remove('show');
+    }
+    applyFiltersFast();
+});
+
+searchInput.addEventListener('keypress', (e) => {
+    if (e.key === 'Enter') {
+        suggestionsDiv.classList.remove('show');
+        applyFiltersFast();
+    }
+});
+
+// ========== ПРЕДУСТАНОВКИ (localStorage) ==========
+const PRESETS_KEY = 'license_filters_presets';
+const MAX_PRESETS = 50;
+
+function loadPresets() {
+    const stored = localStorage.getItem(PRESETS_KEY);
+    if (stored) {
+        try {
+            const parsed = JSON.parse(stored);
+            // Убеждаемся, что это массив
+            currentPresets = Array.isArray(parsed) ? parsed : [];
+        } catch(e) {
+            console.error('Ошибка парсинга предустановок:', e);
+            currentPresets = [];
+        }
+    } else {
+        // Создаём предустановку по умолчанию
+        currentPresets = [{
+            id: 'default',
+            name: 'По умолчанию',
+            is_default: true,
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+            filters: {},
+            visible_columns: currentVisibleColumns,
+            sorting: { field: null, direction: 'asc' },
+            search_text: ''
+        }];
+        savePresets();
+    }
+    renderPresetsDropdown();
+}
+
+function savePresets() {
+    localStorage.setItem(PRESETS_KEY, JSON.stringify(currentPresets));
+}
+
+function saveCurrentAsPreset(name) {
+    if (currentPresets.length >= MAX_PRESETS) {
+        alert(`Достигнут лимит в ${MAX_PRESETS} предустановок. Удалите ненужные.`);
+        return;
+    }
+    
+    // Сохраняем текущие фильтры из activeFilters
+    const filtersToSave = {};
+    for (let col in activeFilters) {
+        if (activeFilters[col] && activeFilters[col].size > 0) {
+            filtersToSave[col] = Array.from(activeFilters[col]);
+        }
+    }
+    
+    const newPreset = {
+        id: Date.now().toString(),
+        name: name,
+        is_default: false,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+        filters: filtersToSave,
+        visible_columns: currentVisibleColumns,
+        sorting: currentSorting,
+        search_text: currentSearchQuery
+    };
+    
+    currentPresets.push(newPreset);
+    savePresets();
+    renderPresetsDropdown();
+    alert(`Предустановка "${name}" сохранена`);
+}
+
+function applyPreset(preset) {
+    // Очищаем текущие фильтры
+    for (let col in activeFilters) {
+        activeFilters[col].clear();
+    }
+    
+    // Применяем сохранённые фильтры
+    for (let col in preset.filters) {
+        if (activeFilters[col]) {
+            preset.filters[col].forEach(v => activeFilters[col].add(v));
+        }
+    }
+    
+    currentSearchQuery = preset.search_text || '';
+    document.getElementById('smartSearchInput').value = currentSearchQuery;
+    
+    // Обновляем видимые колонки
+    currentVisibleColumns = preset.visible_columns;
+    currentSorting = preset.sorting;
+    
+    // Обновляем чекбоксы в настройках колонок
+    if (typeof renderColumnsList === 'function') {
+        renderColumnsList();
+    }
+    
+    // Обновляем поля ввода фильтров
+    for (let col in activeFilters) {
+        const manualInput = document.querySelector(`.filter-manual-input[data-field="${col}"]`);
+        if (manualInput && activeFilters[col]) {
+            manualInput.value = Array.from(activeFilters[col]).join(', ');
+        }
+        // Обновляем чекбоксы в выпадающих списках
+        const listContainer = document.getElementById(`list-${col}`);
+        if (listContainer) {
+            listContainer.querySelectorAll('input[type="checkbox"]').forEach(cb => {
+                cb.checked = activeFilters[col]?.has(cb.value) || false;
+            });
+        }
+    }
+    
+    applyFiltersFast();
+}
+
+function renderPresetsDropdown() {
+    const container = document.getElementById('presetsList');
+    if (!container) return;
+    
+    // Убеждаемся, что currentPresets - массив
+    if (!Array.isArray(currentPresets)) {
+        currentPresets = [];
+    }
+    
+    const defaultPreset = currentPresets.find(p => p.is_default === true);
+    const otherPresets = currentPresets.filter(p => !p.is_default);
+    
+    container.innerHTML = `
+        <div class="presets-group">
+            <div class="presets-group-title">⭐ По умолчанию</div>
+            ${defaultPreset ? `<div class="preset-item ${getCurrentPresetId() === defaultPreset.id ? 'active' : ''}" data-id="${defaultPreset.id}">${escapeHtml(defaultPreset.name)}</div>` : '<div class="preset-item">Не задана</div>'}
+        </div>
+        ${otherPresets.length > 0 ? `
+            <div class="presets-group">
+                <div class="presets-group-title">📁 Сохранённые</div>
+                ${otherPresets.map(p => `<div class="preset-item ${getCurrentPresetId() === p.id ? 'active' : ''}" data-id="${p.id}">${escapeHtml(p.name)}</div>`).join('')}
+            </div>
+        ` : ''}
+    `;
+    
+    // Добавляем обработчики
+    document.querySelectorAll('.preset-item').forEach(item => {
+        item.addEventListener('click', (e) => {
+            e.stopPropagation();
+            const preset = currentPresets.find(p => p.id === item.dataset.id);
+            if (preset) applyPreset(preset);
+            document.getElementById('presetsDropdown').style.display = 'none';
+        });
+    });
+}
+
+// Вспомогательная функция для безопасности
+function escapeHtml(str) {
+    if (!str) return '';
+    return str.replace(/[&<>]/g, function(m) {
+        if (m === '&') return '&amp;';
+        if (m === '<') return '&lt;';
+        if (m === '>') return '&gt;';
+        return m;
+    });
+}
+
+function getCurrentPresetId() {
+    return null;
+}
+
+// Кнопки предустановок
+document.getElementById('loadPresetBtn').addEventListener('click', () => {
+    const dropdown = document.getElementById('presetsDropdown');
+    dropdown.style.display = dropdown.style.display === 'none' ? 'block' : 'none';
+});
+
+document.getElementById('savePresetBtn').addEventListener('click', () => {
+    const name = prompt('Введите название предустановки:');
+    if (name) saveCurrentAsPreset(name);
+});
+
+document.getElementById('exportPresetsBtn').addEventListener('click', () => {
+    const dataStr = JSON.stringify(currentPresets, null, 2);
+    const blob = new Blob([dataStr], {type: 'application/json'});
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `presets_${operator}_${new Date().toISOString().slice(0,19)}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+});
+
+document.getElementById('importPresetsBtn').addEventListener('click', () => {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = '.json';
+    input.onchange = (e) => {
+        const file = e.target.files[0];
+        const reader = new FileReader();
+        reader.onload = (event) => {
+            try {
+                const imported = JSON.parse(event.target.result);
+                if (Array.isArray(imported)) {
+                    for (let p of imported) {
+                        if (!currentPresets.find(existing => existing.id === p.id)) {
+                            if (currentPresets.length < MAX_PRESETS) {
+                                currentPresets.push(p);
+                            }
+                        }
+                    }
+                    savePresets();
+                    renderPresetsDropdown();
+                    alert(`Импортировано предустановок: ${imported.length}`);
+                } else {
+                    alert('Неверный формат файла');
+                }
+            } catch (err) {
+                alert('Ошибка чтения файла');
+            }
+        };
+        reader.readAsText(file);
+    };
+    input.click();
+});
+
+document.getElementById('managePresetsBtn').addEventListener('click', () => {
+    const modal = document.getElementById('managePresetsModal');
+    const container = document.getElementById('managePresetsList');
+    
+    container.innerHTML = currentPresets.map(p => `
+        <div class="manage-preset-item" data-id="${p.id}">
+            <span>${p.name} ${p.is_default ? '⭐' : ''}</span>
+            <div>
+                <button class="preset-rename" data-id="${p.id}">✏️</button>
+                <button class="preset-delete" data-id="${p.id}">🗑️</button>
+                ${!p.is_default ? `<button class="preset-default" data-id="${p.id}">⭐</button>` : ''}
+            </div>
+        </div>
+    `).join('');
+    
+    modal.style.display = 'flex';
+    
+    document.querySelectorAll('.preset-rename').forEach(btn => {
+        btn.addEventListener('click', () => {
+            const preset = currentPresets.find(p => p.id === btn.dataset.id);
+            const newName = prompt('Новое название:', preset.name);
+            if (newName) {
+                preset.name = newName;
+                preset.updated_at = new Date().toISOString();
+                savePresets();
+                renderPresetsDropdown();
+                document.getElementById('managePresetsModal').style.display = 'none';
+            }
+        });
+    });
+    
+    document.querySelectorAll('.preset-delete').forEach(btn => {
+        btn.addEventListener('click', () => {
+            if (confirm('Удалить предустановку?')) {
+                currentPresets = currentPresets.filter(p => p.id !== btn.dataset.id);
+                savePresets();
+                renderPresetsDropdown();
+                document.getElementById('managePresetsModal').style.display = 'none';
+            }
+        });
+    });
+    
+    document.querySelectorAll('.preset-default').forEach(btn => {
+        btn.addEventListener('click', () => {
+            currentPresets.forEach(p => p.is_default = false);
+            const preset = currentPresets.find(p => p.id === btn.dataset.id);
+            if (preset) preset.is_default = true;
+            savePresets();
+            renderPresetsDropdown();
+            document.getElementById('managePresetsModal').style.display = 'none';
+        });
+    });
+});
+
+document.getElementById('presetDefaultBtn').addEventListener('click', () => {
+    currentPresets.forEach(p => p.is_default = false);
+    const defaultPreset = {
+        id: 'default',
+        name: 'По умолчанию',
+        is_default: true,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+        filters: JSON.parse(JSON.stringify(activeFilters)),
+        visible_columns: currentVisibleColumns,
+        sorting: currentSorting,
+        search_text: currentSearchQuery
+    };
+    
+    const existingDefault = currentPresets.find(p => p.id === 'default');
+    if (existingDefault) {
+        Object.assign(existingDefault, defaultPreset);
+    } else {
+        currentPresets.push(defaultPreset);
+    }
+    
+    savePresets();
+    renderPresetsDropdown();
+    document.getElementById('managePresetsModal').style.display = 'none';
+    alert('Новая предустановка "По умолчанию" сохранена');
+});
+
+// Закрытие модальных окон
+document.querySelectorAll('.modal-close').forEach(btn => {
+    btn.addEventListener('click', () => {
+        btn.closest('.modal').style.display = 'none';
+    });
+});
+
+// ========== УПРОЩЁННАЯ ЦВЕТОВАЯ ГРУППИРОВКА ==========
+let colorGroupingEnabled = localStorage.getItem('color_grouping_enabled') === 'true';
+let colorGroupingField = localStorage.getItem('color_grouping_field') || 'none';
+let colorGroupingStriped = localStorage.getItem('color_grouping_striped') === 'true';
+
+function loadColorSettings() {
+    colorGroupingEnabled = localStorage.getItem('color_grouping_enabled') === 'true';
+    colorGroupingField = localStorage.getItem('color_grouping_field') || 'none';
+    colorGroupingStriped = localStorage.getItem('color_grouping_striped') === 'true';
+    
+    const fieldSelect = document.getElementById('colorGroupField');
+    const stripedCheckbox = document.getElementById('colorGroupingStriped');
+    if (fieldSelect) fieldSelect.value = colorGroupingField;
+    if (stripedCheckbox) stripedCheckbox.checked = colorGroupingStriped;
+    
+    applyColorGrouping();
+}
+
+function saveColorSettings() {
+    localStorage.setItem('color_grouping_enabled', colorGroupingEnabled);
+    localStorage.setItem('color_grouping_field', colorGroupingField);
+    localStorage.setItem('color_grouping_striped', colorGroupingStriped);
+}
+
+function applyColorGrouping() {
+    // Сначала убираем все цвета
+    cachedRows.forEach(row => {
+        row.element.style.backgroundColor = '';
+        row.element.classList.remove('color-grouped', 'color-grouped-striped');
+    });
+    
+    if (!colorGroupingEnabled || colorGroupingField === 'none') {
+        return;
+    }
+    
+    const groups = new Map();
+    cachedRows.forEach(row => {
+        const value = row[colorGroupingField] || 'unknown';
+        if (!groups.has(value)) groups.set(value, []);
+        groups.get(value).push(row);
+    });
+    
+    const colors = ['#e74c3c20', '#3498db20', '#2ecc7120', '#f39c1220', '#9b59b620', '#1abc9c20', '#e67e2220', '#95a5a620'];
+    let colorIndex = 0;
+    
+    groups.forEach((rows) => {
+        const color = colors[colorIndex % colors.length];
+        rows.forEach(row => {
+            row.element.style.backgroundColor = color;
+            row.element.classList.add('color-grouped');
+        });
+        colorIndex++;
+    });
+    
+    if (colorGroupingStriped) {
+        let stripedIndex = 0;
+        groups.forEach((rows) => {
+            rows.forEach((row, idx) => {
+                if (idx % 2 === 1) {
+                    row.element.classList.add('color-grouped-striped');
+                }
+            });
+            stripedIndex++;
+        });
+    }
+}
+
+document.getElementById('colorGroupingBtn').addEventListener('click', () => {
+    const modal = document.getElementById('colorGroupingModal');
+    const fieldSelect = document.getElementById('colorGroupField');
+    const stripedCheckbox = document.getElementById('colorGroupingStriped');
+    if (fieldSelect) fieldSelect.value = colorGroupingField;
+    if (stripedCheckbox) stripedCheckbox.checked = colorGroupingStriped;
+    modal.style.display = 'flex';
+});
+
+document.getElementById('applyColorGroupingBtn').addEventListener('click', () => {
+    colorGroupingEnabled = true;
+    colorGroupingField = document.getElementById('colorGroupField').value;
+    colorGroupingStriped = document.getElementById('colorGroupingStriped').checked;
+    saveColorSettings();
+    applyColorGrouping();
+    document.getElementById('colorGroupingModal').style.display = 'none';
+});
+
+document.getElementById('cancelColorGroupingBtn').addEventListener('click', () => {
+    document.getElementById('colorGroupingModal').style.display = 'none';
+});
+
+// ========== СОРТИРОВКА ==========
+function initSorting() {
+    document.querySelectorAll('#licensesTable th[data-field]').forEach(th => {
+        th.style.cursor = 'pointer';
+        th.addEventListener('click', () => {
+            const field = th.dataset.field;
+            const tbody = document.querySelector('#licensesTable tbody');
+            const rows = Array.from(tbody.querySelectorAll('tr'));
+            const isAscending = currentSorting.field === field && currentSorting.direction === 'asc';
+            
+            currentSorting.field = field;
+            currentSorting.direction = isAscending ? 'desc' : 'asc';
+            
+            rows.sort((a, b) => {
+                let aVal = a.getAttribute(`data-${field}`) || '';
+                let bVal = b.getAttribute(`data-${field}`) || '';
+                if (field === 'year') {
+                    const aNum = aVal === 'permanent' ? 9999 : (parseInt(aVal) || 0);
+                    const bNum = bVal === 'permanent' ? 9999 : (parseInt(bVal) || 0);
+                    return currentSorting.direction === 'asc' ? aNum - bNum : bNum - aNum;
+                }
+                return currentSorting.direction === 'asc' ? aVal.localeCompare(bVal) : bVal.localeCompare(aVal);
+            });
+            
+            rows.forEach(row => tbody.appendChild(row));
+            cacheTableData();
+            applyFiltersFast();
+        });
+    });
+}
+
+// ========== МАССОВЫЕ ОПЕРАЦИИ ==========
+function updateBulkPanel() {
+    const count = selectedLicenseIds.size;
+    const panel = document.getElementById('bulkPanel');
+    const countSpan = document.getElementById('selectedCount');
+    
+    countSpan.innerText = count;
+    
+    if (count > 0) {
+        panel.classList.add('show');
+    } else {
+        panel.classList.remove('show');
+    }
+    
+    // Обновляем состояние чекбокса "Выбрать все" только для видимых строк
+    const visibleCheckboxes = Array.from(document.querySelectorAll('.license-checkbox')).filter(cb => {
+        const row = cb.closest('tr');
+        return row && row.style.display !== 'none';
+    });
+    const allChecked = visibleCheckboxes.length > 0 && visibleCheckboxes.every(cb => cb.checked);
+    const selectAllCheckbox = document.getElementById('selectAllCheckbox');
+    if (selectAllCheckbox) {
+        selectAllCheckbox.checked = allChecked;
+        selectAllCheckbox.indeterminate = !allChecked && selectedLicenseIds.size > 0;
+    }
+}
+
+// Обработчик "Выбрать все" - выбирает ТОЛЬКО видимые (отфильтрованные) строки
+document.getElementById('selectAllCheckbox').addEventListener('change', (e) => {
+    const checkboxes = document.querySelectorAll('.license-checkbox');
+    const isChecked = e.target.checked;
+    
+    checkboxes.forEach(cb => {
+        const row = cb.closest('tr');
+        // Выбираем только видимые строки
+        if (row && row.style.display !== 'none') {
+            cb.checked = isChecked;
+            const id = parseInt(cb.dataset.id);
+            if (isChecked) {
+                selectedLicenseIds.add(id);
+            } else {
+                selectedLicenseIds.delete(id);
+            }
+        }
+    });
+    updateBulkPanel();
+});
+
+// Индивидуальные чекбоксы
+document.querySelectorAll('.license-checkbox').forEach(cb => {
+    cb.addEventListener('change', (e) => {
+        const id = parseInt(e.target.dataset.id);
+        if (e.target.checked) {
+            selectedLicenseIds.add(id);
+        } else {
+            selectedLicenseIds.delete(id);
+        }
+        updateBulkPanel();
+    });
+});
+
+document.getElementById('bulkCloseBtn').addEventListener('click', () => {
+    selectedLicenseIds.clear();
+    document.querySelectorAll('.license-checkbox').forEach(cb => cb.checked = false);
+    updateBulkPanel();
+});
+
+document.getElementById('bulkExportBtn').addEventListener('click', async () => {
+    if (selectedLicenseIds.size === 0) return;
+    
+    const response = await fetch(`/api/export/${operator}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+            license_ids: Array.from(selectedLicenseIds),
+            visible_columns: currentVisibleColumns
+        })
+    });
+    
+    const blob = await response.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `licenses_export_${operator}_${new Date().toISOString().slice(0,19)}.xlsx`;
+    a.click();
+    URL.revokeObjectURL(url);
+});
+
+document.getElementById('bulkAddTagBtn').addEventListener('click', () => {
+    const tagName = prompt('Введите название тега для добавления:');
+    if (tagName && selectedLicenseIds.size > 0) {
+        fetch(`/api/bulk_add_tag`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                license_ids: Array.from(selectedLicenseIds),
+                tag_name: tagName
+            })
+        }).then(() => {
+            alert(`Тег "${tagName}" добавлен к ${selectedLicenseIds.size} лицензиям`);
+            location.reload();
+        });
+    }
+});
+
+// ========== ЭКСПОРТ ВСЕХ ==========
+document.getElementById('exportExcelBtn').addEventListener('click', async () => {
+    // Получаем ID отфильтрованных строк
+    const visibleIds = [];
+    cachedRows.forEach(row => {
+        if (row.element.style.display !== 'none') {
+            visibleIds.push(row.id);
+        }
+    });
+    
+    if (visibleIds.length === 0) {
+        alert('Нет данных для экспорта');
+        return;
+    }
+    
+    const response = await fetch(`/api/export/${operator}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+            license_ids: visibleIds,
+            visible_columns: currentVisibleColumns
+        })
+    });
+    
+    const blob = await response.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `licenses_${operator}_filtered_${new Date().toISOString().slice(0,19)}.xlsx`;
+    a.click();
+    URL.revokeObjectURL(url);
+});
+
+// ========== НАСТРОЙКА КОЛОНОК ==========
+document.addEventListener('DOMContentLoaded', function() {
+    const columnSettingsBtn = document.getElementById('columnSettingsBtn');
+    const columnSettingsPanel = document.getElementById('columnSettingsPanel');
+    const cancelColumnsBtn = document.getElementById('cancelColumnsBtn');
+    const applyColumnsBtn = document.getElementById('applyColumnsBtn');
+    const resetColumnsBtn = document.getElementById('resetColumnsBtn');
+    
+if (columnSettingsBtn && columnSettingsPanel) {
+    columnSettingsBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        e.preventDefault();
+        
+        const isVisible = columnSettingsPanel.style.display === 'block';
+        
+        if (isVisible) {
+            columnSettingsPanel.style.display = 'none';
+            columnSettingsPanel.classList.remove('show');
+        } else {
+            columnSettingsPanel.style.display = 'block';
+            columnSettingsPanel.classList.add('show');
+            loadColumnOrder();
+            setTimeout(() => initColumnDragAndDrop(), 50);
+            setTimeout(() => initResizableColumns(), 50);
+        }
+    });
+}
+    // Отмена
+    if (cancelColumnsBtn) {
+        cancelColumnsBtn.addEventListener('click', () => {
+            if (columnSettingsPanel) {
+                columnSettingsPanel.style.display = 'none';
+            }
+        });
+    }
+    
+    // Применение колонок
+    if (applyColumnsBtn) {
+        applyColumnsBtn.addEventListener('click', () => {
+            const cols = [];
+            document.querySelectorAll('#columnsSortableList input:checked').forEach(cb => {
+                cols.push(cb.value);
+            });
+            
+            currentVisibleColumns = cols;
+            if (typeof saveColumnOrder === 'function') {
+                saveColumnOrder();
+            }
+            
+            fetch(`/${operator}/save_columns`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ columns: cols })
+            }).then(() => {
+                location.reload();
+            });
+        });
+    }
+    
+    // Сброс порядка колонок
+    if (resetColumnsBtn) {
+        resetColumnsBtn.addEventListener('click', () => {
+            const defaultOrder = ['ne_type', 'city', 'site', 'year', 'lsn', 'product', 'version', 'esn', 'domain', 'tags_agg', 'comments_count'];
+            columnOrder = defaultOrder;
+            
+            // Пересортировать DOM элементы
+            const container = document.getElementById('columnsSortableList');
+            if (container) {
+                const items = Array.from(container.querySelectorAll('.filter-list-item'));
+                defaultOrder.forEach(col => {
+                    const item = items.find(i => i.dataset.column === col);
+                    if (item) container.appendChild(item);
+                });
+            }
+            
+            if (typeof saveColumnOrder === 'function') {
+                saveColumnOrder();
+            }
+        });
+    }
+});
+
+// ========== DRAG & DROP ДЛЯ СОРТИРОВКИ КОЛОНОК ==========
+let columnOrder = [];
+
+function initColumnDragAndDrop() {
+    const container = document.getElementById('columnsSortableList');
+    if (!container) return;
+    
+    let dragSrcElement = null;
+    let dragSrcIndex = null;
+    
+    // Делаем все элементы перетаскиваемыми
+    const items = container.querySelectorAll('.filter-list-item');
+    items.forEach(item => {
+        // Устанавливаем draggable
+        item.setAttribute('draggable', 'true');
+        item.style.cursor = 'move';
+        
+        // Удаляем старые обработчики, чтобы не было дублей
+        item.removeEventListener('dragstart', handleDragStart);
+        item.removeEventListener('dragend', handleDragEnd);
+        item.removeEventListener('dragover', handleDragOver);
+        item.removeEventListener('dragenter', handleDragEnter);
+        item.removeEventListener('dragleave', handleDragLeave);
+        item.removeEventListener('drop', handleDrop);
+        
+        // Добавляем новые
+        item.addEventListener('dragstart', handleDragStart);
+        item.addEventListener('dragend', handleDragEnd);
+        item.addEventListener('dragover', handleDragOver);
+        item.addEventListener('dragenter', handleDragEnter);
+        item.addEventListener('dragleave', handleDragLeave);
+        item.addEventListener('drop', handleDrop);
+    });
+    
+    function handleDragStart(e) {
+        dragSrcElement = this;
+        dragSrcIndex = Array.from(container.children).indexOf(this);
+        this.classList.add('dragging');
+        e.dataTransfer.effectAllowed = 'move';
+        e.dataTransfer.setData('text/plain', '');
+    }
+    
+    function handleDragEnd(e) {
+        this.classList.remove('dragging');
+        document.querySelectorAll('.filter-list-item').forEach(el => {
+            el.classList.remove('drag-over');
+            el.style.borderTop = '';
+        });
+        dragSrcElement = null;
+    }
+    
+    function handleDragOver(e) {
+        e.preventDefault();
+        e.dataTransfer.dropEffect = 'move';
+    }
+    
+    function handleDragEnter(e) {
+        e.preventDefault();
+        if (dragSrcElement !== this) {
+            this.classList.add('drag-over');
+            this.style.borderTop = '2px solid var(--huawei-red)';
+        }
+    }
+    
+    function handleDragLeave(e) {
+        this.classList.remove('drag-over');
+        this.style.borderTop = '';
+    }
+    
+    function handleDrop(e) {
+        e.preventDefault();
+        this.classList.remove('drag-over');
+        this.style.borderTop = '';
+        
+        if (!dragSrcElement || dragSrcElement === this) return;
+        
+        const targetIndex = Array.from(container.children).indexOf(this);
+        
+        if (dragSrcIndex < targetIndex) {
+            this.parentNode.insertBefore(dragSrcElement, this.nextSibling);
+        } else {
+            this.parentNode.insertBefore(dragSrcElement, this);
+        }
+        
+        // Обновляем порядок колонок
+        updateColumnOrderFromDOM();
+        dragSrcElement = null;
+    }
+}
+
+function updateColumnOrderFromDOM() {
+    const container = document.getElementById('columnsSortableList');
+    columnOrder = [];
+    container.querySelectorAll('.filter-list-item input:checked').forEach(input => {
+        columnOrder.push(input.value);
+    });
+}
+
+function loadColumnOrder() {
+    const savedOrder = localStorage.getItem(`column_order_${operator}`);
+    if (savedOrder) {
+        try {
+            const saved = JSON.parse(savedOrder);
+            const container = document.getElementById('columnsSortableList');
+            const items = Array.from(container.querySelectorAll('.filter-list-item'));
+            
+            saved.forEach(col => {
+                const item = items.find(i => i.dataset.column === col);
+                if (item) {
+                    container.appendChild(item);
+                }
+            });
+            columnOrder = saved;
+        } catch(e) {
+            console.error('Ошибка загрузки порядка колонок:', e);
+        }
+    } else {
+        // Начальный порядок из видимых колонок
+        const container = document.getElementById('columnsSortableList');
+        const items = Array.from(container.querySelectorAll('.filter-list-item'));
+        columnOrder = items.map(item => item.dataset.column).filter(col => 
+            currentVisibleColumns.includes(col)
+        );
+    }
+}
+
+function saveColumnOrder() {
+    localStorage.setItem(`column_order_${operator}`, JSON.stringify(columnOrder));
+}
+
+// Также добавим на кнопку Сбросить
+const resetBtn = document.getElementById('resetFiltersBtn');
+if (resetBtn) {
+    resetBtn.onclick = function(e) {
+        e.preventDefault();
+        console.log('🔄 Сбрасываем фильтры...');
+        resetFilters();
+        return false;
+    };
+    console.log('✅ Обработчик сброса добавлен');
+}
+
+
+// ========== RESIZABLE COLUMNS (ОПТИМИЗИРОВАННАЯ) ==========
+let resizeTimeout = null;
+
+function initResizableColumns() {
+    const table = document.getElementById('licensesTable');
+    if (!table) return;
+    
+    const headers = table.querySelectorAll('thead th');
+    
+    headers.forEach((th, idx) => {
+        if (idx === 0 || idx === headers.length - 1) return;
+        
+        // Удаляем старый handle
+        const oldHandle = th.querySelector('.resize-handle');
+        if (oldHandle) oldHandle.remove();
+        
+        // Создаём handle
+        const handle = document.createElement('div');
+        handle.className = 'resize-handle';
+        th.style.position = 'relative';
+        th.appendChild(handle);
+        
+        // Восстанавливаем ширину
+        const savedWidth = localStorage.getItem(`col_width_${idx}`);
+        if (savedWidth) {
+            th.style.width = savedWidth + 'px';
+            th.style.minWidth = savedWidth + 'px';
+        }
+        
+        // Добавляем обработчик
+        handle.addEventListener('mousedown', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            
+            const startX = e.clientX;
+            const startWidth = th.offsetWidth;
+            
+            function onMouseMove(moveEvent) {
+                const diff = moveEvent.clientX - startX;
+                let newWidth = startWidth + diff;
+                newWidth = Math.max(60, Math.min(400, newWidth));
+                
+                // Меняем ширину без перерисовки таблицы
+                th.style.width = newWidth + 'px';
+                th.style.minWidth = newWidth + 'px';
+                
+                // Используем throttle для сохранения
+                if (resizeTimeout) clearTimeout(resizeTimeout);
+                resizeTimeout = setTimeout(() => {
+                    localStorage.setItem(`col_width_${idx}`, newWidth);
+                }, 100);
+            }
+            
+            function onMouseUp() {
+                document.removeEventListener('mousemove', onMouseMove);
+                document.removeEventListener('mouseup', onMouseUp);
+                document.body.style.cursor = '';
+                document.body.style.userSelect = '';
+            }
+            
+            document.addEventListener('mousemove', onMouseMove);
+            document.addEventListener('mouseup', onMouseUp);
+            document.body.style.cursor = 'col-resize';
+            document.body.style.userSelect = 'none';
+        });
+    });
+}
+
+// Сброс всех ширин колонок
+function resetColumnWidths() {
+    const table = document.getElementById('licensesTable');
+    if (!table) return;
+    
+    const headers = table.querySelectorAll('thead th');
+    headers.forEach((th, idx) => {
+        if (idx === 0 || idx === headers.length - 1) return;
+        th.style.width = '';
+        th.style.minWidth = '';
+        localStorage.removeItem(`col_width_${idx}`);
+    });
+    initResizableColumns();
+}
+
+// ========== ГЕНЕРАЦИЯ СПИСКА КОЛОНОК ИЗ БД ==========
+// Фиксированные колонки (всегда есть)
+const FIXED_COLUMNS = [
+    { name: 'ne_type', display: 'NE тип', fixed: true },
+    { name: 'city', display: 'Город', fixed: true },
+    { name: 'site', display: 'Сайт', fixed: true },
+    { name: 'year', display: 'Год', fixed: true },
+    { name: 'lsn', display: 'LSN', fixed: true },
+    { name: 'product', display: 'Продукт', fixed: true },
+    { name: 'version', display: 'Версия', fixed: true },
+    { name: 'esn', display: 'ESN', fixed: true },
+    { name: 'domain', display: 'Домен', fixed: true },
+    { name: 'tags_agg', display: 'Теги', fixed: true },
+    { name: 'comments_count', display: 'Комментарии', fixed: true }
+];
+
+// Динамические колонки (из БД)
+let dynamicColumns = [];
+
+async function loadDynamicColumns() {
+    try {
+        const response = await fetch(`/api/dynamic_columns`);
+        const columns = await response.json();
+        dynamicColumns = columns.filter(c => c.is_active).map(c => ({
+            name: c.column_name,
+            display: c.display_name,
+            fixed: false,
+            id: c.id
+        }));
+        renderColumnsList();
+    } catch (e) {
+        console.error('Ошибка загрузки динамических колонок:', e);
+        renderColumnsList(); // Рендерим только фиксированные
+    }
+}
+
+function renderColumnsList() {
+    const container = document.getElementById('columnsSortableList');
+    if (!container) return;
+    
+    // Объединяем фиксированные и динамические колонки
+    const allColumns = [...FIXED_COLUMNS, ...dynamicColumns];
+    
+    // Сортируем согласно сохранённому порядку или по умолчанию
+    const savedOrder = localStorage.getItem(`column_order_${operator}`);
+    let orderedColumns = [...allColumns];
+    if (savedOrder) {
+        try {
+            const order = JSON.parse(savedOrder);
+            orderedColumns = order.map(name => allColumns.find(c => c.name === name)).filter(c => c);
+            // Добавляем колонки, которых нет в сохранённом порядке
+            allColumns.forEach(c => {
+                if (!orderedColumns.find(oc => oc.name === c.name)) {
+                    orderedColumns.push(c);
+                }
+            });
+        } catch(e) {}
+    }
+    
+    container.innerHTML = `
+        <div class="column-list-header" style="display: flex; gap: 8px; margin-bottom: 8px; padding-bottom: 4px; border-bottom: 1px solid var(--border-light);">
+            <button id="selectAllColumnsBtn" class="btn-secondary" style="flex: 1; padding: 3px; font-size: 0.65rem;">✅ Выбрать все</button>
+            <button id="clearAllColumnsBtn" class="btn-secondary" style="flex: 1; padding: 3px; font-size: 0.65rem;">❌ Очистить все</button>
+        </div>
+        <div id="columnsListItems">
+            ${orderedColumns.map(col => `
+                <div class="filter-list-item" data-column="${col.name}" data-fixed="${col.fixed}" style="cursor: move;">
+                    <i class="fas fa-grip-vertical drag-handle" style="color: var(--text-muted); font-size: 0.7rem; cursor: grab;"></i>
+                    <input type="checkbox" value="${col.name}" id="col_${col.name}" 
+                           ${currentVisibleColumns.includes(col.name) ? 'checked' : ''}>
+                    <label for="col_${col.name}" style="flex: 1; cursor: pointer;">${col.display}</label>
+                </div>
+            `).join('')}
+        </div>
+    `;
+    
+    // Добавляем обработчики
+    const checkboxContainer = document.getElementById('columnsListItems');
+    if (checkboxContainer) {
+        checkboxContainer.querySelectorAll('input[type="checkbox"]').forEach(cb => {
+            cb.removeEventListener('change', handleColumnCheckboxChange);
+            cb.addEventListener('change', handleColumnCheckboxChange);
+        });
+    }
+    
+    // Обработчик для "Выбрать все"
+    const selectAllBtn = document.getElementById('selectAllColumnsBtn');
+    if (selectAllBtn) {
+        selectAllBtn.removeEventListener('click', handleSelectAll);
+        selectAllBtn.addEventListener('click', handleSelectAll);
+    }
+    
+    // Обработчик для "Очистить все"
+    const clearAllBtn = document.getElementById('clearAllColumnsBtn');
+    if (clearAllBtn) {
+        clearAllBtn.removeEventListener('click', handleClearAll);
+        clearAllBtn.addEventListener('click', handleClearAll);
+    }
+    
+    // Переинициализируем drag-and-drop
+    initColumnDragAndDrop();
+}
+
+// Обработчики
+function handleColumnCheckboxChange(e) {
+    const cb = e.target;
+    const value = cb.value;
+    
+    if (cb.checked) {
+        if (!currentVisibleColumns.includes(value)) {
+            currentVisibleColumns.push(value);
+        }
+    } else {
+        const index = currentVisibleColumns.indexOf(value);
+        if (index > -1) {
+            currentVisibleColumns.splice(index, 1);
+        }
+    }
+    console.log('Текущие выбранные колонки:', currentVisibleColumns);
+}
+
+function handleSelectAll() {
+    const container = document.getElementById('columnsListItems');
+    if (!container) return;
+    
+    const checkboxes = container.querySelectorAll('input[type="checkbox"]');
+    checkboxes.forEach(cb => {
+        cb.checked = true;
+        const value = cb.value;
+        if (!currentVisibleColumns.includes(value)) {
+            currentVisibleColumns.push(value);
+        }
+    });
+    console.log('Выбраны все, текущие:', currentVisibleColumns);
+}
+
+function handleClearAll() {
+    const container = document.getElementById('columnsListItems');
+    if (!container) return;
+    
+    const checkboxes = container.querySelectorAll('input[type="checkbox"]');
+    checkboxes.forEach(cb => {
+        cb.checked = false;
+        const value = cb.value;
+        const index = currentVisibleColumns.indexOf(value);
+        if (index > -1) {
+            currentVisibleColumns.splice(index, 1);
+        }
+    });
+    console.log('Очищены все, текущие:', currentVisibleColumns);
+}
+
+// Обновляем updateColumnOrderFromDOM для работы с новым форматом
+function updateColumnOrderFromDOM() {
+    const container = document.getElementById('columnsListItems');
+    if (!container) return;
+    
+    columnOrder = [];
+    container.querySelectorAll('.filter-list-item').forEach(item => {
+        const colName = item.dataset.column;
+        columnOrder.push(colName);
+    });
+    
+    // Сохраняем порядок
+    localStorage.setItem(`column_order_${operator}`, JSON.stringify(columnOrder));
+}
+
+// Обновляем функцию saveColumnOrder
+function saveColumnOrder() {
+    localStorage.setItem(`column_order_${operator}`, JSON.stringify(columnOrder));
+    // Сохраняем видимые колонки на сервер
+    fetch(`/${operator}/save_columns`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ columns: currentVisibleColumns, order: columnOrder })
+    });
+}
+
+// Обновляем loadColumnOrder
+function loadColumnOrder() {
+    const savedOrder = localStorage.getItem(`column_order_${operator}`);
+    if (savedOrder) {
+        try {
+            columnOrder = JSON.parse(savedOrder);
+        } catch(e) {
+            columnOrder = [...currentVisibleColumns];
+        }
+    } else {
+        columnOrder = [...currentVisibleColumns];
+    }
+}
+
+
+// ========== ВКЛАДКИ НАСТРОЕК КОЛОНОК ==========
+function initSettingsTabs() {
+    const container = document.getElementById('columnSettingsPanel');
+    if (!container) return;
+    
+    const tabs = container.querySelectorAll('.settings-tab-btn');
+    if (!tabs.length) return;
+    
+    tabs.forEach(btn => {
+        const newBtn = btn.cloneNode(true);
+        btn.parentNode.replaceChild(newBtn, btn);
+        
+        newBtn.addEventListener('click', function(e) {
+            e.stopPropagation();
+            e.preventDefault();
+            
+            const parent = this.closest('.filter-list');
+            const panes = parent.querySelectorAll('.settings-tab-pane');
+            panes.forEach(pane => pane.style.display = 'none');
+            
+            const targetPane = document.getElementById(`tab-${this.dataset.tab}`);
+            if (targetPane) targetPane.style.display = 'block';
+            
+            // Если открыли вкладку "Колонки" - загружаем актуальный список
+            if (this.dataset.tab === 'columns') {
+                loadDynamicColumns();
+            }
+            
+            const allBtns = parent.querySelectorAll('.settings-tab-btn');
+            allBtns.forEach(b => b.classList.remove('active'));
+            this.classList.add('active');
+        });
+    });
+}
+
+// Переинициализируем
+initSettingsTabs();
+
+// ========== RESIZABLE COLUMNS ==========
+function initResizableColumns() {
+    const table = document.getElementById('licensesTable');
+    if (!table) return;
+    
+    const headers = table.querySelectorAll('thead th');
+    if (!headers.length) return;
+    
+    headers.forEach((th, idx) => {
+        // Пропускаем первую колонку (чекбокс) и последнюю (действия)
+        if (idx === 0 || idx === headers.length - 1) return;
+        
+        // Удаляем старый handle
+        const oldHandle = th.querySelector('.resize-handle');
+        if (oldHandle) oldHandle.remove();
+        
+        // Создаём handle
+        const handle = document.createElement('div');
+        handle.className = 'resize-handle';
+        th.style.position = 'relative';
+        th.appendChild(handle);
+        
+        // Восстанавливаем сохранённую ширину
+        const savedWidth = localStorage.getItem(`col_width_${idx}`);
+        if (savedWidth) {
+            th.style.width = savedWidth + 'px';
+            th.style.minWidth = savedWidth + 'px';
+        }
+    });
+    
+    let resizeColumn = null;
+    let startX = 0;
+    let startWidth = 0;
+    
+    function onResizeStart(e) {
+        e.preventDefault();
+        e.stopPropagation();
+        
+        resizeColumn = e.target.closest('th');
+        if (!resizeColumn) return;
+        
+        startX = e.clientX;
+        startWidth = resizeColumn.offsetWidth;
+        
+        document.addEventListener('mousemove', onResizeMove);
+        document.addEventListener('mouseup', onResizeEnd);
+        document.body.style.cursor = 'col-resize';
+        document.body.style.userSelect = 'none';
+    }
+    
+    function onResizeMove(e) {
+        if (!resizeColumn) return;
+        
+        const diff = e.clientX - startX;
+        let newWidth = startWidth + diff;
+        newWidth = Math.max(60, Math.min(400, newWidth));
+        
+        resizeColumn.style.width = newWidth + 'px';
+        resizeColumn.style.minWidth = newWidth + 'px';
+        
+        const idx = Array.from(resizeColumn.parentNode.children).indexOf(resizeColumn);
+        localStorage.setItem(`col_width_${idx}`, newWidth);
+    }
+    
+    function onResizeEnd() {
+        if (!resizeColumn) return;
+        
+        document.removeEventListener('mousemove', onResizeMove);
+        document.removeEventListener('mouseup', onResizeEnd);
+        document.body.style.cursor = '';
+        document.body.style.userSelect = '';
+        resizeColumn = null;
+    }
+    
+    // Добавляем обработчики на все handle
+    document.querySelectorAll('.resize-handle').forEach(handle => {
+        handle.removeEventListener('mousedown', onResizeStart);
+        handle.addEventListener('mousedown', onResizeStart);
+    });
+}
+
+// ========== СБРОС ШИРИНЫ КОЛОНОК ==========
+function resetColumnWidths() {
+    const table = document.getElementById('licensesTable');
+    if (!table) return;
+    
+    const headers = table.querySelectorAll('thead th');
+    headers.forEach((th, idx) => {
+        if (idx === 0 || idx === headers.length - 1) return;
+        th.style.width = '';
+        th.style.minWidth = '';
+        localStorage.removeItem(`col_width_${idx}`);
+    });
+}
+
+// ========== ПРИМЕНЕНИЕ НАСТРОЕК ВНЕШНЕГО ВИДА ==========
+function loadAppearanceSettings() {
+    // Загружаем из localStorage
+    const striped = localStorage.getItem('table_striped') === 'true';
+    const hover = localStorage.getItem('table_hover') !== 'false';
+    const tableSize = localStorage.getItem('table_size') || 'normal';
+    const rowHeight = localStorage.getItem('table_row_height') || '36';
+    const tableFont = localStorage.getItem('table_font') || 'system-ui';
+    const fontSize = localStorage.getItem('table_font_size') || '12';
+    const fontWeight = localStorage.getItem('table_font_weight') || '400';
+    
+    // Устанавливаем значения в UI если элементы существуют
+    const stripedCheckbox = document.getElementById('toggleStripedRows');
+    const hoverCheckbox = document.getElementById('toggleHoverEffect');
+    const tableSizeSelect = document.getElementById('tableSize');
+    const rowHeightSlider = document.getElementById('rowHeight');
+    const rowHeightSpan = document.getElementById('rowHeightValue');
+    const tableFontSelect = document.getElementById('tableFont');
+    const fontSizeSlider = document.getElementById('fontSize');
+    const fontSizeSpan = document.getElementById('fontSizeValue');
+    const fontWeightSelect = document.getElementById('fontWeight');
+    
+    if (stripedCheckbox) stripedCheckbox.checked = striped;
+    if (hoverCheckbox) hoverCheckbox.checked = hover;
+    if (tableSizeSelect) tableSizeSelect.value = tableSize;
+    if (rowHeightSlider) {
+        rowHeightSlider.value = rowHeight;
+        if (rowHeightSpan) rowHeightSpan.innerText = rowHeight + 'px';
+    }
+    if (tableFontSelect) tableFontSelect.value = tableFont;
+    if (fontSizeSlider) {
+        fontSizeSlider.value = fontSize;
+        if (fontSizeSpan) fontSizeSpan.innerText = fontSize + 'px';
+    }
+    if (fontWeightSelect) fontWeightSelect.value = fontWeight;
+    
+    // Применяем к таблице
+    applyAppearanceSettings();
+}
+
+// ========== ПРИМЕНЕНИЕ ИЗМЕНЕНИЙ КОЛОНОК ==========
+function applyColumnChanges() {
+    // Получаем выбранные колонки из DOM
+    const container = document.getElementById('columnsListItems');
+    if (!container) return;
+    
+    const selectedColumns = [];
+    container.querySelectorAll('input[type="checkbox"]:checked').forEach(cb => {
+        selectedColumns.push(cb.value);
+    });
+    
+    // Обновляем глобальный массив
+    currentVisibleColumns = selectedColumns;
+    
+    // Сохраняем порядок
+    updateColumnOrderFromDOM();
+    saveColumnOrder();
+    
+    // Обновляем таблицу без перезагрузки страницы
+    updateTableHeaders();
+    updateTableRows();
+    cacheTableData();
+    applyFiltersFast();
+}
+
+function updateTableHeaders() {
+    const table = document.getElementById('licensesTable');
+    const theadRow = table.querySelector('thead tr');
+    
+    // Сохраняем чекбокс и колонку действий
+    const checkboxTh = theadRow.querySelector('.checkbox-col');
+    const actionsTh = theadRow.querySelector('th:last-child');
+    
+    // Удаляем всё кроме чекбокса и действий
+    while (theadRow.firstChild) {
+        theadRow.removeChild(theadRow.firstChild);
+    }
+    
+    // Добавляем чекбокс
+    theadRow.appendChild(checkboxTh);
+    
+    // Добавляем заголовки в нужном порядке
+    columnOrder.forEach(colName => {
+        if (currentVisibleColumns.includes(colName)) {
+            const th = document.createElement('th');
+            th.setAttribute('data-field', colName);
+            
+            // Название колонки
+            const columnNames = {
+                'ne_type': 'NE тип', 'city': 'Город', 'site': 'Сайт', 'year': 'Год',
+                'lsn': 'LSN', 'product': 'Продукт', 'version': 'Версия', 'esn': 'ESN',
+                'domain': 'Домен', 'tags_agg': 'Теги', 'comments_count': 'Комментарии'
+            };
+            th.textContent = columnNames[colName] || colName;
+            th.style.cursor = 'pointer';
+            theadRow.appendChild(th);
+        }
+    });
+    
+    // Добавляем колонку действий
+    theadRow.appendChild(actionsTh);
+    
+    // Переинициализируем сортировку
+    initSorting();
+    initResizableColumns();
+}
+
+function updateTableRows() {
+    const table = document.getElementById('licensesTable');
+    const tbody = table.querySelector('tbody');
+    const rows = tbody.querySelectorAll('tr');
+    
+    rows.forEach(row => {
+        const cells = row.querySelectorAll('td');
+        const checkboxCell = cells[0];
+        const actionsCell = cells[cells.length - 1];
+        
+        // Создаём карту ячеек по полям
+        const cellMap = {};
+        const headers = document.querySelectorAll('#licensesTable thead th');
+        for (let i = 1; i < cells.length - 1; i++) {
+            const field = headers[i]?.getAttribute('data-field');
+            if (field) cellMap[field] = cells[i];
+        }
+        
+        // Очищаем строку
+        while (row.firstChild) {
+            row.removeChild(row.firstChild);
+        }
+        
+        // Добавляем чекбокс
+        row.appendChild(checkboxCell);
+        
+        // Добавляем ячейки в новом порядке
+        columnOrder.forEach(colName => {
+            if (currentVisibleColumns.includes(colName) && cellMap[colName]) {
+                row.appendChild(cellMap[colName]);
+            }
+        });
+        
+        // Добавляем ячейку действий
+        row.appendChild(actionsCell);
+    });
+}
+
+function applyAppearanceSettings() {
+    const table = document.getElementById('licensesTable');
+    if (!table) return;
+    
+    const striped = document.getElementById('toggleStripedRows')?.checked || false;
+    const hover = document.getElementById('toggleHoverEffect')?.checked !== false;
+    const tableSize = document.getElementById('tableSize')?.value || 'normal';
+    const tableFont = document.getElementById('tableFont')?.value || 'system-ui';
+    const fontSize = document.getElementById('fontSize')?.value || '12';
+    const fontWeight = document.getElementById('fontWeight')?.value || '400';
+    
+    // Сохраняем в localStorage
+    localStorage.setItem('table_striped', striped);
+    localStorage.setItem('table_hover', hover);
+    localStorage.setItem('table_size', tableSize);
+    localStorage.setItem('table_font', tableFont);
+    localStorage.setItem('table_font_size', fontSize);
+    localStorage.setItem('table_font_weight', fontWeight);
+    // Удаляем устаревший параметр row_height
+    localStorage.removeItem('table_row_height');
+    
+    // Применяем классы к таблице
+    table.classList.remove('compact', 'normal', 'large');
+    table.classList.add(tableSize);
+    
+    // Чередование строк (одна операция, без цикла)
+    if (striped) {
+        const rows = table.querySelectorAll('tbody tr');
+        rows.forEach((row, idx) => {
+            row.style.background = idx % 2 === 1 ? 'var(--bg-secondary)' : '';
+        });
+    } else {
+        table.querySelectorAll('tbody tr').forEach(row => row.style.background = '');
+    }
+    
+    // Подсветка при наведении
+    if (hover) {
+        table.classList.add('hover-effect');
+    } else {
+        table.classList.remove('hover-effect');
+    }
+    
+    // Применяем стили к ячейкам таблицы (одна операция)
+    const allCells = table.querySelectorAll('td, th');
+    allCells.forEach(cell => {
+        cell.style.fontFamily = tableFont;
+        cell.style.fontSize = fontSize + 'px';
+        cell.style.fontWeight = fontWeight;
+    });
+    
+    // Высота строки = auto (подстраивается под содержимое)
+    table.style.setProperty('--table-row-height', 'auto');
+    
+    console.log('Настройки внешнего вида применены (высота строк автоматическая)');
+}
+
+// ========== ОБЩАЯ КНОПКА ПРИМЕНЕНИЯ ДЛЯ ВСЕХ НАСТРОЕК ==========
+document.getElementById('applyColumnsBtn')?.addEventListener('click', () => {
+    console.log('Применение всех настроек...');
+    
+    // 1. Применяем настройки колонок
+    const selected = [];
+    document.querySelectorAll('#columnsListItems input:checked').forEach(cb => {
+        selected.push(cb.value);
+    });
+    currentVisibleColumns = selected;
+    updateColumnOrderFromDOM();
+    saveColumnOrder();
+    applyColumnChanges();
+    
+    // 2. Применяем настройки внешнего вида и шрифтов
+    applyAppearanceSettings();
+    
+    // 3. Закрываем панель настроек
+    const panel = document.getElementById('columnSettingsPanel');
+    if (panel) {
+        panel.style.display = 'none';
+        panel.classList.remove('show');
+    }
+    
+    console.log('Все настройки применены');
+});
+
+// Обработчик для кнопки Отмена
+document.getElementById('cancelColumnsBtn')?.addEventListener('click', () => {
+    const panel = document.getElementById('columnSettingsPanel');
+    if (panel) {
+        panel.style.display = 'none';
+        panel.classList.remove('show');
+    }
+});
+
+// Обработчик для сброса ширины колонок
+document.getElementById('resetColumnWidthsBtn')?.addEventListener('click', () => {
+    resetColumnWidths();
+    alert('Ширина колонок сброшена');
+});
+
+// ========== ОБНОВЛЕНИЕ ДОСТУПНЫХ ОПЦИЙ ФИЛЬТРОВ ==========
+function updateAvailableFilterOptions() {
+    // Проходим по всем активным фильтрам
+    for (let col in activeFilters) {
+        const selectedSet = activeFilters[col];
+        if (selectedSet && selectedSet.size > 0) {
+            // Для каждого фильтра пересчитываем доступные значения
+            updateFilterOptionsForColumn(col);
+        }
+    }
+}
+
+function updateFilterOptionsForColumn(columnName) {
+    const availableValues = new Set();
+    
+    for (let row of cachedRows) {
+        let show = true;
+        for (let col in activeFilters) {
+            if (col === columnName) continue;
+            const selected = activeFilters[col];
+            if (selected && selected.size > 0) {
+                const rowVal = row[col] || '';
+                if (!selected.has(rowVal)) {
+                    show = false;
+                    break;
+                }
+            }
+        }
+        if (show) {
+            const value = row[columnName] || '';
+            if (value) availableValues.add(value);
+        }
+    }
+    
+    const dropdown = document.getElementById(`dropdown-${columnName}`);
+    if (dropdown) {
+        const listContainer = dropdown.querySelector('.filter-list');
+        if (listContainer) {
+            const selected = activeFilters[columnName] || new Set();
+            
+            listContainer.innerHTML = Array.from(availableValues).sort().map(v => `
+                <div class="filter-list-item">
+                    <input type="checkbox" value="${v.replace(/"/g, '&quot;')}" 
+                           id="${columnName}_${v.replace(/[^a-zA-Z0-9]/g, '_')}" 
+                           ${selected.has(v) ? 'checked' : ''}>
+                    <label for="${columnName}_${v.replace(/[^a-zA-Z0-9]/g, '_')}">${v}</label>
+                </div>
+            `).join('');
+            
+            // ========== ВАЖНО: Перепривязываем обработчики ==========
+            listContainer.querySelectorAll('input[type="checkbox"]').forEach(cb => {
+                // Удаляем старые обработчики
+                const newCb = cb.cloneNode(true);
+                cb.parentNode.replaceChild(newCb, cb);
+                
+                newCb.addEventListener('change', (e) => {
+                    e.stopPropagation();
+                    const val = e.target.value;
+                    const field = columnName;
+                    
+                    if (!activeFilters[field]) {
+                        activeFilters[field] = new Set();
+                    }
+                    
+                    if (e.target.checked) {
+                        activeFilters[field].add(val);
+                    } else {
+                        activeFilters[field].delete(val);
+                    }
+                    
+                    // Обновляем текстовое поле
+                    const manualInput = document.querySelector(`.filter-manual-input[data-field="${field}"]`);
+                    if (manualInput) {
+                        manualInput.value = Array.from(activeFilters[field]).join(', ');
+                    }
+                    
+                    console.log(`Фильтр ${field} изменён:`, Array.from(activeFilters[field]));
+                    applyFiltersFast();
+                });
+            });
+        }
+    }
+}
+
+function handleFilterCheckboxChange(e) {
+    e.stopPropagation();
+    const checkbox = e.target;
+    const field = checkbox.closest('.filter-dropdown').id.replace('dropdown-', '');
+    const value = checkbox.value;
+    
+    if (!activeFilters[field]) {
+        activeFilters[field] = new Set();
+    }
+    
+    if (checkbox.checked) {
+        activeFilters[field].add(value);
+    } else {
+        activeFilters[field].delete(value);
+    }
+    
+    // Обновляем текстовое поле
+    const manualInput = document.querySelector(`.filter-manual-input[data-field="${field}"]`);
+    if (manualInput) {
+        manualInput.value = Array.from(activeFilters[field]).join(', ');
+    }
+    
+    // Обновляем доступные опции для всех фильтров
+    updateAllFilterOptions();
+}
+
+function updateAllFilterOptions() {
+    for (let col in filterValues) {
+        updateFilterOptionsForColumn(col);
+    }
+    
+    // После обновления всех фильтров, обновляем выпадающие списки для ручного ввода
+    for (let col in filterValues) {
+        const manualInput = document.querySelector(`.filter-manual-input[data-field="${col}"]`);
+        if (manualInput && activeFilters[col]) {
+            manualInput.value = Array.from(activeFilters[col]).join(', ');
+        }
+    }
+}
+
+// ========== КОПИРОВАНИЕ ЗНАЧЕНИЙ ИЗ ТАБЛИЦЫ ==========
+let selectionStartCell = null;
+let isSelecting = false;
+
+// Выделение ячеек мышкой
+document.getElementById('licensesTable').addEventListener('mousedown', (e) => {
+    const cell = e.target.closest('td');
+    if (!cell) return;
+    
+    // Очищаем предыдущее выделение
+    clearSelection();
+    
+    selectionStartCell = cell;
+    isSelecting = true;
+    
+    cell.classList.add('selected-cell');
+    e.preventDefault();
+});
+
+document.addEventListener('mousemove', (e) => {
+    if (!isSelecting) return;
+    
+    const cell = e.target.closest('td');
+    if (!cell) return;
+    
+    clearSelection();
+    selectRange(selectionStartCell, cell);
+});
+
+document.addEventListener('mouseup', () => {
+    isSelecting = false;
+});
+
+// Копирование выделенных ячеек (Ctrl+C)
+document.addEventListener('copy', (e) => {
+    const selectedCells = document.querySelectorAll('.selected-cell');
+    if (selectedCells.length === 0) return;
+    
+    // Собираем данные в формате таблицы
+    const rows = new Map();
+    selectedCells.forEach(cell => {
+        const rowIndex = cell.parentElement.rowIndex;
+        const cellIndex = cell.cellIndex;
+        if (!rows.has(rowIndex)) rows.set(rowIndex, new Map());
+        
+        // Берём полное значение из data-full-value если есть, иначе текст
+        let fullValue = cell.getAttribute('data-full-value');
+        if (!fullValue) {
+            fullValue = cell.innerText;
+        }
+        rows.get(rowIndex).set(cellIndex, fullValue);
+    });
+    
+    // Формируем текст для копирования
+    const copyText = [];
+    const sortedRows = Array.from(rows.keys()).sort((a,b) => a - b);
+    sortedRows.forEach(rowIdx => {
+        const rowCells = Array.from(rows.get(rowIdx).keys()).sort((a,b) => a - b);
+        const rowText = rowCells.map(colIdx => rows.get(rowIdx).get(colIdx)).join('\t');
+        copyText.push(rowText);
+    });
+    
+    e.clipboardData.setData('text/plain', copyText.join('\n'));
+    e.preventDefault();
+    
+    // Визуальный фидбек
+    const statusDiv = document.createElement('div');
+    statusDiv.textContent = `✅ Скопировано ${selectedCells.length} ячеек`;
+    statusDiv.style.cssText = 'position: fixed; bottom: 20px; right: 20px; background: var(--huawei-red); color: white; padding: 8px 16px; border-radius: 8px; z-index: 9999; font-size: 12px;';
+    document.body.appendChild(statusDiv);
+    setTimeout(() => statusDiv.remove(), 1500);
+});
+
+function clearSelection() {
+    document.querySelectorAll('.selected-cell').forEach(cell => {
+        cell.classList.remove('selected-cell');
+    });
+}
+
+function selectRange(startCell, endCell) {
+    const startRow = startCell.parentElement.rowIndex;
+    const startCol = startCell.cellIndex;
+    const endRow = endCell.parentElement.rowIndex;
+    const endCol = endCell.cellIndex;
+    
+    const minRow = Math.min(startRow, endRow);
+    const maxRow = Math.max(startRow, endRow);
+    const minCol = Math.min(startCol, endCol);
+    const maxCol = Math.max(startCol, endCol);
+    
+    const table = document.getElementById('licensesTable');
+    for (let r = minRow; r <= maxRow; r++) {
+        for (let c = minCol; c <= maxCol; c++) {
+            const cell = table.rows[r]?.cells[c];
+            if (cell && !cell.classList.contains('checkbox-col')) {
+                cell.classList.add('selected-cell');
+            }
+        }
+    }
+}
+
+// Добавляем стили для выделенных ячеек
+const style = document.createElement('style');
+style.textContent = `
+    .selected-cell {
+        background: var(--huawei-red) !important;
+        color: white !important;
+        user-select: none;
+    }
+    .licenses-table td {
+        user-select: text;
+        cursor: cell;
+    }
+`;
+document.head.appendChild(style);
+
+
+
+
+document.addEventListener('DOMContentLoaded', () => {
+    // ========== ОСНОВНАЯ ИНИЦИАЛИЗАЦИЯ ==========
+    initFilters();
+    initSorting();
+    loadPresets();
+    loadColorSettings();
+    applyColorGrouping();
+    checkPendingSync();
+    loadColumnOrder();
+    initColumnDragAndDrop();
+    updateActiveFiltersDisplay();
+    initSettingsTabs();
+    loadAppearanceSettings();
+    
+    // ========== RESIZE КОЛОНОК ==========
+    setTimeout(() => {
+        initResizableColumns();
+    }, 100);
+    
+    // ========== ЗАКРЫТИЕ ДРОПДАУНОВ ПРИ КЛИКЕ ВНЕ ==========
+    // Закрытие дропдауна предустановок
+// Закрытие выпадающих списков фильтров при клике вне
+document.addEventListener('click', (e) => {
+    // Закрываем все дропдауны фильтров
+    document.querySelectorAll('.filter-dropdown').forEach(dropdown => {
+        if (!dropdown.contains(e.target) && !dropdown.previousElementSibling?.contains(e.target)) {
+            dropdown.style.display = 'none';
+        }
+    });
+    
+    // Закрываем панель настроек колонок
+    const panel = document.getElementById('columnSettingsPanel');
+    const btn = document.getElementById('columnSettingsBtn');
+    if (panel && btn && !panel.contains(e.target) && !btn.contains(e.target)) {
+        panel.style.display = 'none';
+        panel.classList.remove('show');
+    }
+    
+    // Закрываем дропдаун предустановок
+    if (!e.target.closest('.presets-container')) {
+        const dropdown = document.getElementById('presetsDropdown');
+        if (dropdown) dropdown.style.display = 'none';
+    }
+});
+    
+    // Закрытие панели настроек колонок
+    document.addEventListener('click', (e) => {
+        const panel = document.getElementById('columnSettingsPanel');
+        const btn = document.getElementById('columnSettingsBtn');
+        if (panel && btn && !panel.contains(e.target) && !btn.contains(e.target)) {
+            panel.style.display = 'none';
+            panel.classList.remove('show');
+        }
+    });
+});
+
+</script>
+{% endblock %}

@@ -1,0 +1,113 @@
+{% extends "base.html" %}
+
+{% block title %}Шаблоны отчётов{% endblock %}
+
+{% block content %}
+<div class="card">
+    <h1>📋 Шаблоны отчётов</h1>
+    
+    <!-- Создание нового шаблона -->
+    <div class="card" style="margin-bottom: 1rem;">
+        <h3>➕ Создать новый шаблон</h3>
+        <form method="post" action="/{{ current_operator }}/report_templates">
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
+                <div class="filter-group">
+                    <label>Название шаблона</label>
+                    <input type="text" name="name" class="filter-select" required>
+                </div>
+                <div class="filter-group">
+                    <label>Описание</label>
+                    <input type="text" name="description" class="filter-select">
+                </div>
+            </div>
+            
+            <h4 style="margin-top: 1rem;">🔍 Фильтры</h4>
+            <div style="display: flex; gap: 1rem; flex-wrap: wrap;">
+                <div class="filter-group">
+                    <label>NE тип</label>
+                    <select name="filters_ne_type" class="filter-select">
+                        <option value="">Все</option>
+                        {% for ne in ne_types %}
+                        <option value="{{ ne }}">{{ ne }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="filter-group">
+                    <label>Город</label>
+                    <select name="filters_city" class="filter-select">
+                        <option value="">Все</option>
+                        {% for city in cities %}
+                        <option value="{{ city }}">{{ city }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="filter-group">
+                    <label>Статус</label>
+                    <select name="filters_status" class="filter-select">
+                        <option value="">Все</option>
+                        <option value="active">Действующие</option>
+                        <option value="expiring_30">Истекают через 30 дней</option>
+                        <option value="expired">Истекшие</option>
+                    </select>
+                </div>
+            </div>
+            
+            <h4 style="margin-top: 1rem;">📊 Колонки для отображения</h4>
+            <div style="display: flex; gap: 1rem; flex-wrap: wrap;">
+                <label><input type="checkbox" name="columns" value="lsn"> LSN</label>
+                <label><input type="checkbox" name="columns" value="product"> Продукт</label>
+                <label><input type="checkbox" name="columns" value="version"> Версия</label>
+                <label><input type="checkbox" name="columns" value="ne_type"> NE тип</label>
+                <label><input type="checkbox" name="columns" value="city"> Город</label>
+                <label><input type="checkbox" name="columns" value="site"> Сайт</label>
+                <label><input type="checkbox" name="columns" value="year"> Год</label>
+                <label><input type="checkbox" name="columns" value="valid_date"> Срок действия</label>
+            </div>
+            
+            <button type="submit" class="btn-primary" style="margin-top: 1rem;">💾 Сохранить шаблон</button>
+        </form>
+    </div>
+    
+    <!-- Список шаблонов -->
+    <h3>📁 Сохранённые шаблоны</h3>
+    <div class="table-wrapper">
+        <table>
+            <thead>
+                <tr><th>Название</th><th>Описание</th><th>Создан</th><th>Действия</th></tr>
+            </thead>
+            <tbody>
+                {% for template in templates %}
+                <tr>
+                    <td>{{ template.name }}</td>
+                    <td>{{ template.description or '-' }}</td>
+                    <td>{{ template.created_by }}<br><small>{{ template.created_at[:16] }}</small></td>
+                    <td>
+                        <button class="use-template" data-id="{{ template.id }}" style="background: #10B981;">📊 Применить</button>
+                        <button class="delete-template" data-id="{{ template.id }}" style="background: #dc3545;">🗑️ Удалить</button>
+                    </td>
+                </tr>
+                {% else %}
+                <tr><td colspan="4" class="text-center">Нет сохранённых шаблонов</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<script>
+    document.querySelectorAll('.use-template').forEach(btn => {
+        btn.addEventListener('click', () => {
+            window.location.href = `/{{ current_operator }}/reports?template=${btn.dataset.id}`;
+        });
+    });
+    
+    document.querySelectorAll('.delete-template').forEach(btn => {
+        btn.addEventListener('click', async () => {
+            if (confirm('Удалить шаблон?')) {
+                await fetch(`/{{ current_operator }}/report_templates/${btn.dataset.id}`, { method: 'DELETE' });
+                location.reload();
+            }
+        });
+    });
+</script>
+{% endblock %}

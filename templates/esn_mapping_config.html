@@ -1,0 +1,113 @@
+{% extends "base.html" %}
+
+{% block title %}Настройка ESN маппинга{% endblock %}
+
+{% block content %}
+<div class="card">
+    <h1>⚙️ Настройка колонок ESN маппинга</h1>
+    <p class="text-muted">Укажите, в каких колонках Excel файла находятся соответствующие данные</p>
+    
+    <form id="esnMappingConfigForm">
+        <div class="config-grid" style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
+            <div class="filter-group">
+                <label>Колонка с ESN *</label>
+                <input type="text" id="col_esn" placeholder="A" value="{{ config.esn or 'A' }}" required>
+                <small>Обязательное поле</small>
+            </div>
+            <div class="filter-group">
+                <label>Колонка с LSN</label>
+                <input type="text" id="col_lsn" placeholder="B" value="{{ config.lsn or 'B' }}">
+            </div>
+            <div class="filter-group">
+                <label>Колонка с Оператором</label>
+                <input type="text" id="col_operator" placeholder="C" value="{{ config.operator or 'C' }}">
+            </div>
+            <div class="filter-group">
+                <label>Колонка с Доменом</label>
+                <input type="text" id="col_domain" placeholder="D" value="{{ config.domain or 'D' }}">
+            </div>
+            <div class="filter-group">
+                <label>Колонка с NE типом</label>
+                <input type="text" id="col_ne_type" placeholder="E" value="{{ config.ne_type or 'E' }}">
+            </div>
+            <div class="filter-group">
+                <label>Колонка с Городом</label>
+                <input type="text" id="col_city" placeholder="F" value="{{ config.city or 'F' }}">
+            </div>
+            <div class="filter-group">
+                <label>Колонка с Сайтом</label>
+                <input type="text" id="col_site" placeholder="G" value="{{ config.site or 'G' }}">
+            </div>
+        </div>
+        
+        <div class="filter-group" style="margin-top: 1rem;">
+            <label>Первая строка — заголовки?</label>
+            <input type="checkbox" id="has_header" {% if config.has_header %}checked{% endif %}>
+            <small>Если отмечено, чтение начинается со 2-й строки</small>
+        </div>
+        
+        <div style="display: flex; gap: 1rem; margin-top: 1rem;">
+            <button type="submit" class="btn-primary">💾 Сохранить настройки</button>
+            <button type="button" id="resetDefaultsBtn" class="btn-secondary">↺ Сбросить к стандарту</button>
+            <a href="/settings" class="btn-secondary">← Назад к настройкам</a>
+        </div>
+    </form>
+    
+    <div class="info-card" style="margin-top: 2rem;">
+        <h4>📌 Пример файла ESN маппинга</h4>
+        <table style="font-size: 0.7rem; width: 100%; border-collapse: collapse;">
+            <thead>
+                <tr><th>ESN</th><th>LSN</th><th>Оператор</th><th>Домен</th><th>NE тип</th><th>Город</th><th>Сайт</th></tr>
+            </thead>
+            <tbody>
+                <tr><td>ESN12345</td><td>LIC001</td><td>mts</td><td>Production</td><td>vEPC</td><td>Москва</td><td>SiteA</td></tr>
+                <tr><td>ESN67890</td><td>LIC002</td><td>veon</td><td>Lab</td><td>PSCORE</td><td>СПб</td><td>SiteB</td></tr>
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<script>
+    const form = document.getElementById('esnMappingConfigForm');
+    
+    form.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        
+        const config = {
+            esn: document.getElementById('col_esn').value.toUpperCase(),
+            lsn: document.getElementById('col_lsn').value.toUpperCase(),
+            operator: document.getElementById('col_operator').value.toUpperCase(),
+            domain: document.getElementById('col_domain').value.toUpperCase(),
+            ne_type: document.getElementById('col_ne_type').value.toUpperCase(),
+            city: document.getElementById('col_city').value.toUpperCase(),
+            site: document.getElementById('col_site').value.toUpperCase(),
+            has_header: document.getElementById('has_header').checked
+        };
+        
+        const resp = await fetch('/api/esn_mapping_config', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(config)
+        });
+        
+        if (resp.ok) {
+            alert('Настройки сохранены');
+            window.location.href = '/settings';
+        } else {
+            const error = await resp.json();
+            alert('Ошибка: ' + error.error);
+        }
+    });
+    
+    document.getElementById('resetDefaultsBtn').addEventListener('click', () => {
+        document.getElementById('col_esn').value = 'A';
+        document.getElementById('col_lsn').value = 'B';
+        document.getElementById('col_operator').value = 'C';
+        document.getElementById('col_domain').value = 'D';
+        document.getElementById('col_ne_type').value = 'E';
+        document.getElementById('col_city').value = 'F';
+        document.getElementById('col_site').value = 'G';
+        document.getElementById('has_header').checked = true;
+    });
+</script>
+{% endblock %}

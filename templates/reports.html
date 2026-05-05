@@ -1,0 +1,49 @@
+{% extends "base.html" %}
+
+{% block title %}Отчёты{% endblock %}
+
+{% block content %}
+<div class="card">
+    <h1>📊 Сравнение с эталоном</h1>
+    
+    <form method="get" style="display: flex; gap: 1rem; flex-wrap: wrap; margin-bottom: 2rem;">
+        <select name="ne_type">
+            <option value="">Выберите NE тип</option>
+            {% for ne in ne_types %}
+            <option value="{{ ne }}" {% if ne == selected_ne %}selected{% endif %}>{{ ne }}</option>
+            {% endfor %}
+        </select>
+        <select name="city">
+            <option value="">Выберите город</option>
+            {% for city in cities %}
+            <option value="{{ city }}" {% if city == selected_city %}selected{% endif %}>{{ city }}</option>
+            {% endfor %}
+        </select>
+        <select name="site">
+            <option value="">Выберите сайт</option>
+            {% for ne, city, site in sites %}
+            <option value="{{ site }}" {% if site == selected_site %}selected{% endif %}>{{ ne }}/{{ city }}/{{ site }}</option>
+            {% endfor %}
+        </select>
+        <input type="text" name="year" placeholder="Год (2028)" value="{{ selected_year or '' }}">
+        <button type="submit">Сравнить</button>
+    </form>
+    
+    {% if comparison %}
+    <table>
+        <thead><tr><th>CapacityKey</th><th>Цель</th><th>Факт</th><th>Отклонение</th><th>Статус</th></tr></thead>
+        <tbody>
+            {% for item in comparison %}
+            <tr style="background: {% if item.deviation < 0 %}#ffebee{% elif item.deviation < 10 %}#fff3e0{% endif %};">
+                <td>{{ item.capacity_key }}</td>
+                <td>{{ item.target_value }}</td>
+                <td>{{ item.actual_value }}</td>
+                <td style="color: {% if item.deviation < 0 %}red{% else %}green{% endif %};">{{ item.deviation }}%</td>
+                <td>{% if item.deviation < 0 %}🔴 НЕ ХВАТАЕТ{% elif item.deviation < 10 %}🟠 МАЛО{% else %}🟢 ДОСТАТОЧНО{% endif %}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% endif %}
+</div>
+{% endblock %}
