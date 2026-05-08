@@ -37,12 +37,13 @@ def get_connection(db_path=None):
     conn.execute("PRAGMA synchronous=NORMAL")
     return conn
 
-def init_local_db():
-    """Инициализация локальной БД"""
-    conn = get_connection()
-    cursor = conn.cursor()
+def init_local_db(db_path=None):
+    """Инициализация локальной БД со всеми таблицами и индексами"""
+    if db_path is None:
+        db_path = _DB_PATH
     
-    # ... (остальной код CREATE TABLE без изменений)
+    conn = get_connection(db_path)
+    cursor = conn.cursor()
     
     # Таблица лицензий
     cursor.execute('''
@@ -64,6 +65,8 @@ def init_local_db():
             valid_date TEXT,
             last_modified TEXT,
             modified_by TEXT,
+            domain TEXT,
+            parsed_cache TEXT,
             UNIQUE(operator, ne_type, city, site, year, lsn)
         )
     ''')
@@ -116,12 +119,14 @@ def init_local_db():
             esn TEXT UNIQUE,
             lsn TEXT,
             operator TEXT,
+            domain TEXT,
             ne_type TEXT,
             city TEXT,
             site TEXT
         )
     ''')
     
+    # Таблица тегов
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS tags (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -130,7 +135,8 @@ def init_local_db():
             created_at TEXT
         )
     ''')
-
+    
+    # Таблица связи лицензий с тегами
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS license_tags (
             license_id INTEGER,
@@ -140,7 +146,8 @@ def init_local_db():
             PRIMARY KEY (license_id, tag_id)
         )
     ''')
-
+    
+    # Таблица комментариев
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS comments (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -151,23 +158,72 @@ def init_local_db():
             FOREIGN KEY (license_id) REFERENCES licenses(id)
         )
     ''')
-
+    
+    # Таблица шаблонов отчётов
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS report_templates (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             name TEXT,
             description TEXT,
-            filters TEXT,  -- JSON с фильтрами
-            columns TEXT,  -- JSON с выбранными колонками
+            filters TEXT,
+            columns TEXT,
             created_by TEXT,
             created_at TEXT
         )
     ''')
     
+    # Таблица динамических колонок
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS dynamic_columns (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            column_name TEXT UNIQUE NOT NULL,
+            display_name TEXT NOT NULL,
+            rule_id TEXT,
+            capacity_key TEXT,
+            aggregation_strategy TEXT DEFAULT 'sum',
+            join_separator TEXT DEFAULT ', ',
+            is_active INTEGER DEFAULT 1,
+            created_at TEXT,
+            updated_at TEXT
+        )
+    ''')
+    
+    # Таблица значений динамических полей
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS dynamic_values (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            license_id INTEGER NOT NULL,
+            column_id INTEGER NOT NULL,
+            value TEXT,
+            FOREIGN KEY (license_id) REFERENCES licenses(id) ON DELETE CASCADE,
+            FOREIGN KEY (column_id) REFERENCES dynamic_columns(id) ON DELETE CASCADE,
+            UNIQUE(license_id, column_id)
+        )
+    ''')
+    
+    # ========== ИНДЕКСЫ ДЛЯ УСКОРЕНИЯ ==========
+    cursor.execute('CREATE INDEX IF NOT EXISTS idx_licenses_operator_esn ON licenses(operator, esn)')
+    cursor.execute('CREATE INDEX IF NOT EXISTS idx_licenses_valid_date ON licenses(valid_date)')
+    cursor.execute('CREATE INDEX IF NOT EXISTS idx_licenses_esn_valid ON licenses(esn, valid_date)')
+    cursor.execute('CREATE INDEX IF NOT EXISTS idx_licenses_operator_ne_type ON licenses(operator, ne_type)')
+    cursor.execute('CREATE INDEX IF NOT EXISTS idx_licenses_lsn ON licenses(lsn)')
+    cursor.execute('CREATE INDEX IF NOT EXISTS idx_resources_license_id ON resources(license_id)')
+    cursor.execute('CREATE INDEX IF NOT EXISTS idx_resources_capacity_key ON resources(capacity_key)')
+    cursor.execute('CREATE INDEX IF NOT EXISTS idx_dynamic_values_license_id ON dynamic_values(license_id)')
+    cursor.execute('CREATE INDEX IF NOT EXISTS idx_comments_license_id ON comments(license_id)')
+    cursor.execute('CREATE INDEX IF NOT EXISTS idx_license_tags_license_id ON license_tags(license_id)')
+    
+    # Уникальный индекс с domain
+    cursor.execute("DROP INDEX IF EXISTS idx_licenses_unique")
+    cursor.execute('''
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_licenses_unique 
+        ON licenses(operator, domain, ne_type, city, site, year, lsn)
+    ''')
+    
     conn.commit()
     conn.close()
-    logger.info("Локальная БД инициализирована")
-
+    logger.info(f"Локальная БД инициализирована: {db_path}")
+    
 def add_change_history(table_name, record_id, action, old_value, new_value, changed_by):
     """Добавляет запись в историю изменений"""
     conn = get_connection()
@@ -549,17 +605,16 @@ def get_license_by_id(license_id):
         'resources': [{'name': r[0], 'value': r[1], 'valid_date': r[2]} for r in resources]
     }
     
-def get_unique_esn_licenses(operator, selected_columns=None):
+def get_unique_esn_licenses(operator):
     """
-    Возвращает уникальные ESN с самой актуальной лицензией для каждого ESN
-    Группировка по ESN, выбор самой свежей лицензии (по create_time или valid_date)
+    Возвращает уникальные ESN с самой актуальной лицензией
     """
     conn = get_connection()
     cursor = conn.cursor()
     
-    # Получаем все лицензии, группируем по ESN, выбираем самую свежую
+    # Более простой и быстрый запрос
     cursor.execute('''
-        SELECT DISTINCT 
+        SELECT 
             l1.id,
             l1.operator,
             l1.ne_type,
@@ -576,15 +631,23 @@ def get_unique_esn_licenses(operator, selected_columns=None):
             l1.filename,
             l1.domain
         FROM licenses l1
-        INNER JOIN (
-            SELECT esn, MAX(create_time) as max_create_time
-            FROM licenses
-            WHERE operator = ? AND esn IS NOT NULL AND esn != ''
-            GROUP BY esn
-        ) l2 ON l1.esn = l2.esn AND l1.create_time = l2.max_create_time
-        WHERE l1.operator = ? AND l1.esn IS NOT NULL AND l1.esn != ''
+        WHERE l1.operator = ? 
+        AND l1.esn IS NOT NULL 
+        AND l1.esn != ''
+        AND l1.id = (
+            SELECT l2.id FROM licenses l2
+            WHERE l2.esn = l1.esn
+            AND l2.operator = l1.operator
+            ORDER BY 
+                CASE 
+                    WHEN l2.valid_date != 'PERMANENT' AND l2.valid_date != 'UNKNOWN' THEN l2.valid_date 
+                    ELSE '0000-00-00'
+                END DESC,
+                l2.create_time DESC
+            LIMIT 1
+        )
         ORDER BY l1.ne_type, l1.city, l1.esn
-    ''', (operator, operator))
+    ''', (operator,))
     
     rows = cursor.fetchall()
     conn.close()
@@ -606,27 +669,32 @@ def get_unique_esn_licenses(operator, selected_columns=None):
             'create_time': row[11],
             'valid_date': row[12],
             'filename': row[13],
-            'domain': row[14] if row[14] else None  # ← ключевое изменение
+            'domain': row[14]
         })
     
     return licenses
 
 def get_all_licenses_for_esn(operator, esn):
-    """Получает все лицензии для конкретного ESN (для детальной страницы)"""
+    """Получает все лицензии для конкретного ESN (с ресурсами из parsed_cache)"""
     conn = get_connection()
     cursor = conn.cursor()
     cursor.execute('''
-        SELECT id, lsn, filename, product, version, create_time, valid_date, year
+        SELECT id, lsn, filename, product, version, create_time, valid_date, year, parsed_cache
         FROM licenses
         WHERE operator = ? AND esn = ?
-        ORDER BY create_time DESC
+        ORDER BY 
+            CASE 
+                WHEN valid_date != 'PERMANENT' AND valid_date != 'UNKNOWN' THEN valid_date 
+                ELSE '0000-00-00'
+            END DESC,
+            create_time DESC
     ''', (operator, esn))
     rows = cursor.fetchall()
     conn.close()
     
     licenses = []
     for row in rows:
-        licenses.append({
+        lic = {
             'id': row[0],
             'lsn': row[1],
             'filename': row[2],
@@ -635,10 +703,22 @@ def get_all_licenses_for_esn(operator, esn):
             'create_time': row[5],
             'valid_date': row[6],
             'year': row[7]
-        })
+        }
+        
+        # Извлекаем ресурсы из parsed_cache
+        if len(row) > 8 and row[8]:
+            try:
+                import json
+                parsed_cache = json.loads(row[8]) if isinstance(row[8], str) else row[8]
+                lic['resources'] = parsed_cache.get('resources', [])
+            except:
+                lic['resources'] = []
+        else:
+            lic['resources'] = []
+        
+        licenses.append(lic)
     
     return licenses
-
 def save_base_target(operator, ne_type, city, site, capacity_key, target_value, updated_by):
     """Сохраняет базовую цель"""
     conn = get_connection()
@@ -1505,7 +1585,7 @@ def reset_and_recreate_db():
     
     # Закрываем все соединения
     try:
-        conn = sqlite3.connect(db_path)
+        conn = sqlite3.connect(db_path, timeout=60.0)
         conn.close()
     except:
         pass

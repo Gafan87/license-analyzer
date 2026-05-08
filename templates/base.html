@@ -168,10 +168,19 @@
         {% block content %}{% endblock %}
     </div>
     
-    <script>
-        // ========== УПРАВЛЕНИЕ ТЕМОЙ ==========
-        
+    <script>        
 // ========== УПРАВЛЕНИЕ ТЕМОЙ ==========
+
+// Применяем тему ДО загрузки CSS
+(function() {
+    const savedTheme = localStorage.getItem('theme');
+    const systemDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+    const isDark = savedTheme === 'dark' || (savedTheme === 'auto' && systemDark) || (!savedTheme && systemDark);
+    if (isDark) {
+        document.documentElement.classList.add('dark');
+        document.body.classList.add('dark');
+    }
+})();
 
 // Определение системной темы
 function getSystemTheme() {

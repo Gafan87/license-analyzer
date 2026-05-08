@@ -4,14 +4,24 @@
 
 {% block extra_css %}
 <style>
-/* Двухколоночный макет */
+/* Двухколоночный макет - Левая колонка (Ресурсы), Правая колонка (всё остальное) */
 .license-detail-container {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
+    display: flex;
+    gap: 1.5rem;
+    align-items: stretch;
+}
+
+.left-column {
+    flex: 1;
+    width: 50%;
+    display: flex;
+    flex-direction: column;
     gap: 1.5rem;
 }
 
-.left-column, .right-column {
+.right-column {
+    flex: 1;
+    width: 50%;
     display: flex;
     flex-direction: column;
     gap: 1.5rem;
@@ -76,7 +86,7 @@
     word-break: break-all;
 }
 
-/* Ресурсы */
+/* Ресурсы - теперь в левой колонке, занимают больше места */
 .resources-table {
     width: 100%;
     border-collapse: collapse;
@@ -211,13 +221,18 @@
     transform: translateX(-3px);
 }
 
-    /* Стиль для выбранной версии */
-    .selected-version {
-        background: var(--huawei-red-light, rgba(230, 0, 18, 0.1));
-    }
-    .info-block:has(.fa-code-branch) .resources-table tbody tr:hover {
-        background: var(--bg-hover);
-    }
+/* Стиль для выбранной версии LSN */
+.selected-version {
+    background: var(--huawei-red-light, rgba(230, 0, 18, 0.1));
+}
+
+.version-table tbody tr {
+    cursor: pointer;
+}
+
+.version-table tbody tr:hover {
+    background: var(--bg-hover);
+}
 
 /* Адаптивность */
 @media (max-width: 768px) {
@@ -240,43 +255,18 @@
 </a>
 
 <div class="license-detail-container">
-    <!-- Левая колонка -->
+    <!-- ЛЕВАЯ КОЛОНКА: Ресурсы (CapacityKey) -->
     <div class="left-column">
-       
-        <!-- Основная информация -->
-        <div class="info-block">
-            <div class="info-block-header">
-                <i class="fas fa-info-circle"></i> Основная информация
-            </div>
-            <div class="info-block-content">
-                <table class="info-table">
-                    <tr><td>LSN</td><td><code>{{ license.lsn or '-' }}</code></td></tr>
-                    <tr><td>Продукт</td><td>{{ license.product or '-' }}</td></tr>
-                    <tr><td>Версия</td><td>{{ license.version or '-' }}</td></tr>
-                    <tr><td>Оператор</td><td>{{ license.operator or '-' }}</td></tr>
-                    <tr><td>NE тип</td><td>{{ license.ne_type or '-' }}</td></tr>
-                    <tr><td>Город</td><td>{{ license.city or '-' }}</td></tr>
-                    <tr><td>Сайт</td><td>{{ license.site or '-' }}</td></tr>
-                    <tr><td>Год действия</td><td>{% if license.year == 'permanent' %}♾️ бессрочная{% else %}{{ license.year or '-' }}{% endif %}</td></tr>
-                    <tr><td>Дата создания</td><td>{{ license.create_time or '-' }}</td></tr>
-                    <tr><td>ESN</td><td><code>{{ license.esn or '-' }}</code></td></tr>
-                    <tr><td>Узел</td><td>{{ license.node or '-' }}</td></tr>
-                    <tr><td>Имя файла</td><td><code>{{ license.filename or '-' }}</code></td></tr>
-                </table>
-            </div>
-        </div>
-        
-        <!-- Ресурсы -->
         <div class="info-block">
             <div class="info-block-header">
                 <i class="fas fa-chart-bar"></i> Ресурсы (CapacityKey)
             </div>
             <div class="info-block-content" style="padding: 0;">
-                <table class="resources-table">
+                <table class="resources-table" id="resourcesTable">
                     <thead>
-                        <tr><th>CapacityKey</th><th>Значение</th><th>Действителен до</th></tr>
+                        <tr><th>CapacityKey</th><th>Значение</th><th>Действителен до</th><th>Описание</th></tr>
                     </thead>
-                    <tbody>
+                    <tbody id="resourcesTableBody">
                         {% for res in license.resources %}
                         <tr>
                             <td><code>{{ res.name }}</code></td>
@@ -293,12 +283,15 @@
                                 </small>
                             </td>
                         </tr>
+                        {% else %}
+                        <tr><td colspan="4" class="text-center">Нет ресурсов</td></tr>
                         {% endfor %}
                     </tbody>
                 </table>
             </div>
         </div>
-        <!-- ДИНАМИЧЕСКИЕ ПОЛЯ-->
+        
+        <!-- ДИНАМИЧЕСКИЕ ПОЛЯ -->
         <div class="info-block">
             <div class="info-block-header">
                 <i class="fas fa-puzzle-piece"></i> Дополнительные поля
@@ -318,8 +311,59 @@
         </div>
     </div>
     
-    <!-- Правая колонка -->
+    <!-- ПРАВАЯ КОЛОНКА: Основная информация, Версии, Теги, Комментарии -->
     <div class="right-column">
+        <!-- Основная информация -->
+        <div class="info-block">
+            <div class="info-block-header">
+                <i class="fas fa-info-circle"></i> Основная информация
+            </div>
+            <div class="info-block-content">
+                <table class="info-table">
+                    <tr><td>LSN</td><td><code>{{ license.lsn or '-' }}</code></td></tr>
+                    <tr><td>Продукт</td><td>{{ license.product or '-' }}</td></tr>
+                    <tr><td>Версия</td><td>{{ license.version or '-' }}</td></tr>
+                    <tr><td>Оператор</td><td>{{ license.operator or '-' }}</td></tr>
+                    <tr><td>NE тип</td><td>{{ license.ne_type or '-' }}</td></tr>
+                    <tr><td>Город</td><td>{{ license.city or '-' }}</td></tr>
+                    <tr><td>Сайт</td><td>{{ license.site or '-' }}</td></tr>
+                    <tr><td>Год действия</td><td>{% if license.year == 'permanent' %}♾️ бессрочная{% else %}{{ license.year or '-' }}{% endif %}</td></tr>
+                    <tr><td>Действует до</td><td>{{ license.valid_date or '-' }}</td></tr>
+                    <tr><td>Дата создания</td><td>{{ license.create_time or '-' }}</td></tr>
+                    <tr><td>ESN</td><td><code>{{ license.esn or '-' }}</code></td></tr>
+                    <tr><td>Домен</td><td>{{ license.domain or '-' }}</td></tr>
+                    <tr><td>Узел</td><td>{{ license.node or '-' }}</td></tr>
+                    <tr><td>Имя файла</td><td><code>{{ license.filename or '-' }}</code></td></tr>
+                </table>
+            </div>
+        </div>
+        
+        <!-- Все версии (LSN) для ESN -->
+        <div class="info-block">
+            <div class="info-block-header">
+                <i class="fas fa-code-branch"></i> Все версии (LSN) для ESN {{ esn }}
+            </div>
+            <div class="info-block-content" style="padding: 0;">
+                <table class="resources-table version-table">
+                    <thead>
+                        <tr><th>LSN</th><th>Файл</th><th>Продукт</th><th>Версия</th><th>Создан</th><th>Действует до</th></tr>
+                    </thead>
+                    <tbody>
+                        {% for lic in all_licenses_for_esn %}
+                        <tr data-license-id="{{ lic.id }}" data-resources='{{ lic.resources|tojson|safe if lic.resources else "[]" }}'>
+                            <td><code>{{ lic.lsn or '-' }}</code></td>
+                            <td>{{ lic.filename or '-' }}</td>
+                            <td>{{ lic.product or '-' }}</td>
+                            <td>{{ lic.version or '-' }}</td>
+                            <td>{{ lic.create_time or '-' }}</td>
+                            <td>{{ lic.valid_date or '-' }}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+        
         <!-- Теги -->
         <div class="info-block">
             <div class="info-block-header">
@@ -339,6 +383,7 @@
                 </div>
             </div>
         </div>
+        
         <!-- Комментарии -->
         <div class="info-block">
             <div class="info-block-header">
@@ -370,34 +415,8 @@
                 </form>
             </div>
         </div>
-
-        <!-- Добавить после блока с ресурсами в левой колонке или в правой колонке -->
-        <div class="info-block">
-            <div class="info-block-header">
-                <i class="fas fa-code-branch"></i> Все версии (LSN) для ESN {{ esn }}
-            </div>
-            <div class="info-block-content" style="padding: 0;">
-                <table class="resources-table">
-                    <thead>
-                        <tr><th>LSN</th><th>Файл</th><th>Продукт</th><th>Версия</th><th>Создан</th><th>Действует до</th></tr>
-                    </thead>
-                    <tbody>
-                        {% for lic in all_licenses_for_esn %}
-                        <tr data-license-id="{{ lic.id }}" style="cursor: pointer;">
-                            <td><code>{{ lic.lsn or '-' }}</code></td>
-                            <td>{{ lic.filename or '-' }}</td>
-                            <td>{{ lic.product or '-' }}</td>
-                            <td>{{ lic.version or '-' }}</td>
-                            <td>{{ lic.create_time or '-' }}</td>
-                            <td>{{ lic.valid_date or '-' }}</td>
-                        </tr>
-                        {% endfor %}
-                    </tbody>
-                </table>
-            </div>
-        </div>
         
-        <!-- Дополнительная информация (можно добавить позже) -->
+        <!-- Дополнительная информация -->
         <div class="info-block">
             <div class="info-block-header">
                 <i class="fas fa-history"></i> Дополнительно
@@ -416,7 +435,7 @@
 </div>
 
 <script>
-    // Добавление тега
+    // ========== РАБОТА С ТЕГАМИ ==========
     document.getElementById('addTagBtn')?.addEventListener('click', async () => {
         const tagName = prompt('Введите название тега:');
         if (tagName && tagName.trim()) {
@@ -427,7 +446,6 @@
             });
             const data = await resp.json();
             if (data.success) {
-                // Добавляем тег к лицензии
                 const addResp = await fetch(`/{{ current_operator }}/license/{{ license.id }}/tags/add`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
@@ -442,7 +460,6 @@
         }
     });
     
-    // Удаление тега
     document.querySelectorAll('.tag-remove').forEach(btn => {
         btn.addEventListener('click', async () => {
             const tagId = btn.dataset.tagId;
@@ -457,60 +474,19 @@
         });
     });
 
-    // ========== ДИНАМИЧЕСКАЯ ЗАГРУЗКА РЕСУРСОВ ПРИ ВЫБОРЕ LSN ==========
+    // ========== ЗАГРУЗКА РЕСУРСОВ ПРИ ВЫБОРЕ LSN ==========
+    const resourcesCache = {};
+    const resourcesTableBody = document.getElementById('resourcesTableBody');
     
-    // Функция загрузки ресурсов для выбранной лицензии
-    async function loadLicenseResources(licenseId) {
-        try {
-            // Показываем индикатор загрузки
-            const resourcesTable = document.querySelector('.resources-table tbody');
-            if (resourcesTable) {
-                resourcesTable.innerHTML = '<tr><td colspan="4" class="text-center">⏳ Загрузка ресурсов...</td></tr>';
-            }
-            
-            const response = await fetch(`/api/license/${licenseId}/resources`);
-            const data = await response.json();
-            
-            if (response.ok) {
-                // Обновляем ресурсы
-                updateResourcesTable(data.resources);
-                
-                // Обновляем динамические поля
-                updateDynamicFields(data.dynamic_values);
-                
-                // Обновляем valid_date и year
-                if (data.valid_date) {
-                    const validDateElement = document.querySelector('.info-table td:contains("Действует до") + td');
-                    if (validDateElement) {
-                        validDateElement.textContent = data.valid_date;
-                    }
-                }
-            } else {
-                console.error('Ошибка загрузки ресурсов:', data.error);
-                if (resourcesTable) {
-                    resourcesTable.innerHTML = '<tr><td colspan="4" class="text-center">❌ Ошибка загрузки ресурсов</td></tr>';
-                }
-            }
-        } catch (error) {
-            console.error('Ошибка:', error);
-            const resourcesTable = document.querySelector('.resources-table tbody');
-            if (resourcesTable) {
-                resourcesTable.innerHTML = '<tr><td colspan="4" class="text-center">❌ Ошибка загрузки ресурсов</td></tr>';
-            }
-        }
-    }
-    
-    // Функция обновления таблицы ресурсов
     function updateResourcesTable(resources) {
-        const resourcesTable = document.querySelector('.resources-table tbody');
-        if (!resourcesTable) return;
+        if (!resourcesTableBody) return;
         
         if (!resources || resources.length === 0) {
-            resourcesTable.innerHTML = '<tr><td colspan="4" class="text-center">Нет ресурсов</td></tr>';
+            resourcesTableBody.innerHTML = '<tr><td colspan="4" class="text-center">Нет ресурсов</td></tr>';
             return;
         }
         
-        resourcesTable.innerHTML = resources.map(res => `
+        resourcesTableBody.innerHTML = resources.map(res => `
             <tr>
                 <td><code>${escapeHtml(res.name || '')}</code></td>
                 <td>${res.value || 0}</td>
@@ -524,28 +500,9 @@
         `).join('');
     }
     
-    // Функция обновления динамических полей
-    function updateDynamicFields(dynamicValues) {
-        const dynamicFieldsTable = document.querySelector('.info-block:has(.fa-puzzle-piece) .info-table tbody');
-        if (!dynamicFieldsTable) return;
-        
-        if (!dynamicValues || Object.keys(dynamicValues).length === 0) {
-            dynamicFieldsTable.innerHTML = '<tr><td colspan="2" class="text-muted">Нет дополнительных полей</td></tr>';
-            return;
-        }
-        
-        dynamicFieldsTable.innerHTML = Object.entries(dynamicValues).map(([name, data]) => `
-            <tr>
-                <td>${escapeHtml(data.display_name || name)}</td>
-                <td>${escapeHtml(data.value || '-')}</td>
-            </tr>
-        `).join('');
-    }
-    
-    // Вспомогательная функция для экранирования HTML
     function escapeHtml(str) {
         if (!str) return '';
-        return str.replace(/[&<>]/g, function(m) {
+        return String(str).replace(/[&<>]/g, function(m) {
             if (m === '&') return '&amp;';
             if (m === '<') return '&lt;';
             if (m === '>') return '&gt;';
@@ -553,30 +510,51 @@
         });
     }
     
-    // Добавляем обработчики на строки с LSN в таблице "Все версии"
+    async function loadLicenseResources(licenseId) {
+        if (resourcesTableBody) {
+            resourcesTableBody.innerHTML = '<tr><td colspan="4" class="text-center">⏳ Загрузка ресурсов...</td></tr>';
+        }
+        
+        if (resourcesCache[licenseId]) {
+            updateResourcesTable(resourcesCache[licenseId]);
+            return;
+        }
+        
+        try {
+            const response = await fetch(`/api/license/${licenseId}/resources`);
+            const data = await response.json();
+            
+            if (response.ok) {
+                resourcesCache[licenseId] = data.resources || [];
+                updateResourcesTable(data.resources || []);
+            } else {
+                console.error('Ошибка загрузки ресурсов:', data.error);
+                if (resourcesTableBody) {
+                    resourcesTableBody.innerHTML = '<tr><td colspan="4" class="text-center">❌ Ошибка загрузки ресурсов</td></tr>';
+                }
+            }
+        } catch (error) {
+            console.error('Ошибка:', error);
+            if (resourcesTableBody) {
+                resourcesTableBody.innerHTML = '<tr><td colspan="4" class="text-center">❌ Ошибка загрузки ресурсов</td></tr>';
+            }
+        }
+    }
+    
     document.addEventListener('DOMContentLoaded', function() {
-        const rows = document.querySelectorAll('.info-block:has(.fa-code-branch) .resources-table tbody tr');
-        rows.forEach(row => {
-            row.style.cursor = 'pointer';
+        const versionRows = document.querySelectorAll('.version-table tbody tr');
+        versionRows.forEach(row => {
             row.addEventListener('click', function(e) {
-                // Не срабатывает при клике на ссылки или кнопки внутри
                 if (e.target.tagName === 'A' || e.target.tagName === 'BUTTON') return;
                 
-                // Находим ID лицензии (можно добавить data-id в строку)
-                const firstCell = this.querySelector('td:first-child');
-                if (firstCell) {
-                    // Ищем ID - можно добавить data-id атрибут при рендеринге
-                    const licenseId = this.getAttribute('data-license-id');
-                    if (licenseId) {
-                        // Убираем подсветку с других строк
-                        rows.forEach(r => r.classList.remove('selected-version'));
-                        this.classList.add('selected-version');
-                        loadLicenseResources(parseInt(licenseId));
-                    }
+                const licenseId = this.getAttribute('data-license-id');
+                if (licenseId) {
+                    versionRows.forEach(r => r.classList.remove('selected-version'));
+                    this.classList.add('selected-version');
+                    loadLicenseResources(parseInt(licenseId));
                 }
             });
         });
     });
-
 </script>
 {% endblock %}

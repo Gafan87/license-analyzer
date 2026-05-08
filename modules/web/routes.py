@@ -33,6 +33,24 @@ from modules.excel_evaluator import ExcelFormulaEvaluator
 from modules.license_service import LicenseService
 from modules.capacity_mapper import get_capacity_description, load_capacity_descriptions
 
+from functools import lru_cache
+from datetime import datetime, timedelta
+
+_cache = {}
+_cache_time = {}
+
+def get_cached_licenses(operator):
+    # Кэш на 5 минут
+    now = datetime.now()
+    if operator in _cache and (now - _cache_time.get(operator, datetime.min)) < timedelta(minutes=5):
+        return _cache[operator]
+    
+    result = get_unique_esn_licenses(operator)
+    _cache[operator] = result
+    _cache_time[operator] = now
+    return result
+
+
 logger = get_logger(__name__)
 web_bp = Blueprint('web', __name__)
 
@@ -974,33 +992,37 @@ def api_export_licenses():
 
 @web_bp.route('/api/license/<int:license_id>/resources', methods=['GET'])
 def api_get_license_resources(license_id):
-    """Получить ресурсы лицензии по ID (для динамической подгрузки)"""
-    from modules.database import get_license_by_id, get_dynamic_values_for_license
+    """Получить ресурсы лицензии по ID"""
+    from modules.database import get_license_by_id
+    from modules.capacity_mapper import get_capacity_description
+    from flask import current_app
     
     license_data = get_license_by_id(license_id)
     if not license_data:
         return jsonify({'error': 'Лицензия не найдена'}), 404
     
-    # Получаем домен
+    resources = license_data.get('resources', [])
+    
+    # Обогащаем описаниями
     domain = license_data.get('domain', '')
     network_storage_path = current_app.config.get('network_storage_path', '')
     
-    # Обогащаем ресурсы описаниями
-    from modules.license_service import LicenseService
-    enriched = LicenseService.enrich_resources_with_descriptions(
-        license_data, domain, network_storage_path
-    )
-    
-    # Получаем динамические поля
-    enriched['dynamic_values'] = get_dynamic_values_for_license(license_id)
+    enriched_resources = []
+    for res in resources:
+        new_res = res.copy()
+        if domain and res.get('name'):
+            desc = get_capacity_description(res['name'], domain, network_storage_path)
+            if desc:
+                new_res['description'] = desc.get('description', '')
+                new_res['unit'] = desc.get('unit', '')
+        enriched_resources.append(new_res)
     
     return jsonify({
-        'resources': enriched.get('resources', []),
-        'dynamic_values': enriched.get('dynamic_values', {}),
-        'valid_date': enriched.get('valid_date', ''),
-        'year': enriched.get('year', '')
+        'resources': enriched_resources,
+        'valid_date': license_data.get('valid_date'),
+        'year': license_data.get('year')
     })
-    
+       
 @web_bp.route('/<operator>/license_by_esn/<esn>')
 def license_detail_by_esn(operator, esn):
     """Детальная страница для ESN со всеми LSN"""

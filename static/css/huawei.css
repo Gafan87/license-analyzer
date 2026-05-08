@@ -1,40 +1,30 @@
 /* ========================================
-   HUAWEI LICENSE ANALYZER - MAIN THEME
-   Единый современный стиль для всего приложения
+   HUAWEI LICENSE ANALYZER - OPTIMIZED THEME
    ======================================== */
 
-/* ========== ПЕРЕМЕННЫЕ ========== */
 :root {
     --huawei-red: #E60012;
     --huawei-red-dark: #C7000B;
     --huawei-red-light: #FFE5E5;
     --huawei-red-grad: linear-gradient(135deg, #E60012 0%, #C7000B 100%);
-    --huawei-red-grad-transparent: linear-gradient(135deg, rgba(230, 0, 18, 0.55) 0%);
-    
     --bg-primary: #FFFFFF;
     --bg-secondary: #F8FAFC;
     --bg-tertiary: #F1F5F9;
     --bg-hover: #F1F5F9;
     --bg-dark: #0F172A;
-    
     --text-primary: #1E293B;
     --text-secondary: #64748B;
     --text-muted: #94A3B8;
     --text-white: #FFFFFF;
-    
     --border-light: #E2E8F0;
-    --border-focus: #E60012;
-    
     --shadow-sm: 0 1px 2px rgba(0,0,0,0.03);
     --shadow-md: 0 4px 6px -1px rgba(0,0,0,0.05);
     --shadow-lg: 0 10px 15px -3px rgba(0,0,0,0.08);
     --shadow-hover: 0 12px 20px -8px rgba(230,0,18,0.15);
-    
     --radius-sm: 6px;
     --radius-md: 10px;
     --radius-lg: 16px;
     --radius-xl: 20px;
-    
     --transition: all 0.2s ease;
 }
 
@@ -50,12 +40,12 @@ body {
 /* ========== ШАПКА ========== */
 .top-bar {
     background: var(--bg-primary);
-    padding: 0 2rem;
-    height: 70px;
+    padding: 0 1.5rem;
+    height: 56px;
     display: flex;
     align-items: center;
     justify-content: space-between;
-    gap: 2rem;
+    gap: 1rem;
     border-bottom: 1px solid var(--border-light);
     box-shadow: var(--shadow-md);
     position: sticky;
@@ -63,24 +53,18 @@ body {
     z-index: 100;
 }
 
-.logo {
-    display: flex;
-    align-items: center;
-    gap: 0.75rem;
-    flex-shrink: 0;
-}
-
+.logo { display: flex; align-items: center; gap: 0.75rem; flex-shrink: 0; }
 .logo-img { height: 36px; width: auto; }
 .logo-text {
     font-size: 1rem;
     font-weight: 700;
     background: var(--huawei-red-grad);
     -webkit-background-clip: text;
-    -webkit-text-fill-color: transparent;
     background-clip: text;
+    -webkit-text-fill-color: transparent;
 }
 
-/* Переключение операторов (центр) */
+/* Операторы */
 .operator-tabs-center {
     display: flex;
     gap: 0.25rem;
@@ -90,13 +74,11 @@ body {
     flex: 1;
     justify-content: center;
 }
-
 .operator-tab {
     padding: 0.5rem 1.25rem;
     border-radius: var(--radius-lg);
     transition: var(--transition);
 }
-
 .operator-tab a {
     display: flex;
     align-items: center;
@@ -106,243 +88,21 @@ body {
     font-weight: 500;
     font-size: 0.875rem;
 }
-
 .operator-tab a i { font-size: 0.9rem; }
 .operator-tab:hover { background: var(--bg-tertiary); }
 .operator-tab:hover a { color: var(--huawei-red); }
 .operator-tab.active { background: var(--huawei-red-grad); }
 .operator-tab.active a { color: white; }
 
-/* Правая панель действий */
-.top-bar-actions {
-    display: flex;
-    gap: 0.5rem;
-    flex-shrink: 0;
-}
-
-.top-action-btn {
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-    padding: 0.5rem 1rem;
-    border-radius: var(--radius-md);
-    background: var(--bg-secondary);
-    border: 1px solid var(--border-light);
-    color: var(--text-secondary);
-    cursor: pointer;
-    font-size: 0.875rem;
-    font-weight: 500;
-    transition: var(--transition);
-}
-
-.top-action-btn i { font-size: 1rem; }
-.top-action-btn:hover {
-    background: var(--bg-tertiary);
-    border-color: var(--huawei-red);
-    color: var(--huawei-red);
-    transform: translateY(-2px);
-}
-
-.top-action-btn.primary {
-    background: var(--huawei-red-grad);
-    border-color: transparent;
-    color: white;
-}
-.top-action-btn.primary:hover { box-shadow: var(--shadow-hover); }
-.top-action-btn.success {
-    background: linear-gradient(135deg, #10B981 0%, #059669 100%);
-    border-color: transparent;
-    color: white;
-}
-.top-action-btn.icon-only { padding: 0.5rem; }
-
-/* ========== КОНТЕЙНЕР ========== */
+/* Кнопки */
+.top-bar-actions { display: flex; gap: 0.5rem; flex-shrink: 0; }
 .container { max-width: 1600px; margin: 1.5rem auto; padding: 0 2rem; }
 
-/* ========== ПАНЕЛИ ДЕЙСТВИЙ (ГЛАВНАЯ) ========== */
-.action-panels {
-    display: flex;
-    gap: 1rem;
-    margin-bottom: 1.5rem;
-    flex-wrap: wrap;
-}
-
-.main-actions {
-    flex: 2;
-    display: flex;
-    gap: 0.75rem;
-    flex-wrap: wrap;
-}
-
-.action-card {
-    flex: 1;
-    min-width: 180px;
-    background: var(--bg-primary);
-    border-radius: var(--radius-lg);
-    padding: 1rem;
-    display: flex;
-    align-items: center;
-    gap: 1rem;
-    text-decoration: none;
-    border: 1px solid var(--border-light);
-    transition: var(--transition);
-}
-
-.action-card i {
-    font-size: 1.75rem;
-    color: var(--huawei-red);
-}
-
-.action-info { flex: 1; }
-.action-title {
-    display: block;
-    font-weight: 600;
-    font-size: 0.875rem;
-    color: var(--text-primary);
-    margin-bottom: 0.25rem;
-}
-.action-desc {
-    display: block;
-    font-size: 0.7rem;
-    color: var(--text-muted);
-}
-
-.action-card:hover {
-    transform: translateY(-2px);
-    box-shadow: var(--shadow-lg);
-    border-color: var(--huawei-red);
-}
-.action-card.active {
-    border-color: var(--huawei-red);
-    background: var(--huawei-red-grad);
-}
-.action-card.active .action-title,
-.action-card.active .action-desc,
-.action-card.active i { color: white; }
-
-.secondary-actions {
-    flex: 1;
-    display: flex;
-    gap: 0.5rem;
-    flex-wrap: wrap;
-    align-items: center;
-    justify-content: flex-end;
-}
-
-.secondary-btn {
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-    padding: 0.5rem 1rem;
-    background: var(--bg-secondary);
-    border: 1px solid var(--border-light);
-    border-radius: var(--radius-md);
-    text-decoration: none;
-    color: var(--text-secondary);
-    font-size: 0.75rem;
-    font-weight: 500;
-    transition: var(--transition);
-    cursor: pointer;
-}
-
-.secondary-btn:hover {
-    border-color: var(--huawei-red);
-    color: var(--huawei-red);
-    transform: translateY(-2px);
-}
-
-.current-operator-info {
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-    padding: 0.5rem 0;
-    margin-bottom: 1rem;
-    color: var(--text-muted);
-    font-size: 0.75rem;
-    border-bottom: 1px dashed var(--border-light);
-}
-
-/* Контейнер для фильтров и вертикальных кнопок */
-.filters-container {
-    background: var(--bg-secondary);
-    border-radius: var(--radius-lg);
-    padding: 0.75rem 1rem;
-    margin-bottom: 1rem;
-    display: flex;
-    flex-wrap: wrap;
-    gap: 1rem;
-    align-items: flex-start;
-}
-
-/* Блок с фильтрами - занимает основное место */
-.filters-bar {
-    flex: 1;
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
-    gap: 0.5rem 0.75rem;
-    align-items: end;
-}
-
-/* Блок с кнопками и поиском - вертикальная колонка */
-.filter-actions-vertical {
-    display: flex;
-    flex-direction: column;
-    gap: 0.5rem;
-    min-width: 140px;
-    flex-shrink: 0;
-}
-
-
-/* ========== КАРТОЧКИ ========== */
-.card {
-    background: var(--bg-primary);
-    border-radius: var(--radius-xl);
-    padding: 1.5rem;
-    margin-bottom: 1.5rem;
-    box-shadow: var(--shadow-md);
-    transition: var(--transition);
-    border: 1px solid var(--border-light);
-}
-.card:hover { box-shadow: var(--shadow-lg); }
-
-.card h1 {
-    font-size: 1.25rem;
-    font-weight: 700;
-    margin-bottom: 1.25rem;
-    color: var(--text-primary);
-    display: flex;
-    align-items: center;
-    gap: 0.75rem;
-}
-.card h1::before {
-    content: '';
-    width: 4px;
-    height: 24px;
-    background: var(--huawei-red-grad);
-    border-radius: 2px;
-}
-.card h3 {
-    font-size: 0.85rem;
-    font-weight: 600;
-    margin: 1.5rem 0 1rem 0;
-    color: var(--text-secondary);
-    text-transform: uppercase;
-    letter-spacing: 1px;
-}
-
-/* ========== КНОПКИ ========== */
-
-/* Базовый стиль для ВСЕХ кнопок - одинаковый размер */
-/* Общее правило - убираем из него все, что может конфликтовать */
+/* ========== ЕДИНЫЕ СТИЛИ КНОПОК ========== */
 button, 
-.btn-primary, 
-.secondary2-btn,
-.secondary3-btn, 
-.action-btn, 
-.top-action-btn,
-.back-btn,
-.btn-success,
-.btn-warning {
+.btn-primary, .secondary2-btn, .secondary3-btn, .action-btn, 
+.top-action-btn, .back-btn, .btn-success, .btn-warning,
+.presets-manage-btn, .filter-dropdown-btn {
     display: inline-flex;
     align-items: center;
     justify-content: center;
@@ -350,1191 +110,288 @@ button,
     cursor: pointer;
     transition: var(--transition);
     border-radius: var(--radius-md);
-    white-space: nowrap;
     padding: 0.45rem 1rem;
     font-size: 0.75rem;
     font-weight: 500;
     min-height: 32px;
-    
-    /* ЯВНО УКАЗЫВАЕМ БАЗОВЫЕ СТИЛИ */
     background: var(--bg-secondary);
     color: var(--text-secondary);
     border: 1px solid var(--border-light);
 }
-
-/* 1. PRIMARY - красный фон */
-.btn-primary, 
-.primary-btn {
-    background: var(--huawei-red-grad) !important;
-    color: white !important;
-    border: none !important;
-    font-weight: 600;
-}
-
-/* 2. SECONDARY2 - красная рамка (ПЕРЕОПРЕДЕЛЯЕМ) */
-.secondary2-btn {
-    background: transparent !important;
-    border: 1px solid var(--huawei-red) !important;
-    color: var(--huawei-red) !important;
-}
-
-.secondary2-btn:hover {
-    background: var(--huawei-red) !important;
-    color: white !important;
-    border: 1px solid var(--huawei-red) !important;
-    font-weight: 600;
-}
-
-/* 3. SECONDARY3 - пунктирная красная рамка */
-.secondary3-btn {
-    background: transparent !important;
-    border: 1px dashed var(--huawei-red) !important;
-    color: var(--huawei-red) !important;
-}
-
-.secondary3-btn:hover {
-    background: var(--huawei-red) !important;
-    color: white !important;
-    border: 1px dashed var(--huawei-red) !important;
-    font-weight: 600;
-    transform: translateY(-1px);
-}
-
-/* 3. ACTION - светлая заливка, тонкая рамка */
-.action-btn {
-    background: var(--bg-secondary);
-    color: var(--text-secondary);
-    border: 1px solid var(--border-light);
-    font-size: 0.7rem;  /* чуть меньше шрифт */
-    padding: 0.45rem 0.85rem;  /* чуть уже по бокам */
-}
-
-.action-btn:hover {
-    background: var(--bg-tertiary);
-    border-color: var(--huawei-red);
-    color: var(--huawei-red);
-}
-
-.action-btn i {
-    font-size: 0.7rem;
-}
-
-/* Кнопка Применить с переносом текста */
-.action-btn.primary {
-    white-space: normal;
-    word-break: break-word;
-    line-height: 1.3;
-    text-align: center;
-}
-
-.action-btn.primary:hover {
-    transform: translateX(2px);
-}
-
-/* 4. TOP ACTION - тёмная заливка, жирный шрифт (для верхней панели) */
-.top-action-btn {
-    background: var(--bg-secondary);
-    color: var(--text-secondary);
-    border: 1px solid var(--border-light);
-    font-weight: 600;  /* жирный шрифт */
-    letter-spacing: 0.3px;
-}
-
-.top-action-btn:hover {
+button:hover, .action-btn:hover, .top-action-btn:hover, .secondary-btn:hover {
     background: var(--bg-tertiary);
     border-color: var(--huawei-red);
     color: var(--huawei-red);
     transform: translateY(-1px);
 }
+.btn-primary, .primary-btn { background: var(--huawei-red-grad); color: white; border: none; font-weight: 600; }
+.btn-primary:hover, .primary-btn:hover { background: var(--huawei-red-dark); transform: translateY(-1px); }
+.secondary2-btn { background: transparent; border: 1px solid var(--huawei-red); color: var(--huawei-red); }
+.secondary2-btn:hover { background: var(--huawei-red); color: white; }
+.secondary3-btn { background: transparent; border: 1px dashed var(--huawei-red); color: var(--huawei-red); }
+.secondary3-btn:hover { background: var(--huawei-red); color: white; }
+.action-btn { font-size: 0.7rem; padding: 0.45rem 0.85rem; }
+.top-action-btn { font-weight: 600; letter-spacing: 0.3px; }
+.top-action-btn.primary { background: var(--huawei-red-grad); color: white; border: none; }
+.top-action-btn.icon-only { padding: 0.45rem; width: 32px; }
+.btn-success { background: transparent; color: #059669; border-color: #059669; }
+.btn-success:hover { background: #059669; color: white; }
+.btn-warning { background: transparent; color: var(--huawei-red); border-color: var(--huawei-red); }
+.btn-warning:hover { background: var(--huawei-red); color: white; }
+.back-btn { background: transparent; border: none; padding-left: 0.5rem; padding-right: 0.5rem; }
+.back-btn:hover { color: var(--huawei-red); transform: translateX(-3px); background: transparent; }
+.filter-dropdown-btn { background: transparent; border: none; border-left: 1px solid var(--border-light); border-radius: 0 var(--radius-sm) var(--radius-sm) 0; padding: 0; width: 28px; height: 100%; font-size: 0.6rem; }
+.filter-dropdown-btn:hover { background: var(--bg-tertiary); color: var(--huawei-red); transform: none; }
+.presets-manage-btn { width: 100%; border-top: 1px solid var(--border-light); border-radius: 0; }
+.action-btn.primary { white-space: normal; word-break: break-word; line-height: 1.3; background: var(--huawei-red); border: none; color: white; }
+.action-btn.primary:hover { background: #b0000a; transform: translateX(2px); }
 
-.top-action-btn.primary {
-    background: var(--huawei-red-grad);
-    color: white;
-    border: none;
+/* ========== КАРТОЧКИ ДЕЙСТВИЙ ========== */
+.action-panels { display: flex; gap: 1rem; margin-bottom: 1.5rem; flex-wrap: wrap; }
+.main-actions { flex: 2; display: flex; gap: 0.75rem; flex-wrap: wrap; }
+.action-card {
+    flex: 1; min-width: 180px; background: var(--bg-primary); border-radius: var(--radius-lg);
+    padding: 1rem; display: flex; align-items: center; gap: 1rem;
+    text-decoration: none; border: 1px solid var(--border-light); transition: var(--transition);
+}
+.action-card i { font-size: 1.75rem; color: var(--huawei-red); }
+.action-info { flex: 1; }
+.action-title { font-weight: 600; font-size: 0.875rem; color: var(--text-primary); margin-bottom: 0.25rem; display: block; }
+.action-desc { font-size: 0.7rem; color: var(--text-muted); display: block; }
+.action-card:hover { transform: translateY(-2px); box-shadow: var(--shadow-lg); border-color: var(--huawei-red); }
+.action-card.active { border-color: var(--huawei-red); background: var(--huawei-red-grad); }
+.action-card.active .action-title, .action-card.active .action-desc, .action-card.active i { color: white; }
+
+.secondary-actions { flex: 1; display: flex; gap: 0.5rem; flex-wrap: wrap; align-items: center; justify-content: flex-end; }
+.secondary-btn {
+    display: flex; align-items: center; gap: 0.5rem; padding: 0.5rem 1rem;
+    background: var(--bg-secondary); border: 1px solid var(--border-light); border-radius: var(--radius-md);
+    text-decoration: none; color: var(--text-secondary); font-size: 0.75rem; font-weight: 500;
+    transition: var(--transition); cursor: pointer;
+}
+.secondary-btn:hover { border-color: var(--huawei-red); color: var(--huawei-red); transform: translateY(-2px); }
+
+.current-operator-info {
+    display: flex; align-items: center; gap: 0.5rem; padding: 0.5rem 0; margin-bottom: 1rem;
+    color: var(--text-muted); font-size: 0.75rem; border-bottom: 1px dashed var(--border-light);
 }
 
-.top-action-btn.primary:hover {
-    background: var(--huawei-red-dark);
-}
-
-.top-action-btn.icon-only {
-    padding: 0.45rem;
-    width: 32px;
-}
-
-/* 5. SUCCESS - зелёная рамка + зелёный текст */
-.btn-success {
-    background: transparent;
-    color: #059669;
-    border: 1px solid #059669;
-}
-
-.btn-success:hover {
-    background: #059669;
-    color: white;
-    transform: translateY(-1px);
-    box-shadow: 0 2px 8px rgba(5, 150, 105, 0.3);
-}
-
-/* 6. WARNING - красная рамка + красный текст (но без заливки, отличие от Primary) */
-.btn-warning {
-    background: transparent;
-    color: var(--huawei-red);
-    border: 1px solid var(--huawei-red);
-}
-
-.btn-warning:hover {
-    background: var(--huawei-red);
-    color: white;
-    transform: translateY(-1px);
-    box-shadow: 0 2px 8px rgba(230, 0, 18, 0.3);
-}
-
-/* 7. BACK BUTTON - без рамки, просто текст со стрелкой */
-.back-btn {
-    background: transparent;
-    color: var(--text-secondary);
-    border: none;
-    padding-left: 0.5rem;
-    padding-right: 0.5rem;
-    gap: 0.35rem;
-}
-
-.back-btn:hover {
-    color: var(--huawei-red);
-    transform: translateX(-3px);
-    background: transparent;
-}
-
-.back-btn i {
-    font-size: 0.8rem;
-}
-
-/* 8. FILTER DROPDOWN - только иконка */
-.filter-dropdown-btn {
-    background: transparent;
-    color: var(--text-secondary);
-    border: none;
-    border-left: 1px solid var(--border-light);
-    border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
-    padding: 0;
-    width: 28px;
-    height: 100%;
-    font-size: 0.6rem;
-}
-
-.filter-dropdown-btn:hover {
-    background: var(--bg-tertiary);
-    color: var(--huawei-red);
-    transform: none;
-}
-
-/* 9. PRESETS MANAGE - во всю ширину */
-.presets-manage-btn {
-    background: transparent;
-    color: var(--text-secondary);
-    border: none;
-    border-top: 1px solid var(--border-light);
-    border-radius: 0;
-    padding: 0.45rem;
-    width: 100%;
-    min-height: auto;
-}
-
-.presets-manage-btn:hover {
-    background: var(--bg-hover);
-    color: var(--huawei-red);
-    transform: none;
-}
-
-/* Стиль для обычных кнопок без класса */
-button:not(.btn-primary):not(.primary-btn):not(.secondary-btn):not(.action-btn):not(.top-action-btn):not(.btn-success):not(.btn-warning):not(.back-btn):not(.filter-dropdown-btn):not(.presets-manage-btn) {
-    background: var(--bg-secondary);
-    color: var(--text-secondary);
+/* ========== КАРТОЧКИ ОБЩИЕ ========== */
+.card {
+    background: var(--bg-primary); border-radius: var(--radius-xl); padding: 1.5rem;
+    margin-bottom: 1.5rem; box-shadow: var(--shadow-md); transition: var(--transition);
     border: 1px solid var(--border-light);
 }
-
-button:not(.btn-primary):not(.primary-btn):not(.secondary-btn):not(.action-btn):not(.top-action-btn):not(.btn-success):not(.btn-warning):not(.back-btn):not(.filter-dropdown-btn):not(.presets-manage-btn):hover {
-    background: var(--bg-tertiary);
-    border-color: var(--huawei-red);
-    color: var(--huawei-red);
-}
+.card:hover { box-shadow: var(--shadow-lg); }
+.card h1 { font-size: 1.25rem; font-weight: 700; margin-bottom: 1.25rem; color: var(--text-primary); display: flex; align-items: center; gap: 0.75rem; }
+.card h1::before { content: ''; width: 4px; height: 24px; background: var(--huawei-red-grad); border-radius: 2px; }
+.card h3 { font-size: 0.85rem; font-weight: 600; margin: 1.5rem 0 1rem 0; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 1px; }
 
 /* ========== ТАБЛИЦЫ ========== */
-.table-wrapper {
-    overflow-x: auto;
-    border-radius: var(--radius-lg);
-    border: 1px solid var(--border-light);
-    background: var(--bg-primary);
-}
+.table-wrapper { overflow-x: auto; border-radius: var(--radius-lg); border: 1px solid var(--border-light); background: var(--bg-primary); }
 table { width: 100%; border-collapse: collapse; }
-th, td {
-    padding: 12px 16px;
-    text-align: left;
-    border-bottom: 1px solid var(--border-light);
-}
-th {
-    background: var(--bg-secondary);
-    color: var(--text-secondary);
-    font-weight: 600;
-    font-size: 0.75rem;
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
-}
+th, td { padding: 12px 16px; text-align: left; border-bottom: 1px solid var(--border-light); }
+th { background: var(--bg-secondary); color: var(--text-secondary); font-weight: 600; font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.5px; }
 tbody tr:hover td { background: var(--bg-tertiary); }
-.sortable { cursor: pointer; user-select: none; }
-.sortable:hover { background: var(--bg-tertiary); }
-.sortable.asc::after { content: " ▲"; font-size: 10px; }
-.sortable.desc::after { content: " ▼"; font-size: 10px; }
+.checkbox-col { width: 30px; text-align: center; }
+.licenses-table input[type="checkbox"] { width: 16px; height: 16px; cursor: pointer; }
+.licenses-table th { position: relative; min-width: 60px; }
+.resize-handle { position: absolute; right: 0; top: 0; width: 8px; height: 100%; cursor: col-resize; background: transparent; z-index: 10; }
+.resize-handle:hover { background: var(--huawei-red); opacity: 0.3; }
+.licenses-table.compact td, .licenses-table.compact th { padding: 4px 6px; }
+.licenses-table.normal td, .licenses-table.normal th { padding: 8px 10px; }
+.licenses-table.large td, .licenses-table.large th { padding: 12px 15px; }
+.licenses-table.hover-effect tbody tr:hover { background-color: var(--bg-hover) !important; }
+.licenses-table { table-layout: fixed; width: 100%; }
+.licenses-table th, .licenses-table td { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
-/* Чекбоксы в таблице */
-.checkbox-col {
-    width: 30px;
-    text-align: center;
+/* ========== СТРУКТУРА ФИЛЬТРОВ ========== */
+.filters-container {
+    background: var(--bg-secondary); border-radius: var(--radius-lg); padding: 0.75rem 1rem;
+    margin-bottom: 1rem; display: flex; flex-wrap: wrap; gap: 1rem; align-items: flex-start;
 }
-.licenses-table input[type="checkbox"] {
-    width: 16px;
-    height: 16px;
-    cursor: pointer;
-}
+.filters-bar { flex: 1; display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 0.5rem 0.75rem; align-items: end; }
+.filter-actions-vertical { display: flex; flex-direction: column; gap: 0.5rem; min-width: 140px; flex-shrink: 0; }
 
-/* Resizable columns */
-.licenses-table th {
-    position: relative;
-}
+.filter-layout { display: flex; gap: 1rem; margin-bottom: 1rem; align-items: stretch; }
+.filter-column { flex: 1; min-width: 0; }
+.active-column { width: 400px; flex-shrink: 0; display: flex; flex-direction: column; gap: 0.5rem; }
 
-.resize-handle {
-    position: absolute;
-    right: 0;
-    top: 0;
-    width: 8px;
-    height: 100%;
-    cursor: col-resize;
-    background: transparent;
-    z-index: 10;
-}
-
-.resize-handle:hover {
-    background: var(--huawei-red);
-    opacity: 0.3;
-}
-
-.resize-handle.resizing {
-    background: var(--huawei-red);
-    opacity: 0.5;
-}
-
-/* Минимальная ширина колонок */
-.licenses-table th {
-    min-width: 60px;
-}
-
-/* Размеры таблицы */
-.licenses-table.compact td,
-.licenses-table.compact th {
-    padding: 4px 6px;
-}
-
-.licenses-table.normal td,
-.licenses-table.normal th {
-    padding: 8px 10px;
-}
-
-.licenses-table.large td,
-.licenses-table.large th {
-    padding: 12px 15px;
-}
-
-/* Эффект наведения */
-.licenses-table.hover-effect tbody tr:hover {
-    background-color: var(--bg-hover) !important;
-    transition: background-color 0.2s ease;
-}
-
-/* Эффекты строк */
-.licenses-table tr:hover {
-    background: var(--bg-hover) !important;
-}
-
-/* Оптимизация перерисовки таблицы */
-.licenses-table {
-    table-layout: fixed;  /* Фиксированная ширина таблицы */
-    width: 100%;
-}
-
-.licenses-table colgroup col {
-    transition: none;  /* Убираем анимацию */
-}
-
-.licenses-table th,
-.licenses-table td {
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-}  
-
-/* ========== 3-КОЛОНОЧНАЯ СТРУКТУРА ========== */
-.filter-layout {
-    display: flex;
-    gap: 1rem;
-    margin-bottom: 1rem;
-    align-items: stretch;
-}
-
-/* Колонка 1: Фильтры */
-.filter-column {
-    flex: 1;
-    min-width: 0;
-}
-
-/* Колонка 2: Активные фильтры + Поиск + Кнопка */
-.active-column {
-    width: 400px;
-    flex-shrink: 0;
-    display: flex;
-    flex-direction: column;
-    gap: 0.5rem;
-}
-
-/* ========== ФИЛЬТРЫ ========== */
-.filters-bar {
-    background: var(--bg-secondary);
-    border-radius: var(--radius-lg);
-    padding: 0.75rem 1rem;
-    height: 100%;
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
-    gap: 0.75rem;
-    align-items: end;
-}
-
-.filter-item {
-    position: relative;
-}
-
-.filter-item label {
-    display: block;
-    font-size: 0.65rem;
-    font-weight: 600;
-    color: var(--text-muted);
-    margin-bottom: 0.2rem;
-}
-
-.filter-input-wrapper {
-    position: relative;
-    display: flex;
-    align-items: center;
-}
-
+/* Элементы фильтров */
+.filter-item { position: relative; }
+.filter-item label { display: block; font-size: 0.65rem; font-weight: 600; color: var(--text-muted); margin-bottom: 0.2rem; }
+.filter-input-wrapper { position: relative; display: flex; align-items: center; }
 .filter-manual-input {
-    flex: 1;
-    padding: 0.35rem 2rem 0.35rem 0.5rem;
-    font-size: 0.7rem;
-    border: 1px solid var(--border-light);
-    border-radius: var(--radius-sm);
-    background: var(--bg-primary);
-    width: 100%;
+    flex: 1; padding: 0.35rem 2rem 0.35rem 0.5rem; font-size: 0.7rem;
+    border: 1px solid var(--border-light); border-radius: var(--radius-sm);
+    background: var(--bg-primary); width: 100%;
 }
-
-.filter-dropdown-btn {
-    position: absolute;
-    right: 0;
-    top: 0;
-    bottom: 0;
-    width: 28px;
-    background: transparent;
-    border: none;
-    border-left: 1px solid var(--border-light);
-    border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
-    color: var(--text-secondary);
-    cursor: pointer;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 0.6rem;
-}
-
-.filter-dropdown-btn:hover {
-    background: var(--bg-tertiary);
-    color: var(--huawei-red);
-}
-
 .filter-dropdown {
-    position: absolute;
-    top: 100%;
-    left: 0;
-    right: 0;
-    background: var(--bg-primary);
-    border: 1px solid var(--border-light);
-    border-radius: var(--radius-sm);
-    box-shadow: var(--shadow-lg);
-    z-index: 1000;
-    display: none;
-    min-width: 220px;
-    max-width: 280px;
-    margin-top: 0.25rem;
+    position: absolute; top: 100%; left: 0; right: 0; background: var(--bg-primary);
+    border: 1px solid var(--border-light); border-radius: var(--radius-sm);
+    box-shadow: var(--shadow-lg); z-index: 1000; display: none;
+    min-width: 220px; max-width: 280px; margin-top: 0.25rem;
 }
+.filter-dropdown.show { display: block; }
+.filter-list { max-height: 400px; overflow-y: auto; padding: 0.5rem; }
+.filter-list-item { display: flex; align-items: center; gap: 0.5rem; padding: 0.25rem 0; font-size: 0.7rem; }
+.filter-list-item input { margin: 0; }
+.filter-list-item label { flex: 1; cursor: pointer; font-size: 0.7rem; font-weight: normal; color: var(--text-primary); }
+.filter-actions { display: flex; gap: 0.5rem; padding: 0.5rem; border-top: 1px solid var(--border-light); }
+.filter-actions button { flex: 1; padding: 0.25rem; font-size: 0.65rem; background: var(--bg-secondary); border: 1px solid var(--border-light); border-radius: var(--radius-sm); cursor: pointer; }
+.filter-actions button:hover { background: var(--bg-tertiary); border-color: var(--huawei-red); color: var(--huawei-red); }
 
-.filter-dropdown.show {
-    display: block;
-}
-
-.filter-list {
-    max-height: 400px;
-    overflow-y: auto;
-    padding: 0.5rem;
-}
-
-.filter-list-item {
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-    padding: 0.25rem 0;
-    font-size: 0.7rem;
-}
-
-.filter-list-item input {
-    margin: 0;
-}
-
-.filter-list-item label {
-    flex: 1;
-    cursor: pointer;
-    font-size: 0.7rem;
-    font-weight: normal;
-    color: var(--text-primary);
-}
-
-.filter-actions {
-    display: flex;
-    gap: 0.5rem;
-    padding: 0.5rem;
-    border-top: 1px solid var(--border-light);
-}
-
-.filter-actions button {
-    flex: 1;
-    padding: 0.25rem;
-    font-size: 0.65rem;
-    background: var(--bg-secondary);
-    border: 1px solid var(--border-light);
-    border-radius: var(--radius-sm);
-    cursor: pointer;
-}
-
-.filter-actions button:hover {
-    background: var(--bg-tertiary);
-    border-color: var(--huawei-red);
-    color: var(--huawei-red);
-}
-
-/* ========== АКТИВНЫЕ ФИЛЬТРЫ ========== */
+/* Активные фильтры */
 .active-filters {
-    background: var(--bg-secondary);
-    border-radius: var(--radius-md);
-    padding: 0.5rem;
-    display: flex;
-    flex-wrap: wrap;
-    gap: 0.4rem;
-    align-items: center;
-    min-height: 80px;
-    max-height: 120px;
-    overflow-y: auto;
+    background: var(--bg-secondary); border-radius: var(--radius-md); padding: 0.5rem;
+    display: flex; flex-wrap: wrap; gap: 0.4rem; align-items: center;
+    min-height: 80px; max-height: 120px; overflow-y: auto;
 }
-
 .active-filter {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.4rem;
-    background: var(--bg-primary);
-    border: 1px solid var(--border-light);
-    border-radius: var(--radius-sm);
-    padding: 0.25rem 0.6rem;
-    font-size: 0.7rem;
-    white-space: nowrap;
+    display: inline-flex; align-items: center; gap: 0.4rem; background: var(--bg-primary);
+    border: 1px solid var(--border-light); border-radius: var(--radius-sm);
+    padding: 0.25rem 0.6rem; font-size: 0.7rem; white-space: nowrap;
 }
-
-.active-filter strong {
-    color: var(--huawei-red);
-    font-weight: 600;
-}
-
-.active-filter-values {
-    max-width: 150px;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-    color: var(--text-secondary);
-}
-
-.active-filter-remove {
-    cursor: pointer;
-    opacity: 0.6;
-    margin-left: 0.25rem;
-    color: var(--text-muted);
-    font-size: 0.65rem;
-}
-
-.active-filter-remove:hover {
-    opacity: 1;
-    color: var(--huawei-red);
-}
-
+.active-filter strong { color: var(--huawei-red); font-weight: 600; }
+.active-filter-values { max-width: 150px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-secondary); }
+.active-filter-remove { cursor: pointer; opacity: 0.6; margin-left: 0.25rem; color: var(--text-muted); font-size: 0.65rem; }
+.active-filter-remove:hover { opacity: 1; color: var(--huawei-red); }
 .active-filters:empty::after {
-    content: "✖ Нет активных фильтров";
-    color: var(--text-muted);
-    font-size: 0.65rem;
-    font-style: italic;
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    width: 100%;
-    padding: 0.25rem;
+    content: "✖ Нет активных фильтров"; color: var(--text-muted); font-size: 0.65rem;
+    font-style: italic; display: flex; justify-content: center; align-items: center; width: 100%; padding: 0.25rem;
 }
 
-/* ========== КНОПКА СБРОСА И ПОИСК (В ОДНУ СТРОКУ) ========== */
-.filter-actions-row {
-    display: flex;
-    gap: 0.5rem;
-    align-items: center;
-}
-
-.filter-actions-row .action-btn.primary {
-    flex-shrink: 0;
-    white-space: nowrap;
-}
-
-.filter-actions-row .smart-search-container {
-    flex: 1;
-    position: relative;
-}
-
+/* Поиск */
+.filter-actions-row { display: flex; gap: 0.5rem; align-items: center; }
+.filter-actions-row .action-btn.primary { flex-shrink: 0; white-space: nowrap; }
+.filter-actions-row .smart-search-container { flex: 1; position: relative; }
 .smart-search-input {
-    width: 100%;
-    padding: 0.45rem 0.75rem;
-    font-size: 0.7rem;
-    border: 1px solid var(--border-light);
-    border-radius: var(--radius-md);
-    background: var(--bg-primary);
-    color: var(--text-primary);
+    width: 100%; padding: 0.45rem 0.75rem; font-size: 0.7rem;
+    border: 1px solid var(--border-light); border-radius: var(--radius-md);
+    background: var(--bg-primary); color: var(--text-primary);
 }
-
-.smart-search-input:focus {
-    outline: none;
-    border-color: var(--huawei-red);
-}
-
+.smart-search-input:focus { outline: none; border-color: var(--huawei-red); }
 .smart-search-suggestions {
-    position: absolute;
-    top: 100%;
-    left: 0;
-    right: 0;
-    background: var(--bg-primary);
-    border: 1px solid var(--border-light);
-    border-radius: var(--radius-sm);
-    box-shadow: var(--shadow-lg);
-    z-index: 1000;
-    display: none;
-    max-height: 200px;
-    overflow-y: auto;
+    position: absolute; top: 100%; left: 0; right: 0; background: var(--bg-primary);
+    border: 1px solid var(--border-light); border-radius: var(--radius-sm);
+    box-shadow: var(--shadow-lg); z-index: 1000; display: none; max-height: 200px; overflow-y: auto;
 }
-
-.smart-search-suggestions.show {
-    display: block;
-}
-
-.suggestion-item {
-    padding: 0.35rem 0.75rem;
-    cursor: pointer;
-    font-size: 0.7rem;
-    border-bottom: 1px solid var(--border-light);
-}
-
-.suggestion-item:hover {
-    background: var(--bg-hover);
-    color: var(--huawei-red);
-}
-
-.suggestion-type {
-    font-size: 0.6rem;
-    color: var(--text-muted);
-    margin-left: 0.5rem;
-}
-
-/* ========== КНОПКА СБРОСА ========== */
-.action-btn.primary {
-    background: var(--huawei-red);
-    border: none;
-    border-radius: var(--radius-md);
-    color: white;
-    cursor: pointer;
-    transition: all 0.2s ease;
-}
-
-.action-btn.primary:hover {
-    background: #b0000a;
-    transform: translateX(2px);
-}
+.smart-search-suggestions.show { display: block; }
+.suggestion-item { padding: 0.35rem 0.75rem; cursor: pointer; font-size: 0.7rem; border-bottom: 1px solid var(--border-light); }
+.suggestion-item:hover { background: var(--bg-hover); color: var(--huawei-red); }
+.suggestion-type { font-size: 0.6rem; color: var(--text-muted); margin-left: 0.5rem; }
 
 /* ========== ПАНЕЛЬ МАССОВЫХ ОПЕРАЦИЙ ========== */
 .bulk-panel {
-    position: fixed;
-    bottom: 20px;
-    left: 50%;
-    transform: translateX(-50%);
-    background: var(--bg-primary);
-    border: 1px solid var(--border-light);
-    border-radius: var(--radius-lg);
-    padding: 0.5rem 1rem;
-    display: flex;
-    gap: 1rem;
-    align-items: center;
-    box-shadow: var(--shadow-lg);
-    z-index: 100;
-    display: none;
+    position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%);
+    background: var(--bg-primary); border: 1px solid var(--border-light); border-radius: var(--radius-lg);
+    padding: 0.5rem 1rem; display: none; gap: 1rem; align-items: center;
+    box-shadow: var(--shadow-lg); z-index: 100;
 }
-
-.bulk-panel.show {
-    display: flex;
-}
-
-.bulk-panel .selected-count {
-    font-weight: 600;
-    font-size: 0.8rem;
-}
-
-.bulk-panel button {
-    padding: 0.3rem 0.7rem;
-    font-size: 0.7rem;
-}
+.bulk-panel.show { display: flex; }
+.bulk-panel .selected-count { font-weight: 600; font-size: 0.8rem; }
+.bulk-panel button { padding: 0.3rem 0.7rem; font-size: 0.7rem; }
 
 /* ========== ПРЕДУСТАНОВКИ ========== */
-.presets-container {
-    position: relative;
-    display: flex;
-    gap: 0.5rem;
-}
-
+.presets-container { position: relative; display: flex; gap: 0.5rem; }
 .presets-dropdown {
-    position: absolute;
-    top: 100%;
-    left: 0;
-    min-width: 220px;
-    background: var(--bg-primary);
-    border: 1px solid var(--border-light);
-    border-radius: var(--radius-md);
-    box-shadow: var(--shadow-lg);
-    z-index: 1000;
-    display: none;
-    margin-top: 4px;
+    position: absolute; top: 100%; left: 0; min-width: 220px; background: var(--bg-primary);
+    border: 1px solid var(--border-light); border-radius: var(--radius-md);
+    box-shadow: var(--shadow-lg); z-index: 1000; display: none; margin-top: 4px;
 }
-
-.presets-group {
-    padding: 0.25rem 0;
-}
-
-.presets-group-title {
-    padding: 0.25rem 0.75rem;
-    font-size: 0.65rem;
-    font-weight: 600;
-    color: var(--text-muted);
-    text-transform: uppercase;
-}
-
-.preset-item {
-    padding: 0.45rem 0.75rem;
-    cursor: pointer;
-    font-size: 0.7rem;
-    transition: var(--transition);
-}
-
-.preset-item:hover {
-    background: var(--bg-hover);
-    color: var(--huawei-red);
-}
-
-.preset-item.active {
-    background: var(--huawei-red);
-    color: white;
-}
-
-.presets-manage-btn {
-    width: 100%;
-    padding: 0.45rem;
-    background: none;
-    border-top: 1px solid var(--border-light);
-    cursor: pointer;
-    font-size: 0.7rem;
-    color: var(--text-secondary);
-    border-radius: 0;
-}
-
-.presets-manage-btn:hover {
-    background: var(--bg-hover);
-    color: var(--huawei-red);
-    border-color: var(--border-light);
-}
-
-/* ========== ЦВЕТОВАЯ ГРУППИРОВКА ========== */
-.color-mapping-row {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    padding: 0.5rem 0;
-    border-bottom: 1px solid var(--border-light);
-}
-
-.color-picker {
-    width: 50px;
-    height: 32px;
-    border: 1px solid var(--border-light);
-    border-radius: var(--radius-sm);
-    cursor: pointer;
-}
-
-/* Цветовые строки */
-tr.group-city-Moscow { background: rgba(231, 76, 60, 0.08); }
-tr.group-city-SaintPetersburg { background: rgba(52, 152, 219, 0.08); }
-tr.group-city-Novosibirsk { background: rgba(46, 204, 113, 0.08); }
-tr.group-city-Ekaterinburg { background: rgba(155, 89, 182, 0.08); }
-tr.group-city-Kazan { background: rgba(241, 196, 15, 0.08); }
-
-tr.group-ne_type-vEPC { background: rgba(231, 76, 60, 0.08); }
-tr.group-ne_type-PSCORE { background: rgba(52, 152, 219, 0.08); }
-tr.group-ne_type-PCRF { background: rgba(46, 204, 113, 0.08); }
-
-tr.striped { background: var(--bg-secondary); }
-
-/* ========== КОММЕНТАРИИ ========== */
-.comments-badge {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.2rem;
-    background: var(--bg-secondary);
-    padding: 0.15rem 0.5rem;
-    border-radius: 20px;
-    font-size: 0.65rem;
-}
+.presets-group { padding: 0.25rem 0; }
+.presets-group-title { padding: 0.25rem 0.75rem; font-size: 0.65rem; font-weight: 600; color: var(--text-muted); text-transform: uppercase; }
+.preset-item { padding: 0.45rem 0.75rem; cursor: pointer; font-size: 0.7rem; transition: var(--transition); }
+.preset-item:hover { background: var(--bg-hover); color: var(--huawei-red); }
+.preset-item.active { background: var(--huawei-red); color: white; }
 
 /* ========== МОДАЛЬНЫЕ ОКНА ========== */
 .modal {
-    position: fixed;
-    top: 0;
-    left: 0;
-    width: 100%;
-    height: 100%;
-    background: rgba(0,0,0,0.5);
-    display: flex;
-    align-items: center;
-    justify-content: center;
+    position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+    background: rgba(0,0,0,0.5); display: flex; align-items: center; justify-content: center;
     z-index: 1000;
 }
-
 .modal-content {
-    background: var(--bg-primary);
-    border-radius: var(--radius-lg);
-    padding: 1.5rem;
-    min-width: 320px;
-    max-width: 500px;
-    max-height: 80vh;
-    overflow-y: auto;
-    position: relative;
+    background: var(--bg-primary); border-radius: var(--radius-lg); padding: 1.5rem;
+    min-width: 320px; max-width: 500px; max-height: 80vh; overflow-y: auto; position: relative;
 }
-
-.modal-close {
-    position: absolute;
-    top: 1rem;
-    right: 1rem;
-    font-size: 1.5rem;
-    cursor: pointer;
-    color: var(--text-muted);
-}
-
-.modal-close:hover {
-    color: var(--huawei-red);
-}
-
-/* ========== ФИЛЬТРЫ (продолжение) ========== */
-.filters-panel {
-    background: var(--bg-secondary);
-    border-radius: var(--radius-lg);
-    padding: 1.25rem;
-    margin-bottom: 1.5rem;
-}
-.filters-row {
-    display: flex;
-    gap: 1rem;
-    flex-wrap: wrap;
-    align-items: flex-end;
-}
-.filter-group {
-    flex: 1;
-    min-width: 140px;
-}
-.filter-group label {
-    font-size: 0.7rem;
-    font-weight: 600;
-    color: var(--text-muted);
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
-    margin-bottom: 0.25rem;
-    display: block;
-}
-.filter-select {
-    width: 100%;
-    padding: 8px 12px;
-    border: 1px solid var(--border-light);
-    border-radius: var(--radius-md);
-    background: var(--bg-primary);
-}
-.search-row {
-    margin-top: 1rem;
-    display: flex;
-    gap: 0.5rem;
-    align-items: center;
-}
-.search-input {
-    flex: 1;
-    max-width: 320px;
-    padding: 8px 12px;
-    border: 1px solid var(--border-light);
-    border-radius: var(--radius-md);
-    background: var(--bg-primary);
-}
-
-/* ========== СТАТИСТИКА ========== */
-.stats {
-    background: linear-gradient(135deg, #FFF5F5 0%, #FFFFFF 100%);
-    padding: 12px 16px;
-    border-radius: var(--radius-md);
-    margin-bottom: 1rem;
-    color: var(--huawei-red-dark);
-    font-weight: 600;
-    border-left: 3px solid var(--huawei-red);
-}
+.modal-close { position: absolute; top: 1rem; right: 1rem; font-size: 1.5rem; cursor: pointer; color: var(--text-muted); }
+.modal-close:hover { color: var(--huawei-red); }
 
 /* ========== НАСТРОЙКИ ========== */
-.settings-tabs {
-    display: flex;
-    gap: 0.75rem;
-    margin-bottom: 1.5rem;
-    flex-wrap: wrap;
+.settings-nav-cards { display: flex; gap: 1rem; margin-bottom: 1.5rem; flex-wrap: wrap; }
+.settings-nav-card {
+    flex: 1; min-width: 160px; background: var(--bg-primary); border-radius: var(--radius-lg);
+    padding: 1rem; display: flex; align-items: center; gap: 1rem;
+    border: 1px solid var(--border-light); transition: var(--transition); cursor: pointer;
 }
+.settings-nav-card i { font-size: 1.5rem; color: var(--huawei-red); }
+.settings-nav-card .card-info { flex: 1; }
+.settings-nav-card .card-title { font-weight: 600; font-size: 0.875rem; color: var(--text-primary); margin-bottom: 0.25rem; display: block; }
+.settings-nav-card .card-desc { font-size: 0.7rem; color: var(--text-muted); display: block; }
+.settings-nav-card:hover { transform: translateY(-2px); box-shadow: var(--shadow-lg); border-color: var(--huawei-red); }
+.settings-nav-card.active { border-color: var(--huawei-red); background: var(--huawei-red-grad); }
+.settings-nav-card.active .card-title, .settings-nav-card.active .card-desc, .settings-nav-card.active i { color: white; }
+
+/* Вкладки */
+.settings-tabs { display: flex; gap: 0.75rem; margin-bottom: 1.5rem; flex-wrap: wrap; }
 .tab-btn {
-    background: var(--bg-secondary);
-    border: 1px solid var(--border-light);
-    padding: 0.7rem 1.5rem;
-    font-size: 0.875rem;
-    font-weight: 600;
-    cursor: pointer;
-    color: var(--text-secondary);
-    border-radius: var(--radius-lg);
-    transition: var(--transition);
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
+    background: var(--bg-secondary); border: 1px solid var(--border-light); padding: 0.7rem 1.5rem;
+    font-size: 0.875rem; font-weight: 600; cursor: pointer; color: var(--text-secondary);
+    border-radius: var(--radius-lg); transition: var(--transition); display: flex; align-items: center; gap: 0.5rem;
 }
-.tab-btn:hover {
-    background: var(--bg-tertiary);
-    color: var(--huawei-red);
-    border-color: var(--huawei-red);
-    transform: translateY(-2px);
-}
-.tab-btn.active {
-    background: var(--huawei-red-grad);
-    border-color: transparent;
-    color: white;
-    box-shadow: var(--shadow-md);
-}
-.tab-content {
-    display: none;
-    background: var(--bg-primary);
-    border-radius: var(--radius-xl);
-    padding: 1.5rem;
-    box-shadow: var(--shadow-md);
-    border: 1px solid var(--border-light);
-}
-.tab-content.active {
-    display: block;
-    animation: fadeIn 0.3s ease;
-}
-/* Вкладки настроек */
-.settings-tab-btn {
-    background: none;
-    border: none;
-    padding: 4px 8px;
-    font-size: 0.65rem;
-    cursor: pointer;
-    border-radius: var(--radius-sm);
-    color: var(--text-secondary);
-}
+.tab-btn:hover { background: var(--bg-tertiary); color: var(--huawei-red); border-color: var(--huawei-red); transform: translateY(-2px); }
+.tab-btn.active { background: var(--huawei-red-grad); border-color: transparent; color: white; }
+.tab-content { display: none; background: var(--bg-primary); border-radius: var(--radius-xl); padding: 1.5rem; border: 1px solid var(--border-light); }
+.tab-content.active { display: block; animation: fadeIn 0.3s ease; }
+@keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
 
-.settings-tab-btn.active {
-    background: var(--huawei-red);
-    color: white;
-}
+/* Статистика */
+.stats { background: linear-gradient(135deg, #FFF5F5 0%, #FFFFFF 100%); padding: 12px 16px; border-radius: var(--radius-md); margin-bottom: 1rem; color: var(--huawei-red-dark); font-weight: 600; border-left: 3px solid var(--huawei-red); }
+.stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 1rem; margin-bottom: 1.5rem; }
+.stat-card-mini { background: var(--bg-secondary); border-radius: var(--radius-lg); padding: 1rem; text-align: center; border: 1px solid var(--border-light); }
+.stat-card-mini .value { font-size: 1.75rem; font-weight: 700; color: var(--huawei-red); }
+.stat-card-mini .label { font-size: 0.7rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px; }
 
-.settings-tab-pane {
-    max-height: 300px;
-    overflow-y: auto;
-}
-
-@keyframes fadeIn {
-    from { opacity: 0; transform: translateY(10px); }
-    to { opacity: 1; transform: translateY(0); }
-}
-
-/* Карточки в настройках */
-.stats-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-    gap: 1rem;
-    margin-bottom: 1.5rem;
-}
-.stat-card-mini {
-    background: var(--bg-secondary);
-    border-radius: var(--radius-lg);
-    padding: 1rem;
-    text-align: center;
-    border: 1px solid var(--border-light);
-}
-.stat-card-mini .value {
-    font-size: 1.75rem;
-    font-weight: 700;
-    color: var(--huawei-red);
-}
-.stat-card-mini .label {
-    font-size: 0.7rem;
-    color: var(--text-muted);
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
-}
-
-.operator-card {
-    background: var(--bg-secondary);
-    border-radius: var(--radius-lg);
-    padding: 1rem;
-    margin-bottom: 1rem;
-    transition: var(--transition);
-    border: 1px solid var(--border-light);
-}
-.operator-card:hover {
-    border-color: var(--huawei-red);
-    box-shadow: var(--shadow-md);
-}
-.operator-header {
-    display: flex;
-    align-items: center;
-    gap: 0.75rem;
-    margin-bottom: 1rem;
-    padding-bottom: 0.5rem;
-    border-bottom: 1px solid var(--border-light);
-}
-.operator-icon { font-size: 1.5rem; }
-.operator-name { font-weight: 700; font-size: 1rem; }
-.operator-code {
-    font-size: 0.7rem;
-    color: var(--text-muted);
-    font-family: monospace;
-    background: var(--bg-primary);
-    padding: 2px 8px;
-    border-radius: 20px;
-}
-
-/* Тестировщик */
-.test-results {
-    margin-top: 1rem;
-    border-radius: var(--radius-lg);
-    overflow: hidden;
-    border: 1px solid var(--border-light);
-}
-.test-summary {
-    padding: 1rem;
-    font-weight: 600;
-    display: flex;
-    align-items: center;
-    gap: 1rem;
-}
-.test-summary.success {
-    background: linear-gradient(135deg, #10B981 0%, #059669 100%);
-    color: white;
-}
-.test-summary.failed {
-    background: var(--huawei-red-grad);
-    color: white;
-}
-.test-list {
-    max-height: 400px;
-    overflow-y: auto;
-}
-.test-item {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    padding: 0.75rem 1rem;
-    border-bottom: 1px solid var(--border-light);
-    background: var(--bg-primary);
-}
+/* Операторы, тестировщик, инфо */
+.operator-card { background: var(--bg-secondary); border-radius: var(--radius-lg); padding: 1rem; margin-bottom: 1rem; border: 1px solid var(--border-light); }
+.operator-header { display: flex; align-items: center; gap: 0.75rem; margin-bottom: 1rem; padding-bottom: 0.5rem; border-bottom: 1px solid var(--border-light); }
+.operator-code { font-size: 0.7rem; color: var(--text-muted); font-family: monospace; background: var(--bg-primary); padding: 2px 8px; border-radius: 20px; }
+.test-summary { padding: 1rem; font-weight: 600; display: flex; align-items: center; gap: 1rem; border-radius: var(--radius-lg); }
+.test-summary.success { background: linear-gradient(135deg, #10B981 0%, #059669 100%); color: white; }
+.test-summary.failed { background: var(--huawei-red-grad); color: white; }
+.test-item { display: flex; justify-content: space-between; align-items: center; padding: 0.75rem 1rem; border-bottom: 1px solid var(--border-light); background: var(--bg-primary); }
 .test-item.passed { border-left: 3px solid #10B981; }
 .test-item.failed { border-left: 3px solid var(--huawei-red); }
-.test-status {
-    padding: 2px 10px;
-    border-radius: 20px;
-    font-size: 0.7rem;
-    font-weight: 600;
-}
+.test-status { padding: 2px 10px; border-radius: 20px; font-size: 0.7rem; font-weight: 600; }
 .test-status.passed { background: #10B981; color: white; }
 .test-status.failed { background: var(--huawei-red); color: white; }
 
-/* Инфо-карточки */
-.info-card {
-    background: var(--bg-secondary);
-    border-radius: var(--radius-lg);
-    padding: 1rem;
-    margin-bottom: 1rem;
-    border: 1px solid var(--border-light);
-}
-.info-row {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 0.5rem;
-    margin-bottom: 0.5rem;
-    padding: 0.5rem;
-    border-bottom: 1px solid var(--border-light);
-}
+.info-card { background: var(--bg-secondary); border-radius: var(--radius-lg); padding: 1rem; margin-bottom: 1rem; border: 1px solid var(--border-light); }
+.info-row { display: flex; flex-wrap: wrap; gap: 0.5rem; margin-bottom: 0.5rem; padding: 0.5rem; border-bottom: 1px solid var(--border-light); }
 .info-row:last-child { border-bottom: none; }
-.info-label {
-    font-weight: 600;
-    min-width: 140px;
-    color: var(--text-secondary);
-}
+.info-label { font-weight: 600; min-width: 140px; color: var(--text-secondary); }
 
-/* Дерево папок */
-.folder-tree {
-    background: var(--bg-secondary);
-    padding: 1rem;
-    border-radius: var(--radius-lg);
-    font-family: monospace;
-    font-size: 0.8rem;
-}
-
-/* Пагинация */
-.pagination {
-    display: flex;
-    justify-content: center;
-    gap: 0.5rem;
-    margin-top: 1.5rem;
-}
-.page-link, .page-number {
-    padding: 6px 12px;
-    border: 1px solid var(--border-light);
-    border-radius: var(--radius-md);
-    text-decoration: none;
-    color: var(--text-secondary);
-    background: var(--bg-primary);
-    transition: var(--transition);
-}
-.page-link:hover, .page-number:hover {
-    border-color: var(--huawei-red);
-    color: var(--huawei-red);
-}
-.page-number.active {
-    background: var(--huawei-red-grad);
-    border-color: transparent;
-    color: white;
-}
-
-/* ========== УТИЛИТЫ ========== */
+/* Дерево папок, пагинация, утилиты */
+.folder-tree { background: var(--bg-secondary); padding: 1rem; border-radius: var(--radius-lg); font-family: monospace; font-size: 0.8rem; }
+.pagination { display: flex; justify-content: center; gap: 0.5rem; margin-top: 1.5rem; }
+.page-link, .page-number { padding: 6px 12px; border: 1px solid var(--border-light); border-radius: var(--radius-md); text-decoration: none; color: var(--text-secondary); background: var(--bg-primary); }
+.page-number.active { background: var(--huawei-red-grad); border-color: transparent; color: white; }
 .text-center { text-align: center; }
 .text-muted { color: var(--text-muted); }
-.text-red { color: var(--huawei-red); }
-.mt-2 { margin-top: 1rem; }
-.mb-2 { margin-bottom: 1rem; }
 .hidden { display: none; }
+.theme-selector { position: relative; display: flex; align-items: center; }
+.theme-current { display: flex; align-items: center; gap: 0.35rem; padding: 0.4rem 0.8rem; background: var(--bg-secondary); border: 1px solid var(--border-light); border-radius: var(--radius-md); cursor: pointer; font-size: 0.75rem; }
+.theme-dropdown { position: absolute; top: 100%; right: 0; margin-top: 0.25rem; background: var(--bg-primary); border: 1px solid var(--border-light); border-radius: var(--radius-md); box-shadow: var(--shadow-lg); min-width: 150px; z-index: 1000; display: none; }
+.theme-selector:hover .theme-dropdown { display: block; }
+.theme-option { display: flex; align-items: center; gap: 0.5rem; padding: 0.5rem 0.75rem; cursor: pointer; font-size: 0.75rem; }
+.theme-option:hover { background: var(--bg-hover); color: var(--huawei-red); }
 
-/* ========== ОБЩАЯ АДАПТИВНОСТЬ ========== */
-
-@media (max-width: 1200px) {
-    .filter-layout { gap: 0.75rem; }
-    .active-column { width: 280px; }
-    .actions-column { width: 110px; }
-    .filters-bar { grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); }
-}
-
-@media (max-width: 1024px) {
-    .top-bar { padding: 0 1rem; gap: 1rem; }
-    .operator-tabs-center { display: none; }
-    .top-action-btn span { display: none; }
-    .top-action-btn { padding: 0.5rem; }
-    .top-action-btn i { margin: 0; }
-    .active-column { width: 220px; }
-    .actions-column { width: 100px; }
-    .action-btn span { display: none; }
-    .action-btn { justify-content: center; padding: 0.5rem; }
-    .action-btn i { margin: 0; font-size: 1rem; }
-}
-
-@media (max-width: 900px) {
-    .filter-layout { flex-wrap: wrap; }
-    .filter-column { flex: 1 1 100%; order: 1; }
-    .active-column { width: calc(50% - 0.5rem); order: 2; }
-    .actions-column { width: calc(50% - 0.5rem); order: 3; }
-    .action-btn span { display: inline; }
-    .action-btn { justify-content: center; padding: 0.5rem 0.75rem; }
-}
-
-@media (max-width: 768px) {
-    .container { padding: 0 1rem; }
-    .card { padding: 1rem; }
-    .main-actions { flex-direction: column; }
-    .action-card { min-width: auto; }
-    .secondary-actions { justify-content: flex-start; }
-    .filters-bar { grid-template-columns: 1fr; }
-    .settings-tabs { gap: 0.5rem; }
-    .tab-btn { padding: 0.5rem 1rem; font-size: 0.75rem; }
-    th, td { padding: 8px; font-size: 0.75rem; }
-    .filter-layout { gap: 0.75rem; }
-    .active-column { width: 100%; order: 2; }
-    .actions-column { width: 100%; order: 3; flex-direction: row; }
-    .action-btn { flex: 1; }
-    .active-filters { max-height: 200px; }
-    .smart-search-input { font-size: 0.7rem; padding: 0.4rem; }
-}
-
-@media (max-width: 600px) {
-    .top-bar { flex-wrap: wrap; justify-content: space-between; }
-    .logo { order: 1; }
-    .top-bar-actions { order: 2; }
-    .secondary-actions { gap: 0.5rem; }
-    .secondary-btn span { display: none; }
-    .secondary-btn { padding: 0.4rem; }
-    .secondary-btn i { margin: 0; }
-    .action-card { padding: 0.6rem; }
-    .action-title { font-size: 0.8rem; }
-    .action-desc { display: none; }
-    .filter-actions button { padding: 0.25rem 0.5rem; font-size: 0.65rem; }
-    .filter-manual-input { font-size: 0.65rem; }
-    .filter-item label { font-size: 0.6rem; }
-    .active-filter { font-size: 0.65rem; padding: 0.25rem 0.5rem; }
-    .active-filter-values { max-width: 120px; }
-}
-
-@media (max-width: 480px) {
-    .top-bar-actions { gap: 0.3rem; }
-    .top-action-btn { padding: 0.4rem; }
-    .stats { flex-direction: column; align-items: flex-start; gap: 0.5rem; }
-    .column-settings-btn { font-size: 0.65rem; }
-    .actions-column { flex-direction: column; }
-    .action-btn { width: 100%; }
-    .active-filters { max-height: 150px; }
-    .smart-search-suggestions { max-height: 150px; }
-    .suggestion-item { font-size: 0.65rem; padding: 0.3rem 0.5rem; }
-    .preset-item { font-size: 0.65rem; padding: 0.3rem 0.6rem; }
-    .modal-content { width: 95%; padding: 1rem; }
-    .filter-dropdown { min-width: 180px; max-width: 240px; }
-    .filter-list-item { font-size: 0.65rem; }
-    .filter-actions button { font-size: 0.6rem; }
-}
+/* Цветовая группировка */
+.selected-version { background: rgba(230, 0, 18, 0.1) !important; }
+.color-mapping-row { display: flex; justify-content: space-between; align-items: center; padding: 0.5rem 0; border-bottom: 1px solid var(--border-light); }
+.color-picker { width: 50px; height: 32px; border: 1px solid var(--border-light); border-radius: var(--radius-sm); cursor: pointer; }
+.comments-badge { display: inline-flex; align-items: center; gap: 0.2rem; background: var(--bg-secondary); padding: 0.15rem 0.5rem; border-radius: 20px; font-size: 0.65rem; }
 
 /* ========== ТЁМНАЯ ТЕМА ========== */
 body.dark {
@@ -1542,353 +399,77 @@ body.dark {
     --bg-secondary: #0F172A;
     --bg-tertiary: #334155;
     --bg-hover: #334155;
-    
     --text-primary: #F8FAFC;
     --text-secondary: #CBD5E1;
     --text-muted: #94A3B8;
-    --text-white: #FFFFFF;
-    
     --border-light: #334155;
-    --border-focus: #E60012;
-    
-    --shadow-sm: 0 1px 2px rgba(0,0,0,0.2);
-    --shadow-md: 0 4px 6px -1px rgba(0,0,0,0.3);
-    --shadow-lg: 0 10px 15px -3px rgba(0,0,0,0.4);
-    --shadow-hover: 0 12px 20px -8px rgba(230,0,18,0.3);
 }
+body.dark .stats { background: #2D1E1E; color: #FFB3B3; }
+body.dark .action-card.active { background: var(--huawei-red-dark); }
+body.dark .card, body.dark .test-item, body.dark .operator-card, body.dark .info-card,
+body.dark .folder-tree, body.dark .settings-nav-card, body.dark .presets-dropdown { background: var(--bg-primary); }
+body.dark .top-bar, body.dark .operator-tabs-center, body.dark .top-action-btn,
+body.dark .secondary-btn, body.dark .tab-btn, body.dark .stat-card-mini,
+body.dark .filters-bar, body.dark .action-btn { background: var(--bg-secondary); color: var(--text-secondary); }
+body.dark input, body.dark select, body.dark .filter-manual-input, body.dark .smart-search-input { background: var(--bg-tertiary); border-color: var(--border-light); color: var(--text-primary); }
+body.dark th { background: var(--bg-tertiary); color: var(--text-secondary); }
+body.dark td { color: var(--text-primary); }
+body.dark .filter-list-item label { color: var(--text-primary); }
 
-body.dark .stats { 
-    background: #2D1E1E; 
-    color: #FFB3B3;
+/* ========== ПАГИНАЦИЯ ========== */
+.pagination{display:flex;justify-content:center;align-items:center;gap:1rem;margin-top:1.5rem;padding:1rem}
+.page-link{padding:0.5rem 1rem;background:var(--bg-secondary);border:1px solid var(--border-light);border-radius:var(--radius-md);text-decoration:none;color:var(--text-secondary);transition:var(--transition)}
+.page-link:hover{border-color:var(--huawei-red);color:var(--huawei-red)}
+.page-info{color:var(--text-muted);font-size:0.75rem}
+
+/* ========== АДАПТИВНОСТЬ ========== */
+@media (max-width: 1200px) {
+    .filter-layout { gap: 0.75rem; }
+    .active-column { width: 280px; }
+    .filters-bar { grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); }
 }
-
-body.dark .action-card.active { 
-    background: var(--huawei-red-dark); 
+@media (max-width: 1024px) {
+    .top-bar { padding: 0 1rem; gap: 1rem; }
+    .operator-tabs-center { display: none; }
+    .top-action-btn span { display: none; }
+    .top-action-btn { padding: 0.5rem; }
+    .active-column { width: 220px; }
+    .action-btn span { display: none; }
+    .action-btn { justify-content: center; padding: 0.5rem; }
 }
-
-body.dark .card, 
-body.dark .filters-panel, 
-body.dark .tab-content,
-body.dark .test-item, 
-body.dark .operator-card, 
-body.dark .info-card,
-body.dark .folder-tree,
-body.dark .settings-nav-card,
-body.dark .theme-dropdown,
-body.dark .page-link,
-body.dark .page-number,
-body.dark .presets-dropdown,
-body.dark .column-settings-panel { 
-    background: var(--bg-primary); 
+@media (max-width: 900px) {
+    .filter-layout { flex-wrap: wrap; }
+    .filter-column { flex: 1 1 100%; order: 1; }
+    .active-column { width: calc(50% - 0.5rem); order: 2; }
+    .action-btn span { display: inline; }
 }
-
-body.dark .top-bar,
-body.dark .operator-tabs-center,
-body.dark .top-action-btn,
-body.dark .secondary-btn,
-body.dark .theme-current,
-body.dark .tab-btn,
-body.dark .stat-card-mini,
-body.dark .filter-select,
-body.dark .search-input,
-body.dark .filters-bar,
-body.dark .column-option { 
-    background: var(--bg-secondary);
-    color: var(--text-secondary);
+@media (max-width: 768px) {
+    .container { padding: 0 1rem; }
+    .card { padding: 1rem; }
+    .main-actions { flex-direction: column; }
+    .action-card { min-width: auto; }
+    .secondary-actions { justify-content: flex-start; }
+    .filters-bar { grid-template-columns: 1fr; }
+    .active-column { width: 100%; order: 2; }
+    .action-btn { flex: 1; }
+    th, td { padding: 8px; font-size: 0.75rem; }
 }
-
-body.dark .action-card .action-title { 
-    color: var(--text-primary); 
+@media (max-width: 600px) {
+    .top-bar { flex-wrap: wrap; justify-content: space-between; }
+    .logo { order: 1; }
+    .top-bar-actions { order: 2; }
+    .secondary-btn span { display: none; }
+    .secondary-btn { padding: 0.4rem; }
+    .action-card { padding: 0.6rem; }
+    .action-title { font-size: 0.8rem; }
+    .action-desc { display: none; }
+    .active-filter-values { max-width: 120px; }
 }
-
-body.dark .action-card .action-desc { 
-    color: var(--text-muted); 
-}
-
-body.dark .card h1,
-body.dark .card h3 { 
-    color: var(--text-primary); 
-}
-
-body.dark .settings-nav-card .card-title { 
-    color: var(--text-primary); 
-}
-
-body.dark .settings-nav-card .card-desc { 
-    color: var(--text-muted); 
-}
-
-body.dark .info-row,
-body.dark .info-label { 
-    color: var(--text-secondary); 
-}
-
-body.dark .test-item { 
-    background: var(--bg-primary); 
-    color: var(--text-primary);
-}
-
-body.dark .test-status.passed { 
-    background: #10B981; 
-    color: white;
-}
-
-body.dark .test-status.failed { 
-    background: var(--huawei-red); 
-    color: white;
-}
-
-body.dark .theme-option { 
-    color: var(--text-primary); 
-}
-
-body.dark .theme-option:hover { 
-    background: var(--bg-tertiary); 
-    color: var(--huawei-red);
-}
-
-body.dark input,
-body.dark select,
-body.dark textarea,
-body.dark .filter-manual-input,
-body.dark .smart-search-input {
-    background: var(--bg-tertiary);
-    border-color: var(--border-light);
-    color: var(--text-primary);
-}
-
-body.dark input::placeholder,
-body.dark .smart-search-input::placeholder {
-    color: var(--text-muted);
-}
-
-body.dark th {
-    background: var(--bg-tertiary);
-    color: var(--text-secondary);
-}
-
-body.dark td {
-    color: var(--text-primary);
-}
-
-body.dark .btn-secondary,
-body.dark .action-btn,
-body.dark .filter-dropdown-btn,
-body.dark .presets-manage-btn {
-    background: var(--bg-tertiary);
-    color: var(--text-secondary);
-}
-
-body.dark .btn-secondary:hover,
-body.dark .action-btn:hover,
-body.dark .filter-dropdown-btn:hover,
-body.dark .presets-manage-btn:hover {
-    background: var(--bg-secondary);
-    color: var(--huawei-red);
-}
-
-body.dark .top-action-btn {
-    background: var(--bg-secondary);
-    color: var(--text-secondary);
-}
-
-body.dark .top-action-btn:hover {
-    background: var(--bg-tertiary);
-    color: var(--huawei-red);
-}
-
-body.dark .current-operator-info {
-    color: var(--text-muted);
-}
-
-body.dark .stats-grid .stat-card-mini .value {
-    color: var(--huawei-red);
-}
-
-body.dark .stats-grid .stat-card-mini .label {
-    color: var(--text-muted);
-}
-
-body.dark .filter-list-item label {
-    color: var(--text-primary);
-}
-
-/* ========== НАСТРОЙКИ - КАРТОЧКИ ВКЛАДОК ========== */
-.settings-nav-cards {
-    display: flex;
-    gap: 1rem;
-    margin-bottom: 1.5rem;
-    flex-wrap: wrap;
-}
-
-.settings-nav-card {
-    flex: 1;
-    min-width: 160px;
-    background: var(--bg-primary);
-    border-radius: var(--radius-lg);
-    padding: 1rem;
-    display: flex;
-    align-items: center;
-    gap: 1rem;
-    text-decoration: none;
-    border: 1px solid var(--border-light);
-    transition: var(--transition);
-    cursor: pointer;
-}
-
-.settings-nav-card i {
-    font-size: 1.5rem;
-    color: var(--huawei-red);
-}
-
-.settings-nav-card .card-info {
-    flex: 1;
-}
-
-.settings-nav-card .card-title {
-    display: block;
-    font-weight: 600;
-    font-size: 0.875rem;
-    color: var(--text-primary);
-    margin-bottom: 0.25rem;
-}
-
-.settings-nav-card .card-desc {
-    display: block;
-    font-size: 0.7rem;
-    color: var(--text-muted);
-}
-
-.settings-nav-card:hover {
-    transform: translateY(-2px);
-    box-shadow: var(--shadow-lg);
-    border-color: var(--huawei-red);
-}
-
-.settings-nav-card.active {
-    border-color: var(--huawei-red);
-    background: var(--huawei-red-grad);
-}
-
-.settings-nav-card.active .card-title,
-.settings-nav-card.active .card-desc,
-.settings-nav-card.active i {
-    color: white;
-}
-
-.back-btn {
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-    padding: 0.75rem 1.25rem;
-    background: var(--bg-secondary);
-    border: 1px solid var(--border-light);
-    border-radius: var(--radius-lg);
-    color: var(--text-secondary);
-    text-decoration: none;
-    font-size: 0.875rem;
-    font-weight: 500;
-    transition: var(--transition);
-    margin-bottom: 1.5rem;
-    width: fit-content;
-}
-
-.back-btn:hover {
-    border-color: var(--huawei-red);
-    color: var(--huawei-red);
-    transform: translateX(-3px);
-}
-
-/* ========== ВЕРХНЯЯ ПАНЕЛЬ - КОМПАКТНЫЕ КНОПКИ ========== */
-.top-bar {
-    padding: 0 1.5rem;
-    height: 56px;
-    gap: 1rem;
-}
-
-.top-action-btn {
-    display: flex;
-    align-items: center;
-    gap: 0.35rem;
-    padding: 0.4rem 0.8rem;
-    font-size: 0.75rem;
-}
-
-.top-action-btn i {
-    font-size: 0.85rem;
-}
-
-.top-action-btn.icon-only {
-    padding: 0.4rem;
-}
-
-/* ========== ВЫБОР ТЕМЫ - КОМПАКТНЫЙ ВЫПАДАЮЩИЙ СПИСОК ========== */
-.theme-selector {
-    position: relative;
-    display: flex;
-    align-items: center;
-}
-
-.theme-current {
-    display: flex;
-    align-items: center;
-    gap: 0.35rem;
-    padding: 0.4rem 0.8rem;
-    background: var(--bg-secondary);
-    border: 1px solid var(--border-light);
-    border-radius: var(--radius-md);
-    cursor: pointer;
-    font-size: 0.75rem;
-    color: var(--text-secondary);
-    transition: var(--transition);
-}
-
-.theme-current:hover {
-    border-color: var(--huawei-red);
-    color: var(--huawei-red);
-}
-
-.theme-current i {
-    font-size: 0.8rem;
-}
-
-.theme-dropdown {
-    position: absolute;
-    top: 100%;
-    right: 0;
-    margin-top: 0.25rem;
-    background: var(--bg-primary);
-    border: 1px solid var(--border-light);
-    border-radius: var(--radius-md);
-    box-shadow: var(--shadow-lg);
-    min-width: 150px;
-    z-index: 1000;
-    display: none;
-    overflow: hidden;
-}
-
-.theme-selector:hover .theme-dropdown {
-    display: block;
-}
-
-.theme-option {
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-    padding: 0.5rem 0.75rem;
-    cursor: pointer;
-    transition: var(--transition);
-    color: var(--text-primary);
-    font-size: 0.75rem;
-}
-
-.theme-option:hover {
-    background: var(--bg-hover);
-    color: var(--huawei-red);
-}
-
-.theme-option i {
-    width: 1rem;
-    text-align: center;
-    font-size: 0.8rem;
+@media (max-width: 480px) {
+    .stats { flex-direction: column; align-items: flex-start; gap: 0.5rem; }
+    .actions-column { flex-direction: column; }
+    .action-btn { width: 100%; }
+    .active-filters { max-height: 150px; }
+    .modal-content { width: 95%; padding: 1rem; }
+    .filter-dropdown { min-width: 180px; max-width: 240px; }
 }
