@@ -2,10 +2,12 @@
 Парсер DAT файлов лицензий Huawei
 Формат: ключ-значение, часто используется для бессрочных лицензий
 Извлекает: LSN, ESN, Product, Version, CreateTime, Resource
+Агрегирует одинаковые CapacityKey из разных секций
 Сохраняет кэш для динамических полей
 """
 
 import re
+import json
 from datetime import datetime
 from modules.logger import get_logger
 
@@ -15,10 +17,11 @@ logger = get_logger(__name__)
 def parse_dat_license(file_path):
     """
     Парсит DAT файл лицензии Huawei
-    Возвращает словарь с данными лицензии и кэшем для динамических полей
+    Возвращает словарь с данными лицензии и кэшем
+    Агрегирует ресурсы из всех секций (Service, CGCAP, Trial0, etc.)
     """
     try:
-        # 1. Читаем файл с разными кодировками
+        # Читаем файл с разными кодировками
         content = None
         used_encoding = None
         
@@ -35,7 +38,7 @@ def parse_dat_license(file_path):
             logger.error(f"Не удалось прочитать файл (неизвестная кодировка): {file_path}")
             return None
         
-        # 2. Инициализируем результат
+        # Инициализируем результат
         result = {
             'lsn': None,
             'product': None,
@@ -43,59 +46,84 @@ def parse_dat_license(file_path):
             'node': None,
             'esn': None,
             'create_time': None,
-            'valid_date': 'PERMANENT',  # DAT обычно бессрочные
+            'valid_date': 'PERMANENT',
             'resources': [],
             'file_type': 'dat',
             'file_path': file_path,
         }
         
-        # 3. Извлекаем LSN (LicenseSerialNo)
+        # Извлекаем LSN
         lsn_match = re.search(r'LicenseSerialNo[=:]\s*(\S+)', content, re.IGNORECASE)
         if lsn_match:
             result['lsn'] = lsn_match.group(1).strip()
         
-        # 4. Извлекаем CreateTime (CreatedTime)
-        date_match = re.search(r'CreatedTime[=:]\s*([0-9]{4}-[0-9]{2}-[0-9]{2}\s+[0-9]{2}:[0-9]{2}:[0-9]{2})', content, re.IGNORECASE)
+        # Извлекаем CreateTime
+        date_match = re.search(r'CreatedTime[=:]\s*([0-9\-\s:]+)', content, re.IGNORECASE)
         if date_match:
             result['create_time'] = date_match.group(1).strip()
-        else:
-            # Альтернативный формат без времени
-            date_match = re.search(r'CreatedTime[=:]\s*([0-9]{4}-[0-9]{2}-[0-9]{2})', content, re.IGNORECASE)
-            if date_match:
-                result['create_time'] = date_match.group(1).strip()
         
-        # 5. Извлекаем Product
-        product_match = re.search(r'Product[=:]\s*(\S+)', content, re.IGNORECASE)
-        if product_match:
-            result['product'] = product_match.group(1).strip()
-        
-        # 6. Извлекаем Version
-        version_match = re.search(r'Version[=:]\s*(\S+)', content, re.IGNORECASE)
-        if version_match:
-            result['version'] = version_match.group(1).strip()
-        
-        # 7. Извлекаем ESN
-        esn_match = re.search(r'Esn[=:]\s*"?([^"\n]+)"?', content, re.IGNORECASE)
+        # Извлекаем ESN
+        esn_match = re.search(r'Esn="([^"]+)"', content, re.IGNORECASE)
         if esn_match:
             result['esn'] = esn_match.group(1).strip()
         
-        # 8. Извлекаем Node (может называться Product или Node)
-        node_match = re.search(r'Node[=:]\s*(\S+)', content, re.IGNORECASE)
+        # Извлекаем Product (первый)
+        product_match = re.search(r'Product=(\w+)', content, re.IGNORECASE)
+        if product_match:
+            result['product'] = product_match.group(1).strip()
+        
+        # Извлекаем Version
+        version_match = re.search(r'Version=(\S+)', content, re.IGNORECASE)
+        if version_match:
+            result['version'] = version_match.group(1).strip()
+        
+        # Извлекаем Node
+        node_match = re.search(r'Node=(\S+)', content, re.IGNORECASE)
         if node_match:
             result['node'] = node_match.group(1).strip()
-        elif not result['node'] and result['product']:
+        elif result['product']:
             result['node'] = result['product']
         
-        # 9. Извлекаем Resource (формат: KEY1=1000, KEY2=2000 или "KEY1=1000,KEY2=2000")
-        resource_match = re.search(r'Resource[=:]\s*"?([^"\n]+)"?', content, re.IGNORECASE)
+        # ========== АГРЕГАЦИЯ РЕСУРСОВ ИЗ ВСЕХ СЕКЦИЙ ==========
+        # Разбиваем файл на блоки по "Product="
+        sections = re.split(r'(?=^Product=)', content, flags=re.MULTILINE)
         
-        if resource_match:
+        resources_dict = {}
+        future_dates = []
+        permanent_found = False
+        
+        for section in sections:
+            if not section.strip():
+                continue
+            
+            # Извлекаем Feature
+            feature_match = re.search(r'Feature=(\w+)', section)
+            feature = feature_match.group(1) if feature_match else 'Unknown'
+            
+            # Извлекаем Resource
+            resource_match = re.search(r'Resource="([^"]+)"', section)
+            if not resource_match:
+                continue
+            
             resources_str = resource_match.group(1).strip()
             
-            # Разбираем ресурсы (могут быть разделены запятыми или пробелами)
-            # Убираем кавычки если есть
-            resources_str = resources_str.strip('"\'')
+            # Извлекаем Attrib для определения valid_date
+            attrib_match = re.search(r'Attrib="([^"]+)"', section)
+            is_permanent = False
+            valid_date_str = None
             
+            if attrib_match:
+                attrib_parts = attrib_match.group(1).split(',')
+                if len(attrib_parts) >= 2:
+                    date_part = attrib_parts[1].strip()
+                    if date_part.upper() == 'PERMANENT':
+                        is_permanent = True
+                        permanent_found = True
+                    elif date_part != 'NULL' and date_part != '':
+                        valid_date_str = date_part
+                        future_dates.append(valid_date_str)
+            
+            # Парсим ресурсы из строки
             # Разделяем по запятой, но не разбиваем внутри кавычек
             items = []
             current = []
@@ -117,7 +145,7 @@ def parse_dat_license(file_path):
             if current:
                 items.append(''.join(current).strip())
             
-            # Парсим каждый item (формат: KEY=VALUE)
+            # Обрабатываем каждый ресурс
             for item in items:
                 if '=' in item:
                     key, val = item.split('=', 1)
@@ -133,24 +161,57 @@ def parse_dat_license(file_path):
                     except ValueError:
                         value = 0
                     
-                    result['resources'].append({
-                        'name': key,
-                        'value': value,
-                        'valid_date': 'PERMANENT'  # DAT ресурсы всегда PERMANENT
-                    })
+                    # Агрегируем
+                    if key not in resources_dict:
+                        resources_dict[key] = {
+                            'name': key,
+                            'total_value': 0,
+                            'permanent_value': 0,
+                            'dated_values': [],
+                            'latest_date': None,
+                            'latest_value': 0
+                        }
+                    
+                    entry = resources_dict[key]
+                    entry['total_value'] += value
+                    
+                    if is_permanent:
+                        entry['permanent_value'] += value
+                    elif valid_date_str:
+                        entry['dated_values'].append({'date': valid_date_str, 'value': value})
+                        if entry['latest_date'] is None or valid_date_str > entry['latest_date']:
+                            entry['latest_date'] = valid_date_str
+                            entry['latest_value'] = value
         
-        # 10. Проверяем наличие PERMANENT в ресурсах
-        if result['resources']:
-            permanent_count = sum(1 for r in result['resources'] if r['valid_date'] == 'PERMANENT')
-            logger.debug(f"DAT ресурсы: {len(result['resources'])} всего, {permanent_count} PERMANENT")
+        # Формируем список ресурсов
+        all_resources = []
+        for key, data in resources_dict.items():
+            all_resources.append({
+                'name': key,
+                'value': data['total_value'],
+                'valid_date': data['latest_date'] or ('PERMANENT' if data['permanent_value'] > 0 else 'UNKNOWN'),
+                'permanent_value': data['permanent_value'],
+                'dated_values': json.dumps(data['dated_values']),
+                'total_value': data['total_value']
+            })
         
-        # 11. Сохраняем кэш для динамических полей
+        result['resources'] = all_resources
+        
+        # Определяем общий valid_date
+        if future_dates:
+            result['valid_date'] = max(future_dates)
+        elif permanent_found:
+            result['valid_date'] = 'PERMANENT'
+        else:
+            result['valid_date'] = 'UNKNOWN'
+        
+        # Сохраняем кэш
         result['parsed_cache'] = {
             'file_type': 'dat',
             'file_path': file_path,
             'raw_content': content,
             'used_encoding': used_encoding,
-            'resources': result['resources'].copy(),
+            'resources': all_resources,
             'lsn': result['lsn'],
             'esn': result['esn'],
             'product': result['product'],
@@ -160,9 +221,9 @@ def parse_dat_license(file_path):
             'valid_date': result['valid_date']
         }
         
-        logger.debug(f"Парсинг DAT: {file_path} -> {len(result['resources'])} ресурсов")
+        logger.debug(f"Парсинг DAT: {file_path} -> {len(result['resources'])} ресурсов (агрегировано)")
         return result
-    
+        
     except Exception as e:
         logger.error(f"Ошибка парсинга DAT {file_path}: {e}")
         return None

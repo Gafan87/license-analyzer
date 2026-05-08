@@ -35,21 +35,12 @@ def load_esn_mapping_from_excel(file_path):
     return mappings
 
 def save_esn_mapping_to_db(mappings, modified_by='system'):
-    """Сохраняет маппинг ESN в БД (с очисткой старых записей)"""
-    from modules.database import get_connection, add_change_history
-    import json
-    
+    """Сохраняет маппинг ESN в БД (7 колонок)"""
     conn = get_connection()
     cursor = conn.cursor()
     
-    # Получаем количество старых записей для истории
-    cursor.execute('SELECT COUNT(*) FROM esn_mapping')
-    old_count = cursor.fetchone()[0]
-    
-    # ОЧИЩАЕМ старые записи
     cursor.execute('DELETE FROM esn_mapping')
     
-    # Добавляем новые
     added = 0
     for mapping in mappings:
         if mapping.get('esn'):
@@ -58,8 +49,8 @@ def save_esn_mapping_to_db(mappings, modified_by='system'):
                     INSERT OR REPLACE INTO esn_mapping (esn, lsn, operator, domain, ne_type, city, site)
                     VALUES (?, ?, ?, ?, ?, ?, ?)
                 ''', (mapping['esn'], mapping.get('lsn'), mapping.get('operator'),
-                    mapping.get('domain'), mapping.get('ne_type'), 
-                    mapping.get('city'), mapping.get('site')))
+                      mapping.get('domain'), mapping.get('ne_type'),
+                      mapping.get('city'), mapping.get('site')))
                 added += 1
             except Exception as e:
                 print(f"Ошибка вставки {mapping.get('esn')}: {e}")
@@ -72,18 +63,17 @@ def save_esn_mapping_to_db(mappings, modified_by='system'):
                       {'count': added}, 
                       modified_by)
     
-    print(f"Маппинг обновлён: удалено {old_count}, добавлено {added}")
     return added
 
 def get_mapping_by_esn(esn):
-    """Получает маппинг по ESN"""
+    """Получает маппинг по ESN (с учётом домена)"""
     if not esn:
         return None
     
     conn = get_connection()
     cursor = conn.cursor()
     cursor.execute('''
-        SELECT operator, ne_type, city, site FROM esn_mapping 
+        SELECT operator, domain, ne_type, city, site FROM esn_mapping 
         WHERE esn = ? OR esn LIKE ? OR ? LIKE esn
     ''', (esn, f'%{esn}%', esn))
     row = cursor.fetchone()
@@ -100,22 +90,23 @@ def get_mapping_by_esn(esn):
     return None
 
 def get_mapping_by_lsn(lsn):
-    """Получает маппинг по LSN"""
+    """Получает маппинг по LSN (с учётом домена)"""
     if not lsn:
         return None
     
     conn = get_connection()
     cursor = conn.cursor()
-    cursor.execute('SELECT operator, ne_type, city, site FROM esn_mapping WHERE lsn = ?', (lsn,))
+    cursor.execute('SELECT operator, domain, ne_type, city, site FROM esn_mapping WHERE lsn = ?', (lsn,))
     row = cursor.fetchone()
     conn.close()
     
     if row:
         return {
             'operator': row[0],
-            'ne_type': row[1],
-            'city': row[2],
-            'site': row[3]
+            'domain': row[1],
+            'ne_type': row[2],
+            'city': row[3],
+            'site': row[4]
         }
     return None
 

@@ -201,6 +201,22 @@ def init_local_db(db_path=None):
         )
     ''')
     
+    # ========== НОВАЯ ТАБЛИЦА ДЛЯ АГРЕГИРОВАННЫХ РЕСУРСОВ ==========
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS capacity_aggregated (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            license_id INTEGER NOT NULL,
+            capacity_key TEXT NOT NULL,
+            total_value INTEGER DEFAULT 0,
+            permanent_value INTEGER DEFAULT 0,
+            dated_values TEXT,  -- JSON: [{"date": "2027-03-01", "value": 7215}, ...]
+            latest_date TEXT,
+            latest_value INTEGER,
+            FOREIGN KEY (license_id) REFERENCES licenses(id) ON DELETE CASCADE,
+            UNIQUE(license_id, capacity_key)
+        )
+    ''')
+    
     # ========== ИНДЕКСЫ ДЛЯ УСКОРЕНИЯ ==========
     cursor.execute('CREATE INDEX IF NOT EXISTS idx_licenses_operator_esn ON licenses(operator, esn)')
     cursor.execute('CREATE INDEX IF NOT EXISTS idx_licenses_valid_date ON licenses(valid_date)')
@@ -262,14 +278,14 @@ def save_licenses_batch(licenses_data, modified_by='system'):
     """
     if not licenses_data:
         return 0, 0
-    
+
     conn = get_connection()
     cursor = conn.cursor()
-    
+
     saved = 0
     errors = 0
     now = datetime.now().isoformat()
-    
+
     try:
         for license_data in licenses_data:
             try:
@@ -279,18 +295,18 @@ def save_licenses_batch(licenses_data, modified_by='system'):
                 site = license_data.get('site')
                 year = license_data.get('year')
                 lsn = license_data.get('lsn')
-                
+
                 if not operator or not ne_type or not city:
                     errors += 1
                     continue
-                
+
                 # Проверяем существующую
                 cursor.execute('''
                     SELECT id FROM licenses 
                     WHERE operator = ? AND ne_type = ? AND city = ? AND site = ? AND year = ? AND lsn = ?
                 ''', (operator, ne_type, city, site, year, lsn))
                 existing = cursor.fetchone()
-                
+
                 if existing:
                     license_id = existing[0]
                     cursor.execute('''
@@ -310,6 +326,8 @@ def save_licenses_batch(licenses_data, modified_by='system'):
                     ))
                     # Удаляем старые ресурсы
                     cursor.execute('DELETE FROM resources WHERE license_id = ?', (license_id,))
+                    # Удаляем старые агрегированные данные
+                    cursor.execute('DELETE FROM capacity_aggregated WHERE license_id = ?', (license_id,))
                 else:
                     cursor.execute('''
                         INSERT INTO licenses (
@@ -328,8 +346,8 @@ def save_licenses_batch(licenses_data, modified_by='system'):
                         now, modified_by
                     ))
                     license_id = cursor.lastrowid
-                
-                # Сохраняем ресурсы
+
+                # ========== СОХРАНЯЕМ ОБЫЧНЫЕ РЕСУРСЫ ==========
                 for res in license_data.get('resources', []):
                     if isinstance(res, dict):
                         capacity_key = res.get('name') or res.get('capacity_key')
@@ -340,23 +358,86 @@ def save_licenses_batch(licenses_data, modified_by='system'):
                                 INSERT INTO resources (license_id, capacity_key, value, valid_date)
                                 VALUES (?, ?, ?, ?)
                             ''', (license_id, capacity_key, value, valid_date))
-                
+
+                # ========== НОВОЕ: СОХРАНЯЕМ АГРЕГИРОВАННЫЕ ДАННЫЕ ==========
+                # Проверяем, есть ли в license_data агрегированные ресурсы
+                if 'aggregated_resources' in license_data:
+                    for agg_res in license_data['aggregated_resources']:
+                        cursor.execute('''
+                            INSERT OR REPLACE INTO capacity_aggregated 
+                            (license_id, capacity_key, total_value, permanent_value, dated_values, latest_date, latest_value)
+                            VALUES (?, ?, ?, ?, ?, ?, ?)
+                        ''', (
+                            license_id, 
+                            agg_res.get('name'),
+                            agg_res.get('total_value', 0),
+                            agg_res.get('permanent_value', 0),
+                            agg_res.get('dated_values', '[]'),
+                            agg_res.get('latest_date'),
+                            agg_res.get('latest_value', 0)
+                        ))
+                else:
+                    # Если агрегированных данных нет, создаём их из обычных ресурсов
+                    # Группируем ресурсы по capacity_key
+                    agg_dict = {}
+                    for res in license_data.get('resources', []):
+                        key = res.get('name')
+                        if not key:
+                            continue
+                        if key not in agg_dict:
+                            agg_dict[key] = {
+                                'name': key,
+                                'total_value': 0,
+                                'permanent_value': 0,
+                                'dated_values': [],
+                                'latest_date': None,
+                                'latest_value': 0
+                            }
+                        entry = agg_dict[key]
+                        value = res.get('value', 0)
+                        valid_date = res.get('valid_date', 'UNKNOWN')
+                        
+                        entry['total_value'] += value
+                        if valid_date == 'PERMANENT':
+                            entry['permanent_value'] += value
+                        elif valid_date not in ['UNKNOWN', '']:
+                            entry['dated_values'].append({'date': valid_date, 'value': value})
+                            if entry['latest_date'] is None or valid_date > entry['latest_date']:
+                                entry['latest_date'] = valid_date
+                                entry['latest_value'] = value
+                    
+                    # Сохраняем агрегированные данные
+                    for key, data in agg_dict.items():
+                        cursor.execute('''
+                            INSERT OR REPLACE INTO capacity_aggregated 
+                            (license_id, capacity_key, total_value, permanent_value, dated_values, latest_date, latest_value)
+                            VALUES (?, ?, ?, ?, ?, ?, ?)
+                        ''', (
+                            license_id,
+                            data['name'],
+                            data['total_value'],
+                            data['permanent_value'],
+                            json.dumps(data['dated_values']),
+                            data['latest_date'],
+                            data['latest_value']
+                        ))
+
                 saved += 1
-                
+
             except Exception as e:
                 errors += 1
                 logger.error(f"Ошибка сохранения лицензии в пакете: {e}")
-        
+
         conn.commit()
         return saved, errors
-        
+
     except Exception as e:
         conn.rollback()
         logger.error(f"Ошибка пакетного сохранения: {e}")
         return saved, errors
     finally:
         conn.close()
-
+        
 def save_license(license_data, modified_by='system', max_retries=5):
     """
     Сохраняет лицензию в БД с повторными попытками при блокировке

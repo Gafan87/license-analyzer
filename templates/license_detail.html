@@ -262,6 +262,15 @@
                 <i class="fas fa-chart-bar"></i> Ресурсы (CapacityKey)
             </div>
             <div class="info-block-content" style="padding: 0;">
+                                <!-- В блоке ресурсов, добавим переключатель -->
+                <div class="info-block-header">
+                    <i class="fas fa-chart-bar"></i> Ресурсы (CapacityKey)
+                    <div class="resource-filter" style="margin-left: auto; display: flex; gap: 0.5rem;">
+                        <button class="filter-chip active" data-mode="total">📊 Суммарные</button>
+                        <button class="filter-chip" data-mode="latest">📅 По дате</button>
+                        <button class="filter-chip" data-mode="permanent">♾️ Постоянные</button>
+                    </div>
+                </div>
                 <table class="resources-table" id="resourcesTable">
                     <thead>
                         <tr><th>CapacityKey</th><th>Значение</th><th>Действителен до</th><th>Описание</th></tr>
@@ -473,6 +482,61 @@
             }
         });
     });
+
+// Переключение режимов отображения ресурсов
+let currentResourceMode = 'total'; // total, latest, permanent
+
+function updateResourcesDisplay(mode) {
+    currentResourceMode = mode;
+    
+    // Обновляем активный класс у кнопок
+    document.querySelectorAll('.filter-chip').forEach(chip => {
+        chip.classList.remove('active');
+        if (chip.dataset.mode === mode) chip.classList.add('active');
+    });
+    
+    // Получаем текущие агрегированные данные
+    const licenseId = document.querySelector('[data-license-id]')?.getAttribute('data-license-id');
+    if (licenseId) {
+        loadAggregatedResources(licenseId, mode);
+    }
+}
+
+async function loadAggregatedResources(licenseId, mode) {
+    try {
+        const response = await fetch(`/api/license/${licenseId}/resources?mode=${mode}`);
+        const data = await response.json();
+        
+        const resourcesTableBody = document.getElementById('resourcesTableBody');
+        if (!resourcesTableBody) return;
+        
+        if (data.resources && data.resources.length > 0) {
+            resourcesTableBody.innerHTML = data.resources.map(res => `
+                <tr>
+                    <td><code>${escapeHtml(res.name)}</code></td>
+                    <td>${res.value}</td>
+                    <td>${res.valid_date || '-'}</td>
+                    <td class="capacity-description">
+                        <small class="text-muted">
+                            ${res.description ? escapeHtml(res.description) + (res.unit ? ' (' + escapeHtml(res.unit) + ')' : '') : '—'}
+                        </small>
+                    </td>
+                </tr>
+            `).join('');
+        } else {
+            resourcesTableBody.innerHTML = '<td><td colspan="4" class="text-center">Нет ресурсов</td></tr>';
+        }
+    } catch (error) {
+        console.error('Ошибка загрузки ресурсов:', error);
+    }
+}
+
+// Инициализация фильтров
+document.querySelectorAll('.filter-chip').forEach(chip => {
+    chip.addEventListener('click', () => {
+        updateResourcesDisplay(chip.dataset.mode);
+    });
+});
 
     // ========== ЗАГРУЗКА РЕСУРСОВ ПРИ ВЫБОРЕ LSN ==========
     const resourcesCache = {};

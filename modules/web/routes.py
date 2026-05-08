@@ -992,37 +992,50 @@ def api_export_licenses():
 
 @web_bp.route('/api/license/<int:license_id>/resources', methods=['GET'])
 def api_get_license_resources(license_id):
-    """Получить ресурсы лицензии по ID"""
-    from modules.database import get_license_by_id
-    from modules.capacity_mapper import get_capacity_description
-    from flask import current_app
+    mode = request.args.get('mode', 'total')
+    from modules.database import get_connection
     
-    license_data = get_license_by_id(license_id)
-    if not license_data:
-        return jsonify({'error': 'Лицензия не найдена'}), 404
+    conn = get_connection()
+    cursor = conn.cursor()
     
-    resources = license_data.get('resources', [])
+    if mode == 'aggregated':
+        # Получаем агрегированные данные
+        cursor.execute('''
+            SELECT capacity_key, total_value, permanent_value, dated_values, latest_date, latest_value
+            FROM capacity_aggregated WHERE license_id = ?
+        ''', (license_id,))
+        rows = cursor.fetchall()
+        
+        resources = []
+        for row in rows:
+            if mode == 'total':
+                value = row[1]  # total_value
+                valid_date = 'Суммарно'
+            elif mode == 'permanent':
+                value = row[2]  # permanent_value
+                valid_date = 'PERMANENT'
+            else:  # latest
+                value = row[5] if row[5] else row[1]  # latest_value или total
+                valid_date = row[4] or 'Суммарно'
+            
+            resources.append({
+                'name': row[0],
+                'value': value,
+                'valid_date': valid_date,
+                'description': '',  # добавить из capacity_mapper
+                'unit': ''
+            })
+    else:
+        # Обычные ресурсы (для обратной совместимости)
+        cursor.execute('''
+            SELECT capacity_key, value, valid_date FROM resources WHERE license_id = ?
+        ''', (license_id,))
+        resources = [{'name': r[0], 'value': r[1], 'valid_date': r[2]} for r in cursor.fetchall()]
     
-    # Обогащаем описаниями
-    domain = license_data.get('domain', '')
-    network_storage_path = current_app.config.get('network_storage_path', '')
-    
-    enriched_resources = []
-    for res in resources:
-        new_res = res.copy()
-        if domain and res.get('name'):
-            desc = get_capacity_description(res['name'], domain, network_storage_path)
-            if desc:
-                new_res['description'] = desc.get('description', '')
-                new_res['unit'] = desc.get('unit', '')
-        enriched_resources.append(new_res)
-    
-    return jsonify({
-        'resources': enriched_resources,
-        'valid_date': license_data.get('valid_date'),
-        'year': license_data.get('year')
-    })
-       
+    conn.close()
+    return jsonify({'resources': resources})
+
+      
 @web_bp.route('/<operator>/license_by_esn/<esn>')
 def license_detail_by_esn(operator, esn):
     """Детальная страница для ESN со всеми LSN"""
@@ -1488,5 +1501,6 @@ def dynamic_fields_page(operator):
                           current_operator_title=op_config.get('title', operator),
                           columns=columns,
                           rules=rules.get('rules', {}))
+    
 
 
