@@ -1,3 +1,5 @@
 git status
 git add .
 git commit -m "Исправлен парсер DAT: агрегация ресурсов, исправлена ошибка items"
+
+git push

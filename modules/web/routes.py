@@ -996,24 +996,23 @@ def api_get_license_resources(license_id):
     from modules.capacity_mapper import get_capacity_description
     from flask import current_app
     import json
-    
+
     mode = request.args.get('mode', 'total')
     domain = request.args.get('domain', '')
     network_storage_path = current_app.config.get('network_storage_path', '')
-    
+
     conn = get_connection()
     cursor = conn.cursor()
-    
+
     cursor.execute('''
         SELECT capacity_key, total_value, permanent_value, dated_values, latest_date, latest_value
         FROM capacity_aggregated WHERE license_id = ?
     ''', (license_id,))
     agg_rows = cursor.fetchall()
     conn.close()
-    
+
     resources = []
-    now = datetime.now().date()
-    
+
     for row in agg_rows:
         capacity_key = row[0]
         total_value = row[1]
@@ -1021,77 +1020,67 @@ def api_get_license_resources(license_id):
         dated_values_str = row[3]
         latest_date = row[4]
         latest_value = row[5]
-        
-        # Парсим dated_values
+
         dated_values = []
         if dated_values_str:
             try:
                 dated_values = json.loads(dated_values_str)
             except:
                 pass
-        
+
         if mode == 'total':
             value = total_value
             dated_values_list = dated_values if isinstance(dated_values, list) else []
             has_dated = len(dated_values_list) > 0
             has_permanent = permanent_value > 0
-            
-            # Формируем дату с переносом строки
+
             date_parts = []
             if has_permanent:
                 date_parts.append('PERMANENT')
             if has_dated:
                 latest_date = max([dv['date'] for dv in dated_values_list])
                 date_parts.append(latest_date)
-            
+
             valid_date = '<br>'.join(date_parts) if date_parts else 'N/A'
-            
+
         elif mode == 'permanent':
-            # Только permanent часть
-            if permanent_value > 0:
-                value = permanent_value
-                valid_date = 'PERMANENT '
-            else:
-                value = '0'
-                valid_date = ''
-            
+            value = permanent_value if permanent_value > 0 else 0
+            valid_date = 'PERMANENT'
+
         else:  # mode == 'latest'
-            # Только временная часть (самая поздняя дата, без permanent)
-            # Находим самую позднюю dated дату
             latest_dated = None
             latest_dated_value = 0
             for dv in dated_values:
                 if latest_dated is None or dv['date'] > latest_dated:
                     latest_dated = dv['date']
                     latest_dated_value = dv['value']
-            
             if latest_dated:
                 value = latest_dated_value
                 valid_date = latest_dated
             else:
                 value = 0
                 valid_date = ''
-        
+
         resources.append({
             'name': capacity_key,
             'value': value,
             'valid_date': valid_date,
             'description': '',
-            'unit': '',
-            'permanent_value': permanent_value,
-            'dated_values': dated_values
+            'unit': ''
         })
-    
-    # Обогащаем описаниями
+
+    # ========== ОБОГАЩАЕМ ОПИСАНИЯМИ ==========
     for res in resources:
-        desc = get_capacity_description(res['name'], domain, network_storage_path)
-        if desc:
-            res['description'] = desc.get('description', '')
-            res['unit'] = desc.get('unit', '')
-    
+        if res['name']:
+            desc = get_capacity_description(res['name'], domain, network_storage_path)
+            if desc:
+                res['description'] = desc.get('description', '')
+                res['unit'] = desc.get('unit', '')
+            else:
+                res['description'] = ''
+                res['unit'] = ''
+
     return jsonify({'resources': resources})
-
-
   
 @web_bp.route('/<operator>/license_by_esn/<esn>')
 def license_detail_by_esn(operator, esn):
@@ -1133,7 +1122,7 @@ def license_detail_by_esn(operator, esn):
             all_licenses_data.append(full_lic)
         else:
             all_licenses_data.append(lic)
-    
+    print(f"DEBUG: domain = {domain}")
     return render_template('license_detail.html',
                           operators=current_app.config['OPERATORS'],
                           current_operator=operator,

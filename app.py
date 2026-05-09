@@ -63,6 +63,7 @@ app.config.update(config)
 app.config['OPERATORS'] = config.get('operators', [])
 app.config['LOG_LEVEL'] = config.get('log_level', 'INFO')
 app.config['network_storage_path'] = config.get('network_storage_path', '')
+app.config['local_license_details_path'] = config.get('local_license_details_path', '')
 
 print(f"📋 Загружено операторов: {len(app.config['OPERATORS'])}")
 for op in app.config['OPERATORS']:

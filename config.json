@@ -1,6 +1,7 @@
 {
   "log_level": "INFO",
   "network_storage_path": "//A00742028-C5NC5/_Licenses",
+  "local_license_details_path": "D:/_Licenses/license_details",
   "mapping_folder": "mapping",
   "license_details_folder": "license_details",
   "local_db_path": "local_licenses.db",

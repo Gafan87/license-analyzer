@@ -526,7 +526,8 @@
     // Глобальные переменные
     let currentResourceMode = 'total';
     let currentLicenseId = {{ license.id }};
-    let currentDomain = '{{ license.domain or "" }}';
+let currentDomain = '{{ domain }}';
+console.log('currentDomain из domain:', currentDomain);
 
     // Функция обновления таблицы ресурсов
     window.updateResourcesTable = function(resources) {
@@ -658,10 +659,9 @@
         });
     });
 
-    // Обработчики выбора версии LSN
     document.addEventListener('DOMContentLoaded', function() {
         initResourceFilters();
-        
+
         const rows = document.querySelectorAll('.version-table tbody tr');
         rows.forEach(row => {
             row.addEventListener('click', function(e) {
@@ -670,13 +670,24 @@
                 if (licenseId) {
                     currentLicenseId = parseInt(licenseId);
                     window.loadResourcesWithMode(currentLicenseId, currentResourceMode);
-                    
-                    // Обновляем выделение
                     rows.forEach(r => r.classList.remove('selected-version'));
                     this.classList.add('selected-version');
                 }
             });
         });
+
+        if (currentLicenseId) {
+            window.loadResourcesWithMode(currentLicenseId, currentResourceMode);
+            // Подсвечиваем текущую версию
+            const currentRow = document.querySelector(`.version-table tbody tr[data-license-id="${currentLicenseId}"]`);
+            if (currentRow) currentRow.classList.add('selected-version');
+        }
     });
+// Принудительная загрузка описаний после загрузки страницы
+setTimeout(() => {
+    if (currentLicenseId) {
+        window.loadResourcesWithMode(currentLicenseId, currentResourceMode);
+    }
+}, 100);
 </script>
 {% endblock %}
