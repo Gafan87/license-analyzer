@@ -139,7 +139,7 @@ def license_detail(operator, license_id):
                           esn=license_data.get('esn'))
 
 
-# ========== СКАНИРОВАНИЕ И СИНХРОНИЗАЦИЯ ==========
+# ========== СКАНИРОВАНИЕ Ии СИНХРОНИЗАЦИЯ ==========
 
 @web_bp.route('/<operator>/scan', methods=['POST'])
 def scan_operator_route(operator):
@@ -1122,7 +1122,6 @@ def license_detail_by_esn(operator, esn):
             all_licenses_data.append(full_lic)
         else:
             all_licenses_data.append(lic)
-    print(f"DEBUG: domain = {domain}")
     return render_template('license_detail.html',
                           operators=current_app.config['OPERATORS'],
                           current_operator=operator,
