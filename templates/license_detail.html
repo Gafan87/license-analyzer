@@ -457,7 +457,7 @@
                     <div class="info-item"><span class="info-label">Действует до:</span><span class="info-value">{{ license.valid_date or '-' }}</span></div>
                     <div class="info-item"><span class="info-label">Дата создания:</span><span class="info-value">{{ license.create_time or '-' }}</span></div>
                     <div class="info-item"><span class="info-label">Узел:</span><span class="info-value">{{ license.node or '-' }}</span></div>
-                    <div class="info-item"><span class="info-label">Домен:</span><span class="info-value">{{ license.domain or '-' }}</span></div>
+                    <div class="info-item"><span class="info-label">Домен:</span><span class="info-value">{{ domain or license.domain or '-' }}</span></div>
                     <div class="info-item"><span class="info-label">Имя файла:</span><span class="info-value"><code>{{ license.filename or '-' }}</code></span></div>
                     <div class="info-item"><span class="info-label">Последнее изменение:</span><span class="info-value">{{ license.last_modified or '-' }}</span></div>
                     <div class="info-item"><span class="info-label">Кем изменено:</span><span class="info-value">{{ license.modified_by or '-' }}</span></div>

@@ -117,26 +117,41 @@ def save_visible_columns(operator):
     session[f'column_order_{operator}'] = order
     return jsonify({'success': True})
 
+# modules/web/routes.py
+
 @web_bp.route('/<operator>/license/<int:license_id>')
 def license_detail(operator, license_id):
     op_config = get_operator_config(operator)
     if not op_config:
         abort(404)
-    
+
+    # Получаем данные лицензии
     license_data = get_license_by_id(license_id)
     if not license_data:
         abort(404)
+
+    # ========== НОВАЯ ЛОГИКА (скопировано из license_detail_by_esn) ==========
+    # Получаем домен и обогащаем ресурсы
+    domain = license_data.get('domain', '')
+    network_storage_path = current_app.config.get('network_storage_path', '')
     
+    from modules.license_service import LicenseService
+    license_data = LicenseService.enrich_resources_with_descriptions(
+        license_data, domain, network_storage_path
+    )
+    # ====================================================================
+
     license_data['tags'] = get_license_tags(license_id)
     license_data['comments'] = get_comments(license_id)
-    
+
     return render_template('license_detail.html',
                           operators=current_app.config['OPERATORS'],
                           current_operator=operator,
                           current_operator_title=op_config.get('title', operator),
                           license=license_data,
                           all_licenses_for_esn=[license_data],
-                          esn=license_data.get('esn'))
+                          esn=license_data.get('esn'),
+                          domain=domain)  # <-- Явно передаём domain
 
 
 # ========== СКАНИРОВАНИЕ Ии СИНХРОНИЗАЦИЯ ==========
@@ -992,96 +1007,18 @@ def api_export_licenses():
 
 @web_bp.route('/api/license/<int:license_id>/resources', methods=['GET'])
 def api_get_license_resources(license_id):
-    from modules.database import get_connection
-    from modules.capacity_mapper import get_capacity_description
+    """Получить ресурсы лицензии с иерархией Spart/Bpart"""
+    from modules.license_service import LicenseService
     from flask import current_app
-    import json
-
+    
     mode = request.args.get('mode', 'total')
     domain = request.args.get('domain', '')
-    network_storage_path = current_app.config.get('network_storage_path', '')
-
-    conn = get_connection()
-    cursor = conn.cursor()
-
-    cursor.execute('''
-        SELECT capacity_key, total_value, permanent_value, dated_values, latest_date, latest_value
-        FROM capacity_aggregated WHERE license_id = ?
-    ''', (license_id,))
-    agg_rows = cursor.fetchall()
-    conn.close()
-
-    resources = []
-
-    for row in agg_rows:
-        capacity_key = row[0]
-        total_value = row[1]
-        permanent_value = row[2]
-        dated_values_str = row[3]
-        latest_date = row[4]
-        latest_value = row[5]
-
-        dated_values = []
-        if dated_values_str:
-            try:
-                dated_values = json.loads(dated_values_str)
-            except:
-                pass
-
-        if mode == 'total':
-            value = total_value
-            dated_values_list = dated_values if isinstance(dated_values, list) else []
-            has_dated = len(dated_values_list) > 0
-            has_permanent = permanent_value > 0
-
-            date_parts = []
-            if has_permanent:
-                date_parts.append('PERMANENT')
-            if has_dated:
-                latest_date = max([dv['date'] for dv in dated_values_list])
-                date_parts.append(latest_date)
-
-            valid_date = '<br>'.join(date_parts) if date_parts else 'N/A'
-
-        elif mode == 'permanent':
-            value = permanent_value if permanent_value > 0 else 0
-            valid_date = 'PERMANENT'
-
-        else:  # mode == 'latest'
-            latest_dated = None
-            latest_dated_value = 0
-            for dv in dated_values:
-                if latest_dated is None or dv['date'] > latest_dated:
-                    latest_dated = dv['date']
-                    latest_dated_value = dv['value']
-            if latest_dated:
-                value = latest_dated_value
-                valid_date = latest_dated
-            else:
-                value = 0
-                valid_date = ''
-
-        resources.append({
-            'name': capacity_key,
-            'value': value,
-            'valid_date': valid_date,
-            'description': '',
-            'unit': ''
-        })
-
-    # ========== ОБОГАЩАЕМ ОПИСАНИЯМИ ==========
-    for res in resources:
-        if res['name']:
-            desc = get_capacity_description(res['name'], domain, network_storage_path)
-            if desc:
-                res['description'] = desc.get('description', '')
-                res['unit'] = desc.get('unit', '')
-            else:
-                res['description'] = ''
-                res['unit'] = ''
-
+    
+    # Используем новый метод сервиса
+    resources = LicenseService.get_aggregated_resources(license_id, domain, mode)
+    
     return jsonify({'resources': resources})
-  
+
 @web_bp.route('/<operator>/license_by_esn/<esn>')
 def license_detail_by_esn(operator, esn):
     """Детальная страница для ESN со всеми LSN"""
@@ -1098,7 +1035,15 @@ def license_detail_by_esn(operator, esn):
     main_license = get_license_by_id(licenses[0]['id'])
     
     # Получаем домен и обогащаем ресурсы
-    domain = main_license.get('domain', '')
+    domain = main_license.get('domain')
+    if not domain:
+        # Если нет в main_license, получи из БД напрямую
+        conn = get_connection()
+        cur = conn.cursor()
+        cur.execute('SELECT domain FROM licenses WHERE id = ?', (licenses[0]['id'],))
+        row = cur.fetchone()
+        domain = row[0] if row else ''
+        conn.close()
     network_storage_path = current_app.config.get('network_storage_path', '')
     
     from modules.license_service import LicenseService
@@ -1122,6 +1067,12 @@ def license_detail_by_esn(operator, esn):
             all_licenses_data.append(full_lic)
         else:
             all_licenses_data.append(lic)
+    print(f"=== ОТЛАДКА ===")
+    print(f"operator: {operator}")
+    print(f"esn: {esn}")
+    print(f"domain: {domain}")
+    print(f"network_storage_path: {network_storage_path}")
+    print(f"main_license.get('domain'): {main_license.get('domain')}")
     return render_template('license_detail.html',
                           operators=current_app.config['OPERATORS'],
                           current_operator=operator,

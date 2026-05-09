@@ -75,6 +75,8 @@ def scan_local_folder(local_path, operator_name):
             mapping = None
             if esn:
                 mapping = get_mapping_by_esn(esn)
+                if mapping and mapping.get('domain'):
+                    result['domain'] = mapping['domain']
             if not mapping and lsn:
                 mapping = get_mapping_by_lsn(lsn)
             

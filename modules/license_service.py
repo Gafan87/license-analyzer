@@ -17,8 +17,79 @@ from modules.capacity_mapper import get_capacity_description
 logger = get_logger(__name__)
 
 
+# modules/license_service.py - добавить новый метод
+
 class LicenseService:
-    """Сервис для работы с лицензиями"""
+    
+    @staticmethod
+    def get_aggregated_resources(license_id, domain, mode='total'):
+        """
+        Возвращает ресурсы лицензии с иерархией Spart/Bpart
+        - Сортировка по sort_order из Excel
+        - Spart выделены, Bpart сворачиваемые
+        """
+        from modules.database import get_connection
+        from modules.capacity_mapper import get_capacity_description, load_capacity_descriptions
+        from flask import current_app
+        import json
+        
+        conn = get_connection()
+        cursor = conn.cursor()
+        
+        # Получаем агрегированные данные
+        cursor.execute('''
+            SELECT capacity_key, total_value, permanent_value, dated_values, latest_date, latest_value
+            FROM capacity_aggregated WHERE license_id = ?
+        ''', (license_id,))
+        rows = cursor.fetchall()
+        conn.close()
+        
+        # Загружаем метаданные из Excel (порядок, part_number, иерархия)
+        network_storage_path = current_app.config.get('network_storage_path', '')
+        descriptions = load_capacity_descriptions(domain, network_storage_path)
+        
+        # Собираем ресурсы
+        resources = []
+        for row in rows:
+            capacity_key = row[0]
+            total_value = row[1]
+            permanent_value = row[2]
+            dated_values_str = row[3]
+            latest_date = row[4]
+            latest_value = row[5]
+            
+            # Получаем метаданные из Excel
+            meta = descriptions.get(capacity_key, {})
+            
+            # Определяем значение в зависимости от режима
+            if mode == 'total':
+                value = total_value
+                valid_date = 'Суммарно'
+            elif mode == 'permanent':
+                value = permanent_value
+                valid_date = 'PERMANENT'
+            else:  # latest
+                value = latest_value if latest_value else total_value
+                valid_date = latest_date or 'Суммарно'
+            
+            resources.append({
+                'name': capacity_key,
+                'value': value,
+                'valid_date': valid_date,
+                'is_spart': meta.get('is_spart', False),
+                'parent_key': meta.get('parent_key'),
+                'part_number': meta.get('part_number', ''),
+                'feature_description': meta.get('feature_description', ''),
+                'dimensioning': meta.get('dimensioning', ''),
+                'sort_order': meta.get('sort_order', 999),
+                'description': meta.get('description', ''),
+                'unit': meta.get('unit', '')
+            })
+        
+        # Сортируем по sort_order
+        resources.sort(key=lambda x: x['sort_order'])
+        
+        return resources
     
     @staticmethod
     def get_licenses(operator=None, ne_type=None, city=None):
