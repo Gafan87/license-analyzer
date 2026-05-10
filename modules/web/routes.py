@@ -1007,18 +1007,96 @@ def api_export_licenses():
 
 @web_bp.route('/api/license/<int:license_id>/resources', methods=['GET'])
 def api_get_license_resources(license_id):
-    """Получить ресурсы лицензии с иерархией Spart/Bpart"""
-    from modules.license_service import LicenseService
+    from modules.database import get_connection
+    from modules.capacity_mapper import get_capacity_description
     from flask import current_app
-    
+    import json
+
     mode = request.args.get('mode', 'total')
     domain = request.args.get('domain', '')
-    
-    # Используем новый метод сервиса
-    resources = LicenseService.get_aggregated_resources(license_id, domain, mode)
-    
-    return jsonify({'resources': resources})
+    network_storage_path = current_app.config.get('network_storage_path', '')
 
+    conn = get_connection()
+    cursor = conn.cursor()
+
+    cursor.execute('''
+        SELECT capacity_key, total_value, permanent_value, dated_values, latest_date, latest_value
+        FROM capacity_aggregated WHERE license_id = ?
+    ''', (license_id,))
+    agg_rows = cursor.fetchall()
+    conn.close()
+
+    resources = []
+
+    for row in agg_rows:
+        capacity_key = row[0]
+        total_value = row[1]
+        permanent_value = row[2]
+        dated_values_str = row[3]
+        latest_date = row[4]
+        latest_value = row[5]
+
+        dated_values = []
+        if dated_values_str:
+            try:
+                dated_values = json.loads(dated_values_str)
+            except:
+                pass
+
+        if mode == 'total':
+            value = total_value
+            dated_values_list = dated_values if isinstance(dated_values, list) else []
+            has_dated = len(dated_values_list) > 0
+            has_permanent = permanent_value > 0
+
+            date_parts = []
+            if has_permanent:
+                date_parts.append('PERMANENT')
+            if has_dated:
+                latest_date = max([dv['date'] for dv in dated_values_list])
+                date_parts.append(latest_date)
+
+            valid_date = '<br>'.join(date_parts) if date_parts else 'N/A'
+
+        elif mode == 'permanent':
+            value = permanent_value if permanent_value > 0 else 0
+            valid_date = 'PERMANENT'
+
+        else:  # mode == 'latest'
+            latest_dated = None
+            latest_dated_value = 0
+            for dv in dated_values:
+                if latest_dated is None or dv['date'] > latest_dated:
+                    latest_dated = dv['date']
+                    latest_dated_value = dv['value']
+            if latest_dated:
+                value = latest_dated_value
+                valid_date = latest_dated
+            else:
+                value = 0
+                valid_date = ''
+
+        resources.append({
+            'name': capacity_key,
+            'value': value,
+            'valid_date': valid_date,
+            'description': '',
+            'unit': ''
+        })
+
+    # ========== ОБОГАЩАЕМ ОПИСАНИЯМИ ==========
+    for res in resources:
+        if res['name']:
+            desc = get_capacity_description(res['name'], domain, network_storage_path)
+            if desc:
+                res['description'] = desc.get('description', '')
+                res['unit'] = desc.get('unit', '')
+            else:
+                res['description'] = ''
+                res['unit'] = ''
+
+    return jsonify({'resources': resources})
+  
 @web_bp.route('/<operator>/license_by_esn/<esn>')
 def license_detail_by_esn(operator, esn):
     """Детальная страница для ESN со всеми LSN"""

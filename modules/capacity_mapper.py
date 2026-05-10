@@ -82,34 +82,32 @@ def load_capacity_descriptions(domain, network_storage_path):
         sheet = wb.active
         
         config = get_capacity_mapping_config()
-        col_key = config.get('col_capacity_key', 'A')
-        col_part_number = config.get('col_part_number', 'B')  # НОВОЕ
-        col_feature_field = config.get('col_feature_field', 'C') # НОВОЕ
-        col_feature_desc = config.get('col_feature_desc', 'D')   # НОВОЕ
-        col_dimensioning = config.get('col_dimensioning', 'E')   # НОВОЕ
- 
+        capacity_key_col = config.get('col_a', 'A')
+        description_col = config.get('col_b', 'B')
+        unit_col = config.get('col_c', 'C')
+        
         def col_letter_to_index(letter):
             return ord(letter.upper()) - 64
         
+        col_idx_key = col_letter_to_index(capacity_key_col)
+        col_idx_desc = col_letter_to_index(description_col)
+        col_idx_unit = col_letter_to_index(unit_col)
+        
         descriptions = {}
+        
         for row in sheet.iter_rows(min_row=2, values_only=True):
-            if not row or not row[col_letter_to_index(col_key) - 1]:
+            if not row or not row[col_idx_key - 1]:
                 continue
-
-            capacity_key = str(row[col_letter_to_index(col_key) - 1]).strip()
             
-            # Определяем, является ли ключ Spart (SF..., KW...)
-            is_spart = capacity_key.startswith(('SF', 'KW', 'LC', 'LK'))
+            capacity_key = str(row[col_idx_key - 1]).strip()
+            description = str(row[col_idx_desc - 1]).strip() if col_idx_desc <= len(row) else ''
+            unit = str(row[col_idx_unit - 1]).strip() if col_idx_unit <= len(row) else ''
             
-            descriptions[capacity_key] = {
-                'capacity_key': capacity_key,
-                'part_number': str(row[col_letter_to_index(col_part_number) - 1]).strip() if col_part_number else '',
-                'feature_field': str(row[col_letter_to_index(col_feature_field) - 1]).strip() if col_feature_field else '',
-                'feature_description': str(row[col_letter_to_index(col_feature_desc) - 1]).strip() if col_feature_desc else '',
-                'dimensioning': str(row[col_letter_to_index(col_dimensioning) - 1]).strip() if col_dimensioning else '',
-                'is_spart': is_spart,
-                'parent_key': None,  # Заполните логикой определения
-            }
+            if capacity_key:
+                descriptions[capacity_key] = {
+                    'description': description,
+                    'unit': unit
+                }
         
         _capacity_descriptions_cache[domain] = descriptions
         logger.info(f"Загружено {len(descriptions)} описаний для домена {domain} из {file_path}")
