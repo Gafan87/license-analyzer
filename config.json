@@ -1,46 +1,31 @@
 {
   "log_level": "INFO",
   "network_storage_path": "//A00742028-C5NC5/_Licenses",
-  "local_license_details_path": "D:/_Licenses/license_details",
-  "mapping_folder": "mapping",
-  "license_details_folder": "license_details",
+  "license_details_path": "//A00742028-C5NC5/_Licenses/license_details",
+  "ne_type_mapping_file": "//A00742028-C5NC5/_Licenses/mapping/ne_type_mapping.xlsx",
+  "mapping_path": "//A00742028-C5NC5/_Licenses/mapping",
   "local_db_path": "local_licenses.db",
+  "excel_formulas_path": "excel_formulas",
+  "backup_enabled": true,
+  "backup_interval_days": 7,
+  "theme": "light",
   "operators": [
     {
       "name": "mts",
-      "title": "\u041c\u0422\u0421",
+      "title": "МТС",
       "local_scan_path": "D:\\_Beeline\\_Licenses\\_All Licenses",
       "incoming_folder": "D:/Incoming/MTS",
-      "folder_structure": [
-        "ne_type",
-        "city",
-        "site",
-        "year"
-      ]
+      "mapping_file": "mts_esn_mapping.xlsx",
+      "folder_structure": ["ne_type", "city", "site", "year"]
     },
     {
       "name": "veon",
       "title": "VEON",
       "local_scan_path": "D:\\_Beeline\\_Licenses\\_All Licenses",
       "incoming_folder": "D:/Incoming/VEON",
-      "folder_structure": [
-        "ne_type",
-        "city",
-        "site",
-        "year"
-      ]
+      "mapping_file": "veon_esn_mapping.xlsx",
+      "folder_structure": ["ne_type", "city", "site", "year"]
     }
   ],
-  "folder_structure": [
-    "operator",
-    "ne_type",
-    "city",
-    "site",
-    "year"
-  ],
-  "mapping_file": "mapping/esn_mapping.xlsx",
-  "excel_formulas_path": "excel_formulas",
-  "backup_enabled": true,
-  "backup_interval_days": 7,
-  "theme": "light"
+  "folder_structure": ["operator", "ne_type", "city", "site", "year"]
 }

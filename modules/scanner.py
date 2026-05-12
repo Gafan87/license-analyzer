@@ -8,6 +8,49 @@ from datetime import datetime
 
 logger = get_logger(__name__)
 
+# Глобальный кэш маппинга
+_mapping_cache = None
+_mapping_cache_time = 0
+
+def get_esn_mapping_cached(operator_name):
+    """
+    Загружает маппинг ESN для конкретного оператора
+    """
+    global _mapping_cache, _mapping_cache_time
+    import time
+    from modules.esn_mapper import load_esn_mapping_from_excel
+    from flask import current_app
+    
+    cache_key = f'mapping_{operator_name}'
+    
+    if _mapping_cache is not None and (time.time() - _mapping_cache_time) < 60:
+        return _mapping_cache
+    
+    # Получаем конфиг оператора
+    operators = current_app.config.get('OPERATORS', [])
+    op_config = None
+    for op in operators:
+        if op.get('name') == operator_name:
+            op_config = op
+            break
+    
+    if not op_config:
+        return []
+    
+    mapping_filename = op_config.get('mapping_file', f'{operator_name}_esn_mapping.xlsx')
+    mapping_path = current_app.config.get('mapping_path', '//A00742028-C5NC5/_Licenses/mapping')
+    mapping_file = os.path.join(mapping_path, mapping_filename)
+    
+    if os.path.exists(mapping_file):
+        _mapping_cache = load_esn_mapping_from_excel(mapping_file)
+        _mapping_cache_time = time.time()
+        logger.info(f"Загружен маппинг для {operator_name} из {mapping_file}: {len(_mapping_cache)} записей")
+    else:
+        logger.warning(f"Файл маппинга для {operator_name} не найден: {mapping_file}")
+        _mapping_cache = []
+    
+    return _mapping_cache
+
 def get_file_hash(filepath):
     """Вычисляет MD5 хеш файла"""
     hasher = hashlib.md5()
@@ -46,57 +89,75 @@ def scan_local_folder(local_path, operator_name):
     if not os.path.exists(local_path):
         logger.warning(f"Путь не существует: {local_path}")
         return []
-    
+
     licenses = []
-    
+
     for root, dirs, files in os.walk(local_path):
         for filename in files:
             if not (filename.lower().endswith('.xml') or filename.lower().endswith('.dat')):
                 continue
-            
+
             file_path = os.path.join(root, filename)
             logger.info(f"Сканирование: {file_path}")
-            
+
             # Парсим файл
             if filename.lower().endswith('.xml'):
                 license_data = parse_xml_license(file_path)
             else:
                 license_data = parse_dat_license(file_path)
-            
+
             if not license_data:
                 logger.warning(f"Не удалось распарсить: {filename}")
                 continue
-            
+
             # Получаем ESN и LSN
             esn = license_data.get('esn')
             lsn = license_data.get('lsn')
-            
-            # Ищем маппинг
+
+            # Ищем маппинг (сначала в загруженном файле, потом в БД)
             mapping = None
-            if esn:
-                mapping = get_mapping_by_esn(esn)
-                if mapping and mapping.get('domain'):
-                    result['domain'] = mapping['domain']
-            if not mapping and lsn:
-                mapping = get_mapping_by_lsn(lsn)
+            domain = None
             
+            # 1. Пробуем найти в загруженном Excel файле
+            all_mappings = get_esn_mapping_cached(operator_name)
+            for m in all_mappings:
+                if m.get('esn') == esn:
+                    mapping = m
+                    domain = m.get('domain')
+                    break
+                if m.get('lsn') == lsn:
+                    mapping = m
+                    domain = m.get('domain')
+                    break
+            
+            # 2. Если не нашли, пробуем в БД
+            if not mapping:
+                if esn:
+                    mapping = get_mapping_by_esn(esn)
+                    if mapping:
+                        domain = mapping.get('domain')
+                if not mapping and lsn:
+                    mapping = get_mapping_by_lsn(lsn)
+                    if mapping:
+                        domain = mapping.get('domain')
+
             # Извлекаем информацию из имени файла
             file_info = extract_from_filename(filename)
-            
+
             # Определяем метаданные (приоритет: маппинг > имя файла > путь)
             operator = mapping.get('operator') if mapping else operator_name
             ne_type = mapping.get('ne_type') if mapping else file_info.get('product')
             city = mapping.get('city') if mapping else file_info.get('city')
             site = mapping.get('site') if mapping else file_info.get('site')
-            
+
             # Год действия из validDate
             valid_date = license_data.get('valid_date', 'UNKNOWN')
             year_folder = extract_year_from_valid_date(valid_date)
-            
+
             # Если год не определён, пробуем из имени файла
             if year_folder == 'unknown' and file_info.get('year'):
                 year_folder = file_info['year']
-            
+
             # Формируем результат
             result = {
                 'operator': operator,
@@ -114,16 +175,18 @@ def scan_local_folder(local_path, operator_name):
                 'create_time': license_data.get('create_time'),
                 'valid_date': valid_date,
                 'resources': license_data.get('resources', []),
-                'local_path': file_path
+                'aggregated_resources': license_data.get('resources', []),
+                'local_path': file_path,
+                'domain': domain  # ← ДОБАВЛЯЕМ DOMAIN СРАЗУ
             }
-            
+
             # Добавляем parsed_cache если есть
             if 'parsed_cache' in license_data:
                 result['parsed_cache'] = license_data['parsed_cache']
-            
+
             licenses.append(result)
-            logger.debug(f"Обработано: {filename} -> {operator}/{ne_type}/{city}/{site}/{year_folder}")
-    
+            logger.debug(f"Обработано: {filename} -> {operator}/{ne_type}/{city}/{site}/{year_folder} (domain={domain})")
+
     return licenses
 
 def extract_tags_from_path(file_path, root_path):

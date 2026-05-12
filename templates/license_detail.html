@@ -4,7 +4,7 @@
 
 {% block extra_css %}
 <style>
-/* Двухколоночный макет для правой колонки */
+/* Двухколоночный макет */
 .license-detail-container {
     display: flex;
     gap: 1.5rem;
@@ -17,7 +17,7 @@
 }
 
 .right-column {
-    width: 600px;  /* фиксированная ширина */
+    width: 600px;
     flex-shrink: 0;
     display: flex;
     flex-direction: column;
@@ -53,7 +53,6 @@
     padding: 1rem;
 }
 
-/* Информационная таблица (две колонки) */
 .info-table {
     width: 100%;
     border-collapse: collapse;
@@ -78,12 +77,6 @@
     width: 120px;
 }
 
-.info-table td:last-child {
-    color: var(--text-primary);
-    word-break: break-all;
-}
-
-/* Основная информация в две колонки */
 .info-two-columns {
     display: grid;
     grid-template-columns: 1fr 1fr;
@@ -111,7 +104,7 @@
     font-size: 0.75rem;
 }
 
-/* Ресурсы */
+/* Таблица ресурсов */
 .resources-table {
     width: 100%;
     border-collapse: collapse;
@@ -160,7 +153,7 @@
     color: var(--huawei-red);
 }
 
-/* Таблица версий с горизонтальным скроллом */
+/* Таблица версий */
 .version-table-wrapper {
     overflow-x: auto;
     max-width: 100%;
@@ -175,13 +168,59 @@
 .version-table th,
 .version-table td {
     white-space: nowrap;
-    padding: 0.3rem 0.5rem; 
-     font-size: 0.65rem;
-
+    padding: 0.3rem 0.5rem;
+    font-size: 0.65rem;
 }
 
 .version-table code {
     font-size: 0.6rem;
+}
+
+/* Стили для иерархии */
+.spart-row {
+    font-weight: bold !important;
+    background-color: var(--bg-tertiary) !important;
+    border-top: 1px solid var(--border-light);
+    border-bottom: 1px solid var(--border-light);
+    cursor: pointer;
+}
+
+.spart-row:hover {
+    background-color: var(--bg-hover) !important;
+}
+
+.toggle-icon {
+    cursor: pointer;
+    display: inline-block;
+    width: 20px;
+    user-select: none;
+}
+
+.main-badge {
+    font-size: 0.6rem;
+    color: var(--huawei-red);
+    margin-left: 0.5rem;
+}
+
+.bpart-row, .orphan-row {
+    background-color: var(--bg-primary);
+}
+
+.valid-date-cell {
+    white-space: nowrap;
+    line-height: 1.3;
+}
+
+.selected-version {
+    background: var(--huawei-red-light, rgba(230, 0, 18, 0.1));
+}
+
+.version-table tbody tr {
+    cursor: pointer;
+}
+
+.version-table tbody tr:hover {
+    background: var(--bg-hover);
 }
 
 /* Комментарии */
@@ -234,7 +273,6 @@
     background: var(--bg-primary);
 }
 
-/* Теги */
 .tags-container {
     display: flex;
     flex-wrap: wrap;
@@ -277,7 +315,6 @@
     color: var(--huawei-red);
 }
 
-/* Кнопка назад */
 .back-button {
     display: inline-flex;
     align-items: center;
@@ -299,29 +336,12 @@
     transform: translateX(-3px);
 }
 
-/* Стиль для выбранной версии */
-.selected-version {
-    background: var(--huawei-red-light, rgba(230, 0, 18, 0.1));
-}
-
-.version-table tbody tr {
-    cursor: pointer;
-}
-
-.version-table tbody tr:hover {
-    background: var(--bg-hover);
-}
-
-.valid-date-cell {
-    white-space: pre-line;
-    line-height: 1.3;
-}
-
-/* Адаптивность */
 @media (max-width: 768px) {
     .license-detail-container {
-        grid-template-columns: 1fr;
-        gap: 1rem;
+        flex-direction: column;
+    }
+    .right-column {
+        width: 100%;
     }
     .info-two-columns {
         grid-template-columns: 1fr;
@@ -331,15 +351,12 @@
 {% endblock %}
 
 {% block content %}
-<!-- Кнопка назад -->
 <a href="/{{ current_operator }}/" class="back-button">
     <i class="fas fa-arrow-left"></i> Назад к списку
 </a>
 
 <div class="license-detail-container">
-    <!-- Левая колонка: Ресурсы -->
     <div class="left-column">
-        <!-- Ресурсы с фильтрацией -->
         <div class="info-block">
             <div class="info-block-header">
                 <i class="fas fa-chart-bar"></i> Ресурсы (CapacityKey)
@@ -352,32 +369,15 @@
             <div class="info-block-content" style="padding: 0;">
                 <table class="resources-table">
                     <thead>
-                        <tr><th>CapacityKey</th><th>Значение</th><th>Действителен до</th><th>Описание</th></tr>
+                        <tr><th>CapacityKey</th><th>Значение</th><th>Действителен до</th><th>Part-number</th><th>Размерность</th><th>Описание</th></tr>
                     </thead>
                     <tbody id="resourcesTableBody">
-                        {% for res in license.resources %}
-                        <tr>
-                            <td><code>{{ res.name }}</code></td>
-                            <td>{{ res.value }}</td>
-                            <td class="valid-date-cell">{{ res.valid_date or '-' }}</td>
-                            <td class="capacity-description">
-                                <small class="text-muted">
-                                    {% if res.description %}
-                                        {{ res.description }}
-                                        {% if res.unit %} ({{ res.unit }}){% endif %}
-                                    {% else %}
-                                        —
-                                    {% endif %}
-                                </small>
-                            </td>
-                        </tr>
-                        {% endfor %}
+                        <tr><td colspan="6" class="text-center">Загрузка...</td></tr>
                     </tbody>
                 </table>
             </div>
         </div>
 
-        <!-- Дополнительные поля -->
         <div class="info-block">
             <div class="info-block-header">
                 <i class="fas fa-puzzle-piece"></i> Дополнительные поля
@@ -397,9 +397,7 @@
         </div>
     </div>
 
-    <!-- Правая колонка -->
     <div class="right-column">
-        <!-- Блок ESN -->
         <div class="info-block">
             <div class="info-block-header">
                 <i class="fas fa-microchip"></i> ESN устройства
@@ -409,7 +407,6 @@
             </div>
         </div>
 
-        <!-- Все версии (LSN) -->
         <div class="info-block">
             <div class="info-block-header">
                 <i class="fas fa-code-branch"></i> Все версии (LSN)
@@ -439,7 +436,6 @@
             </div>
         </div>
 
-        <!-- Основная информация (в две колонки) -->
         <div class="info-block">
             <div class="info-block-header">
                 <i class="fas fa-info-circle"></i> Основная информация
@@ -461,14 +457,10 @@
                     <div class="info-item"><span class="info-label">Имя файла:</span><span class="info-value"><code>{{ license.filename or '-' }}</code></span></div>
                     <div class="info-item"><span class="info-label">Последнее изменение:</span><span class="info-value">{{ license.last_modified or '-' }}</span></div>
                     <div class="info-item"><span class="info-label">Кем изменено:</span><span class="info-value">{{ license.modified_by or '-' }}</span></div>
-                    {% if license.file_hash %}
-                    <div class="info-item"><span class="info-label">Хеш файла:</span><span class="info-value"><code>{{ license.file_hash[:16] }}...</code></span></div>
-                    {% endif %}
                 </div>
             </div>
         </div>
 
-        <!-- Теги -->
         <div class="info-block">
             <div class="info-block-header">
                 <i class="fas fa-tags"></i> Теги
@@ -488,7 +480,6 @@
             </div>
         </div>
 
-        <!-- Комментарии -->
         <div class="info-block">
             <div class="info-block-header">
                 <i class="fas fa-comments"></i> Комментарии
@@ -523,97 +514,16 @@
 </div>
 
 <script>
-    // Глобальные переменные
+    // ========== ГЛОБАЛЬНЫЕ ПЕРЕМЕННЫЕ ==========
     let currentResourceMode = 'total';
     let currentLicenseId = {{ license.id }};
-let currentDomain = '{{ domain }}';
-console.log('currentDomain из domain:', currentDomain);
+    let currentDomain = '{{ domain }}';
+    let currentHierarchy = null;
+    let collapsedSparts = new Set();
 
-    // Функция обновления таблицы ресурсов
-    window.updateResourcesTable = function(resources) {
-        const tbody = document.getElementById('resourcesTableBody');
-        if (!tbody) {
-            console.error('resourcesTableBody не найден');
-            return;
-        }
-        
-        if (!resources || resources.length === 0) {
-            tbody.innerHTML = '<tr><td colspan="4" class="text-center">Нет ресурсов</td></tr>';
-            return;
-        }
+    console.log('currentDomain:', currentDomain);
+    console.log('currentLicenseId:', currentLicenseId);
 
-        tbody.innerHTML = resources.map(res => {
-            let dateHtml = res.valid_date || '-';
-            // Обработка переноса строки для суммарного режима
-            if (dateHtml.includes('<br>')) {
-                dateHtml = dateHtml.replace('<br>', '<br>');
-            }
-            
-            return `
-                <tr>
-                    <td><code>${escapeHtml(res.name || '')}</code></td>
-                    <td>${res.value || 0}</td>
-                    <td class="valid-date-cell">${dateHtml}</td>
-                    <td class="capacity-description">
-                        <small class="text-muted">
-                            ${res.description ? escapeHtml(res.description) + (res.unit ? ' (' + escapeHtml(res.unit) + ')' : '') : '—'}
-                        </small>
-                    </td>
-                </tr>
-            `;
-        }).join('');
-    };
-
-    // Загрузка ресурсов с определённым режимом
-    window.loadResourcesWithMode = async function(licenseId, mode) {
-        try {
-            const url = `/api/license/${licenseId}/resources?mode=${mode}&domain=${encodeURIComponent(currentDomain)}`;
-            const response = await fetch(url);
-            const data = await response.json();
-
-            if (response.ok) {
-                window.updateResourcesTable(data.resources);
-            } else {
-                console.error('Ошибка загрузки ресурсов:', data.error);
-                const tbody = document.getElementById('resourcesTableBody');
-                if (tbody) tbody.innerHTML = '<tr><td colspan="4" class="text-center">❌ Ошибка загрузки</td></tr>';
-            }
-        } catch (error) {
-            console.error('Ошибка:', error);
-            const tbody = document.getElementById('resourcesTableBody');
-            if (tbody) tbody.innerHTML = '<tr><td colspan="4" class="text-center">❌ Ошибка загрузки</td></tr>';
-        }
-    };
-
-    // Инициализация фильтров ресурсов
-    function initResourceFilters() {
-        const chips = document.querySelectorAll('.filter-chip');
-        console.log('Найдено кнопок:', chips.length);
-        
-        chips.forEach(chip => {
-            // Удаляем старые обработчики
-            const newChip = chip.cloneNode(true);
-            chip.parentNode.replaceChild(newChip, chip);
-            
-            newChip.addEventListener('click', function(e) {
-                e.preventDefault();
-                e.stopPropagation();
-                
-                const mode = this.dataset.mode;
-                console.log('Клик по кнопке:', mode);
-                
-                // Обновляем активный класс
-                document.querySelectorAll('.filter-chip').forEach(c => c.classList.remove('active'));
-                this.classList.add('active');
-                
-                // Обновляем режим и загружаем ресурсы
-                currentResourceMode = mode;
-                window.loadResourcesWithMode(currentLicenseId, mode);
-            });
-        });
-    }
-
-    // Экранирование HTML
     function escapeHtml(str) {
         if (!str) return '';
         return String(str).replace(/[&<>]/g, function(m) {
@@ -624,7 +534,149 @@ console.log('currentDomain из domain:', currentDomain);
         });
     }
 
-    // Теги
+    // ========== ЗАГРУЗКА ИЕРАРХИИ ==========
+    async function loadHierarchy(licenseId, mode) {
+        try {
+            const url = `/api/license/${licenseId}/hierarchy?domain=${encodeURIComponent(currentDomain)}&mode=${mode}`;
+            const response = await fetch(url);
+            if (!response.ok) {
+                throw new Error(`HTTP ${response.status}`);
+            }
+            const data = await response.json();
+            currentHierarchy = data;
+            renderHierarchyTable(data.sparts, data.orphans);
+        } catch (error) {
+            console.error('Ошибка загрузки иерархии:', error);
+            document.getElementById('resourcesTableBody').innerHTML = '<tr><td colspan="6" class="text-center">❌ Ошибка загрузки данных</td></tr>';
+        }
+    }
+
+    // ========== ОТРИСОВКА ТАБЛИЦЫ ==========
+    function renderHierarchyTable(sparts, orphans) {
+        const tbody = document.getElementById('resourcesTableBody');
+        if ((!sparts || sparts.length === 0) && (!orphans || orphans.length === 0)) {
+            tbody.innerHTML = '<tr><td colspan="6" class="text-center">Нет данных ("license_details" файл не загружен)</td></tr>';
+            return;
+        }
+
+        let html = '';
+
+        sparts.forEach((spart) => {
+            const isCollapsed = collapsedSparts.has(spart.name);
+            const toggleIcon = isCollapsed ? '▶' : '▼';
+            const validDate = spart.valid_date || '-';
+
+            html += `
+                <tr class="spart-row" data-spart="${spart.name}">
+                    <td style="padding-left: 0.5rem;">
+                        <span class="toggle-icon" data-spart="${spart.name}">${toggleIcon}</span>
+                        <code>${escapeHtml(spart.name)}</code>
+                    </td>
+                    <td>${spart.value}</td>
+                    <td class="valid-date-cell">${validDate}</td>
+                    <td>${escapeHtml(spart.part_number || '-')}</td>
+                    <td>${escapeHtml(spart.dimension || '-')}</td>
+                    <td><small>${escapeHtml(spart.description || '—')}</small></td>
+                </tr>
+            `;
+
+            if (!isCollapsed && spart.children && spart.children.length > 0) {
+                spart.children.forEach(bpart => {
+                    const bpartValidDate = bpart.valid_date || '-';
+                    html += `
+                        <tr class="bpart-row" data-parent="${spart.name}">
+                            <td style="padding-left: 2rem;">
+                                <code>${escapeHtml(bpart.name)}</code>
+                                ${bpart.is_main ? '<span class="main-badge">(main)</span>' : ''}
+                             </td>
+                            <td>${bpart.value}</td>
+                            <td class="valid-date-cell">${bpartValidDate}</td>
+                            <td>${escapeHtml(bpart.part_number || '-')}</td>
+                            <td>${escapeHtml(bpart.dimension || '-')}</td>
+                            <td><small>${escapeHtml(bpart.description || '—')}</small></td>
+                        </tr>
+                    `;
+                });
+            }
+        });
+
+        if (orphans && orphans.length > 0) {
+            html += `<tr class="separator"><td colspan="6" style="background: var(--bg-secondary); padding: 0.5rem;"><strong>📌 Прочие CapacityKey</strong></td></tr>`;
+            orphans.forEach(orphan => {
+                const orphanValidDate = orphan.valid_date || '-';
+                html += `
+                    <tr class="orphan-row">
+                        <td style="padding-left: 2rem;"><code>${escapeHtml(orphan.name)}</code></td>
+                        <td>${orphan.value}</td>
+                        <td class="valid-date-cell">${orphanValidDate}</td>
+                        <td>${escapeHtml(orphan.part_number || '-')}</td>
+                        <td>${escapeHtml(orphan.dimension || '-')}</td>
+                        <td><small>${escapeHtml(orphan.description || '—')}</small></td>
+                    </tr>
+                `;
+            });
+        }
+
+        tbody.innerHTML = html;
+
+        // Обработчики для иконок (одиночный клик)
+        document.querySelectorAll('.toggle-icon').forEach(icon => {
+            icon.removeEventListener('click', handleToggleClick);
+            icon.addEventListener('click', handleToggleClick);
+        });
+
+        // Обработчики для двойного клика по строке SPart
+        document.querySelectorAll('.spart-row').forEach(row => {
+            row.removeEventListener('dblclick', handleSpartDoubleClick);
+            row.addEventListener('dblclick', handleSpartDoubleClick);
+        });
+    }
+
+    function handleToggleClick(e) {
+        e.stopPropagation();
+        const spartName = this.dataset.spart;
+        if (!spartName) return;
+        
+        if (collapsedSparts.has(spartName)) {
+            collapsedSparts.delete(spartName);
+        } else {
+            collapsedSparts.add(spartName);
+        }
+        if (currentHierarchy) {
+            renderHierarchyTable(currentHierarchy.sparts, currentHierarchy.orphans);
+        }
+    }
+
+    function handleSpartDoubleClick(e) {
+        const row = e.currentTarget;
+        const spartName = row.getAttribute('data-spart');
+        if (!spartName) return;
+        
+        if (collapsedSparts.has(spartName)) {
+            collapsedSparts.delete(spartName);
+        } else {
+            collapsedSparts.add(spartName);
+        }
+        if (currentHierarchy) {
+            renderHierarchyTable(currentHierarchy.sparts, currentHierarchy.orphans);
+        }
+    }
+
+    // ========== ПЕРЕКЛЮЧЕНИЕ РЕЖИМОВ ==========
+    function initResourceFilters() {
+        const chips = document.querySelectorAll('.filter-chip');
+        chips.forEach(chip => {
+            chip.addEventListener('click', function() {
+                const mode = this.dataset.mode;
+                chips.forEach(c => c.classList.remove('active'));
+                this.classList.add('active');
+                currentResourceMode = mode;
+                loadHierarchy(currentLicenseId, mode);
+            });
+        });
+    }
+
+    // ========== ТЕГИ ==========
     document.getElementById('addTagBtn')?.addEventListener('click', async () => {
         const tagName = prompt('Введите название тега:');
         if (tagName && tagName.trim()) {
@@ -659,35 +711,30 @@ console.log('currentDomain из domain:', currentDomain);
         });
     });
 
+    // ========== ИНИЦИАЛИЗАЦИЯ ==========
     document.addEventListener('DOMContentLoaded', function() {
         initResourceFilters();
+        if (currentLicenseId) {
+            loadHierarchy(currentLicenseId, currentResourceMode);
+        }
 
-        const rows = document.querySelectorAll('.version-table tbody tr');
-        rows.forEach(row => {
+        const versionRows = document.querySelectorAll('.version-table tbody tr');
+        versionRows.forEach(row => {
             row.addEventListener('click', function(e) {
                 if (e.target.tagName === 'A' || e.target.tagName === 'BUTTON') return;
                 const licenseId = this.getAttribute('data-license-id');
                 if (licenseId) {
                     currentLicenseId = parseInt(licenseId);
-                    window.loadResourcesWithMode(currentLicenseId, currentResourceMode);
-                    rows.forEach(r => r.classList.remove('selected-version'));
+                    collapsedSparts.clear();
+                    loadHierarchy(currentLicenseId, currentResourceMode);
+                    versionRows.forEach(r => r.classList.remove('selected-version'));
                     this.classList.add('selected-version');
                 }
             });
         });
 
-        if (currentLicenseId) {
-            window.loadResourcesWithMode(currentLicenseId, currentResourceMode);
-            // Подсвечиваем текущую версию
-            const currentRow = document.querySelector(`.version-table tbody tr[data-license-id="${currentLicenseId}"]`);
-            if (currentRow) currentRow.classList.add('selected-version');
-        }
+        const currentRow = document.querySelector(`.version-table tbody tr[data-license-id="${currentLicenseId}"]`);
+        if (currentRow) currentRow.classList.add('selected-version');
     });
-// Принудительная загрузка описаний после загрузки страницы
-setTimeout(() => {
-    if (currentLicenseId) {
-        window.loadResourcesWithMode(currentLicenseId, currentResourceMode);
-    }
-}, 100);
 </script>
 {% endblock %}

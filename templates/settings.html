@@ -118,7 +118,7 @@
 <div id="tab-storage" class="tab-content">
     <div class="card">
         <h1>Сетевое хранилище</h1>
-        
+
         <div class="info-card">
             <div class="info-row">
                 <span class="info-label">Путь к шаре:</span>
@@ -130,7 +130,7 @@
             </div>
         </div>
         <p class="text-muted" style="font-size: 0.75rem;">Для изменения пути к сетевому хранилищу отредактируйте файл <code>config.json</code></p>
-        
+
         <h3>📁 Структура папок</h3>
         <div class="folder-tree">
             <div>📁 {{ network_storage }}/</div>
@@ -145,33 +145,53 @@
             <div style="margin-left: 1.5rem;">└── 📁 {оператор}/</div>
             <div style="margin-left: 3rem;">└── 📁 {ne_type}/ → 📁 {city}/ → 📁 {site}/ → 📁 {year}/</div>
         </div>
-        
+
         <h3>📋 Настройка маппинга Excel файлов</h3>
-        
+
         <!-- ESN маппинг -->
         <div class="info-card" style="margin-bottom: 1rem;">
             <div class="info-row" style="margin-bottom: 0.75rem;">
                 <span class="info-label">ESN маппинг:</span>
                 <span class="badge" style="background: var(--huawei-red);">esn_mapping.xlsx</span>
-                <button id="saveEsnMappingConfigBtn" class="secondary-btn" style="margin-left: auto;">💾 Сохранить настройки</button>
+                <button id="checkEsnMappingBtn" class="secondary-btn" style="margin-left: auto;">🔍 Проверить файлы</button>
+                <button id="saveEsnMappingConfigBtn" class="secondary-btn">💾 Сохранить настройки</button>
             </div>
             <div id="esnMappingColumnsContainer" style="display: grid; grid-template-columns: repeat(7, 1fr); gap: 0.5rem; font-size: 0.7rem;">
                 <!-- Сюда будет сгенерирован список колонок динамически -->
             </div>
-            <button id="configureEsnMappingBtn" class="secondary-btn" style="margin-top: 0.75rem; width: auto;">📂 Перейти к маппингу</button>
+            <div style="display: flex; gap: 0.5rem; margin-top: 0.75rem;">
+                <button id="configureEsnMappingBtn" class="secondary-btn" style="width: auto;">📂 Перейти к маппингу</button>
+            </div>
         </div>
-        
+
         <!-- Описания CapacityKey -->
         <div class="info-card">
             <div class="info-row" style="margin-bottom: 0.75rem;">
                 <span class="info-label">Описания CapacityKey:</span>
                 <span class="badge" style="background: var(--huawei-red);">license_details/{NE_type}_license_details.xlsx</span>
-                <button id="saveCapacityMappingConfigBtn" class="secondary-btn" style="margin-left: auto;">💾 Сохранить настройки</button>
+                <button id="checkLicenseDetailsBtn" class="secondary-btn" style="margin-left: auto;">🔍 Проверить файлы</button>
+                <button id="saveCapacityMappingConfigBtn" class="secondary-btn">💾 Сохранить настройки</button>
             </div>
             <div id="capacityMappingColumnsContainer" style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.5rem; font-size: 0.7rem;">
                 <!-- Сюда будет сгенерирован список колонок динамически -->
             </div>
-            <button id="configureLicenseDetailsBtn" class="secondary-btn" style="margin-top: 0.75rem; width: auto;">📂 Перейти к описаниям</button>
+            <div style="display: flex; gap: 0.5rem; margin-top: 0.75rem;">
+                <button id="configureLicenseDetailsBtn" class="secondary-btn" style="width: auto;">📂 Перейти к описаниям</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Модальное окно для отображения списка файлов -->
+<div id="fileCheckModal" class="modal" style="display: none;">
+    <div class="modal-content" style="max-width: 500px;">
+        <span class="modal-close">&times;</span>
+        <h3 id="modalTitle">📋 Проверка файлов</h3>
+        <div id="fileCheckResult" style="max-height: 400px; overflow-y: auto;">
+            <div class="text-muted">Загрузка...</div>
+        </div>
+        <div style="margin-top: 1rem; text-align: right;">
+            <button id="modalCloseBtn" class="btn-secondary">Закрыть</button>
         </div>
     </div>
 </div>
@@ -533,6 +553,103 @@ function saveCapacityMappingConfig() {
     localStorage.setItem('capacity_mapping_columns', JSON.stringify(config));
     alert('Настройки маппинга CapacityKey сохранены');
 }
+
+// ========== ПРОВЕРКА ФАЙЛОВ МАППИНГА ==========
+
+// Проверка файлов ESN маппинга
+document.getElementById('checkEsnMappingBtn')?.addEventListener('click', async () => {
+    const modal = document.getElementById('fileCheckModal');
+    const modalTitle = document.getElementById('modalTitle');
+    const modalContent = document.getElementById('fileCheckResult');
+    
+    modalTitle.innerHTML = '📋 Проверка ESN маппинга';
+    modalContent.innerHTML = '<div class="text-muted">⏳ Проверка файлов...</div>';
+    modal.style.display = 'flex';
+    
+    try {
+        const response = await fetch('/api/check_esn_mapping_files');
+        const data = await response.json();
+        
+        if (data.success && data.files) {
+            let html = '<div style="font-size: 0.8rem;">';
+            html += `<p><strong>Путь к папке:</strong> <code>${data.mapping_path}</code></p>`;
+            html += '<table style="width: 100%; border-collapse: collapse; margin-top: 0.5rem;">';
+            html += '<tr><th style="text-align: left; padding: 0.3rem;">Файл</th><th style="text-align: left; padding: 0.3rem;">Статус</th></tr>';
+            
+            for (const file of data.files) {
+                const statusClass = file.exists ? '✅' : '❌';
+                const statusText = file.exists ? 'Найден' : 'Не найден';
+                html += `<tr>
+                    <td style="padding: 0.3rem; border-bottom: 1px solid var(--border-light);"><code>${file.name}</code></td>
+                    <td style="padding: 0.3rem; border-bottom: 1px solid var(--border-light);">${statusClass} ${statusText}</td>
+                </tr>`;
+            }
+            html += '</table>';
+            
+            if (data.missing_count > 0) {
+                html += `<p style="margin-top: 1rem; color: var(--huawei-red);">⚠️ Отсутствует ${data.missing_count} файлов</p>`;
+            } else {
+                html += `<p style="margin-top: 1rem; color: #10B981;">✅ Все файлы найдены</p>`;
+            }
+            html += '</div>';
+            modalContent.innerHTML = html;
+        } else {
+            modalContent.innerHTML = `<div class="test-summary failed">❌ Ошибка: ${data.error || 'Неизвестная ошибка'}</div>`;
+        }
+    } catch (error) {
+        modalContent.innerHTML = `<div class="test-summary failed">❌ Ошибка: ${error.message}</div>`;
+    }
+});
+
+// Проверка файлов описаний CapacityKey
+document.getElementById('checkLicenseDetailsBtn')?.addEventListener('click', async () => {
+    const modal = document.getElementById('fileCheckModal');
+    const modalTitle = document.getElementById('modalTitle');
+    const modalContent = document.getElementById('fileCheckResult');
+    
+    modalTitle.innerHTML = '📋 Проверка файлов описаний CapacityKey';
+    modalContent.innerHTML = '<div class="text-muted">⏳ Проверка файлов...</div>';
+    modal.style.display = 'flex';
+    
+    try {
+        const response = await fetch('/api/check_license_details_files');
+        const data = await response.json();
+        
+        if (data.success && data.files) {
+            let html = '<div style="font-size: 0.8rem;">';
+            html += `<p><strong>Путь к папке:</strong> <code>${data.details_path}</code></p>`;
+            html += '<table style="width: 100%; border-collapse: collapse; margin-top: 0.5rem;">';
+            html += '<tr><th style="text-align: left; padding: 0.3rem;">Файл</th><th style="text-align: left; padding: 0.3rem;">Статус</th></tr>';
+            
+            for (const file of data.files) {
+                const statusClass = file.exists ? '✅' : '❌';
+                const statusText = file.exists ? 'Найден' : 'Не найден';
+                html += `<tr>
+                    <td style="padding: 0.3rem; border-bottom: 1px solid var(--border-light);"><code>${file.name}</code></td>
+                    <td style="padding: 0.3rem; border-bottom: 1px solid var(--border-light);">${statusClass} ${statusText}</td>
+                </tr>`;
+            }
+            html += '</table>';
+            
+            if (data.missing_count > 0) {
+                html += `<p style="margin-top: 1rem; color: var(--huawei-red);">⚠️ Отсутствует ${data.missing_count} файлов</p>`;
+            } else {
+                html += `<p style="margin-top: 1rem; color: #10B981;">✅ Все файлы найдены</p>`;
+            }
+            html += '</div>';
+            modalContent.innerHTML = html;
+        } else {
+            modalContent.innerHTML = `<div class="test-summary failed">❌ Ошибка: ${data.error || 'Неизвестная ошибка'}</div>`;
+        }
+    } catch (error) {
+        modalContent.innerHTML = `<div class="test-summary failed">❌ Ошибка: ${error.message}</div>`;
+    }
+});
+
+// Закрытие модального окна
+document.getElementById('modalCloseBtn')?.addEventListener('click', () => {
+    document.getElementById('fileCheckModal').style.display = 'none';
+});
 
 // Инициализация
 renderEsnMappingColumns();

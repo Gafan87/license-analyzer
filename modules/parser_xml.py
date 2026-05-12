@@ -189,7 +189,9 @@ def parse_xml_license(file_path):
                 'valid_date': data['latest_date'] or ('PERMANENT' if data['permanent_value'] > 0 else 'UNKNOWN'),
                 'permanent_value': data['permanent_value'],
                 'dated_values': json.dumps(data['dated_values']),
-                'total_value': data['total_value']
+                'total_value': data['total_value'],
+                'latest_date': data['latest_date'],
+                'latest_value': data['latest_value']
             })
         
         result['resources'] = all_resources
@@ -220,12 +222,142 @@ def parse_xml_license(file_path):
         }
         
         logger.debug(f"Парсинг XML: {file_path} -> {len(result['resources'])} ресурсов (агрегировано), valid_date={result['valid_date']}")
+        
+        # Извлекаем иерархию SPart/BPart
+        hierarchy = extract_spart_hierarchy(root)
+        result['spart_hierarchy'] = hierarchy
+        
+        # Сохраняем в parsed_cache
+        result['parsed_cache']['spart_hierarchy'] = hierarchy
         return result
         
     except Exception as e:
         logger.error(f"Ошибка парсинга XML {file_path}: {e}")
         return None
 
+def extract_spart_hierarchy(root):
+    """
+    Извлекает иерархическую структуру SPart (SalesItem) и BPart (CapacityKey/FeatureKey)
+    Возвращает:
+    {
+        'sparts': [
+            {
+                'name': 'SF4SMBVOISW02',
+                'value': 100,
+                'valid_date': '2028-03-01',
+                'bparts': [
+                    {'name': 'LCF4REGUSR01', 'value': 500, 'valid_date': '2028-03-01'},
+                    {'name': 'LCF4BASESW01', 'value': 2, 'valid_date': 'PERMANENT'}
+                ]
+            }
+        ],
+        'orphan_bparts': []  # CapacityKey не входящие ни в один SalesItem
+    }
+    """
+    result = {'sparts': [], 'orphan_bparts': []}
+    
+    # Находим все SalesItem (SPart)
+    sales_items = root.findall('.//SalesItem')
+    
+    # Собираем все CapacityKey/FeatureKey, чтобы потом найти "сирот"
+    all_bparts = set()
+    
+    for sales_item in sales_items:
+        spart_name = sales_item.get('name')
+        if not spart_name:
+            continue
+        
+        # Значение SPart (value атрибут)
+        spart_value_str = sales_item.get('value', '0')
+        try:
+            spart_value = int(spart_value_str)
+        except:
+            spart_value = 0
+        
+        spart_valid_date = sales_item.get('validDate', 'UNKNOWN')
+        
+        bparts = []
+        
+        # Ищем CapacityKey внутри SalesItem
+        for cap_key in sales_item.findall('.//CapacityKey'):
+            name = cap_key.get('name')
+            if not name:
+                continue
+            all_bparts.add(name)
+            
+            value_str = cap_key.get('value', '0')
+            try:
+                value = int(value_str)
+            except:
+                value = 0
+            
+            valid_date = cap_key.get('validDate', 'UNKNOWN')
+            
+            bparts.append({
+                'name': name,
+                'value': value,
+                'valid_date': valid_date
+            })
+        
+        # Ищем FeatureKey внутри SalesItem
+        for feat_key in sales_item.findall('.//FeatureKey'):
+            name = feat_key.get('name')
+            if not name:
+                continue
+            all_bparts.add(name)
+            
+            value_str = feat_key.get('value', '0')
+            try:
+                value = int(value_str)
+            except:
+                value = 0
+            
+            valid_date = feat_key.get('validDate', 'UNKNOWN')
+            
+            bparts.append({
+                'name': name,
+                'value': value,
+                'valid_date': valid_date
+            })
+        
+        result['sparts'].append({
+            'name': spart_name,
+            'value': spart_value,
+            'valid_date': spart_valid_date,
+            'bparts': bparts
+        })
+    
+    # Теперь найдём все CapacityKey/FeatureKey, которые не входят ни в один SalesItem
+    all_keys = root.findall('.//CapacityKey') + root.findall('.//FeatureKey')
+    for key in all_keys:
+        name = key.get('name')
+        if not name:
+            continue
+        
+        # Проверяем, есть ли этот ключ в каком-либо SPart
+        found = False
+        for spart in result['sparts']:
+            for bpart in spart['bparts']:
+                if bpart['name'] == name:
+                    found = True
+                    break
+            if found:
+                break
+        
+        if not found:
+            value_str = key.get('value', '0')
+            try:
+                value = int(value_str)
+            except:
+                value = 0
+            valid_date = key.get('validDate', 'UNKNOWN')
+            result['orphan_bparts'].append({
+                'name': name,
+                'value': value,
+                'valid_date': valid_date
+            })
+    
+    return result
 
 def extract_year_from_valid_date(valid_date):
     """

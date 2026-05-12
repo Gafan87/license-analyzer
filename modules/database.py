@@ -217,6 +217,35 @@ def init_local_db(db_path=None):
         )
     ''')
     
+    # Таблица для иерархии SPart
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS license_spart_hierarchy (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            license_id INTEGER NOT NULL,
+            spart_name TEXT NOT NULL,
+            spart_value INTEGER DEFAULT 0,
+            spart_valid_date TEXT,
+            sort_order INTEGER DEFAULT 0,
+            FOREIGN KEY (license_id) REFERENCES licenses(id) ON DELETE CASCADE
+        )
+    ''')
+    
+    # Таблица для иерархии BPart (spart_id может быть NULL для "сирот")
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS license_bpart_hierarchy (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            license_id INTEGER NOT NULL,
+            spart_id INTEGER,
+            bpart_name TEXT NOT NULL,
+            bpart_value INTEGER DEFAULT 0,
+            bpart_valid_date TEXT,
+            is_main BOOLEAN DEFAULT 0,
+            sort_order INTEGER DEFAULT 0,
+            FOREIGN KEY (license_id) REFERENCES licenses(id) ON DELETE CASCADE,
+            FOREIGN KEY (spart_id) REFERENCES license_spart_hierarchy(id) ON DELETE CASCADE
+        )
+    ''')
+    
     # ========== ИНДЕКСЫ ДЛЯ УСКОРЕНИЯ ==========
     cursor.execute('CREATE INDEX IF NOT EXISTS idx_licenses_operator_esn ON licenses(operator, esn)')
     cursor.execute('CREATE INDEX IF NOT EXISTS idx_licenses_valid_date ON licenses(valid_date)')
@@ -358,6 +387,46 @@ def save_licenses_batch(licenses_data, modified_by='system'):
                                 INSERT INTO resources (license_id, capacity_key, value, valid_date)
                                 VALUES (?, ?, ?, ?)
                             ''', (license_id, capacity_key, value, valid_date))
+                
+                # ========== СОХРАНЯЕМ ИЕРАРХИЮ SPart/BPart ==========
+                # Удаляем старые иерархические данные
+                cursor.execute('DELETE FROM license_bpart_hierarchy WHERE license_id = ?', (license_id,))
+                cursor.execute('DELETE FROM license_spart_hierarchy WHERE license_id = ?', (license_id,))
+                
+                # Получаем иерархию из parsed_cache или license_data
+                hierarchy = None
+                if 'spart_hierarchy' in license_data:
+                    hierarchy = license_data['spart_hierarchy']
+                elif license_data.get('parsed_cache'):
+                    hierarchy = license_data['parsed_cache'].get('spart_hierarchy')
+                
+                if hierarchy:
+                    # Сортируем SPart по порядку (если есть sort_order)
+                    sparts_list = hierarchy.get('sparts', [])
+                    
+                    for spart in sparts_list:
+                        cursor.execute('''
+                            INSERT INTO license_spart_hierarchy 
+                            (license_id, spart_name, spart_value, spart_valid_date, sort_order)
+                            VALUES (?, ?, ?, ?, ?)
+                        ''', (license_id, spart.get('name'), spart.get('value', 0), spart.get('valid_date', 'UNKNOWN'), spart.get('sort_order', 0)))
+                        spart_id = cursor.lastrowid
+                        
+                        for bpart in spart.get('bparts', []):
+                            is_main = 1 if bpart.get('is_main') else 0
+                            cursor.execute('''
+                                INSERT INTO license_bpart_hierarchy 
+                                (license_id, spart_id, bpart_name, bpart_value, bpart_valid_date, is_main, sort_order)
+                                VALUES (?, ?, ?, ?, ?, ?, ?)
+                            ''', (license_id, spart_id, bpart.get('name'), bpart.get('value', 0), bpart.get('valid_date', 'UNKNOWN'), is_main, bpart.get('sort_order', 0)))
+                    
+                    # Сохраняем "сирот" (bpart без родительского spart) — теперь spart_id может быть NULL
+                    for orphan in hierarchy.get('orphan_bparts', []):
+                        cursor.execute('''
+                            INSERT INTO license_bpart_hierarchy 
+                            (license_id, spart_id, bpart_name, bpart_value, bpart_valid_date, is_main, sort_order)
+                            VALUES (?, ?, ?, ?, ?, ?, ?)
+                        ''', (license_id, None, orphan.get('name'), orphan.get('value', 0), orphan.get('valid_date', 'UNKNOWN'), 0, orphan.get('sort_order', 0)))
 
                 # ========== НОВОЕ: СОХРАНЯЕМ АГРЕГИРОВАННЫЕ ДАННЫЕ ==========
                 # Проверяем, есть ли в license_data агрегированные ресурсы

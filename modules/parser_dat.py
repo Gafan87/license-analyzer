@@ -192,7 +192,9 @@ def parse_dat_license(file_path):
                 'valid_date': data['latest_date'] or ('PERMANENT' if data['permanent_value'] > 0 else 'UNKNOWN'),
                 'permanent_value': data['permanent_value'],
                 'dated_values': json.dumps(data['dated_values']),
-                'total_value': data['total_value']
+                'total_value': data['total_value'],
+                'latest_date': data['latest_date'], 
+                'latest_value': data['latest_value']  
             })
         
         result['resources'] = all_resources

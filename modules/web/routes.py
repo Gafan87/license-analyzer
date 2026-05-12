@@ -1096,6 +1096,195 @@ def api_get_license_resources(license_id):
                 res['unit'] = ''
 
     return jsonify({'resources': resources})
+
+@web_bp.route('/api/license/<int:license_id>/hierarchy', methods=['GET'])
+def api_get_license_hierarchy(license_id):
+    from modules.database import get_connection
+    from modules.capacity_mapper import load_full_capacity_list
+    from flask import current_app
+    
+    mode = request.args.get('mode', 'total')
+    domain = request.args.get('domain', '')
+    network_storage_path = current_app.config.get('network_storage_path', '')
+    
+    # Получаем NE тип лицензии
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute('SELECT ne_type FROM licenses WHERE id = ?', (license_id,))
+    row = cursor.fetchone()
+    ne_type = row[0] if row else None
+    conn.close()
+    
+    print(f"DEBUG: license_id={license_id}, ne_type={ne_type}, domain={domain}, mode={mode}")
+    
+    # Загружаем полный список из маппинга
+    full_list = load_full_capacity_list(domain, network_storage_path, ne_type)
+    print(f"DEBUG: loaded {len(full_list)} items from mapping")
+    
+    # Группируем по SPart
+    sparts_dict = {}
+    orphans = []
+    
+    # Сначала создаём всех SPart
+    for item in full_list:
+        if item['type'] == 'spart':
+            sparts_dict[item['name']] = {
+                'name': item['name'],
+                'value': 0,
+                'valid_date': '',
+                'part_number': item.get('part_number', ''),
+                'dimension': item.get('dimension', ''),
+                'description': item.get('description', ''),
+                'children': []
+            }
+    
+    # Затем добавляем BPart к их родителям
+    for item in full_list:
+        if item['type'] == 'bpart':
+            parent = item.get('parent')
+            if parent and parent in sparts_dict:
+                sparts_dict[parent]['children'].append({
+                    'name': item['name'],
+                    'value': 0,
+                    'valid_date': '',
+                    'part_number': item.get('part_number', ''),
+                    'dimension': item.get('dimension', ''),
+                    'description': item.get('description', ''),
+                    'is_main': item.get('is_main', False)
+                })
+            else:
+                orphans.append(item)
+        elif item['type'] != 'spart' and not item.get('parent'):
+            orphans.append(item)
+    
+    print(f"DEBUG: sparts count={len(sparts_dict)}, orphans count={len(orphans)}")
+    
+    # Получаем значения из capacity_aggregated
+    conn = get_connection()
+    cursor = conn.cursor()
+    
+    if mode == 'total':
+        cursor.execute('''
+            SELECT capacity_key, total_value, latest_date 
+            FROM capacity_aggregated WHERE license_id = ?
+        ''', (license_id,))
+    elif mode == 'permanent':
+        cursor.execute('''
+            SELECT capacity_key, permanent_value, 'PERMANENT' 
+            FROM capacity_aggregated WHERE license_id = ? AND permanent_value > 0
+        ''', (license_id,))
+    else:  # mode == 'latest'
+        cursor.execute('''
+            SELECT capacity_key, latest_value, latest_date 
+            FROM capacity_aggregated WHERE license_id = ? AND latest_date IS NOT NULL
+        ''', (license_id,))
+    
+    values_map = {}
+    date_map = {}
+    for row in cursor.fetchall():
+        values_map[row[0]] = row[1] if row[1] else 0
+        date_map[row[0]] = row[2] if len(row) > 2 and row[2] else ''
+    conn.close()
+    
+    print(f"DEBUG: values_map count={len(values_map)}")
+    
+    # Заполняем значениями
+    for spart in sparts_dict.values():
+        if spart['name'] in values_map:
+            spart['value'] = values_map[spart['name']]
+            spart['valid_date'] = date_map.get(spart['name'], '')
+        for bpart in spart['children']:
+            if bpart['name'] in values_map:
+                bpart['value'] = values_map[bpart['name']]
+                bpart['valid_date'] = date_map.get(bpart['name'], '')
+    
+    for orphan in orphans:
+        if orphan['name'] in values_map:
+            orphan['value'] = values_map[orphan['name']]
+            orphan['valid_date'] = date_map.get(orphan['name'], '')
+    
+    return jsonify({
+        'sparts': list(sparts_dict.values()),
+        'orphans': orphans
+    })
+           
+# ========== API ДЛЯ ПРОВЕРКИ ФАЙЛОВ ==========
+
+@web_bp.route('/api/check_esn_mapping_files', methods=['GET'])
+def api_check_esn_mapping_files():
+    """Проверяет наличие файлов ESN маппинга для всех операторов"""
+    import os
+    from flask import current_app
+    
+    mapping_path = current_app.config.get('mapping_path', '//A00742028-C5NC5/_Licenses/mapping')
+    operators = current_app.config.get('OPERATORS', [])
+    
+    files = []
+    for op in operators:
+        mapping_file = op.get('mapping_file', f"{op.get('name')}_esn_mapping.xlsx")
+        file_path = os.path.join(mapping_path, mapping_file)
+        files.append({
+            'name': mapping_file,
+            'path': file_path,
+            'exists': os.path.exists(file_path)
+        })
+    
+    missing_count = sum(1 for f in files if not f['exists'])
+    
+    return jsonify({
+        'success': True,
+        'mapping_path': mapping_path,
+        'files': files,
+        'missing_count': missing_count,
+        'total_count': len(files)
+    })
+
+
+@web_bp.route('/api/check_license_details_files', methods=['GET'])
+def api_check_license_details_files():
+    """Проверяет наличие файлов описаний CapacityKey для всех NE типов"""
+    import os
+    from flask import current_app
+    
+    details_path = current_app.config.get('license_details_path', '//A00742028-C5NC5/_Licenses/license_details')
+    
+    # Получаем уникальные NE типы из БД
+    from modules.database import get_connection
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute('SELECT DISTINCT ne_type FROM licenses WHERE ne_type IS NOT NULL AND ne_type != ""')
+    ne_types = [r[0] for r in cursor.fetchall()]
+    conn.close()
+    
+    files = []
+    for ne_type in ne_types:
+        file_name = f"{ne_type}_license_details.xlsx"
+        file_path = os.path.join(details_path, file_name)
+        files.append({
+            'name': file_name,
+            'path': file_path,
+            'exists': os.path.exists(file_path)
+        })
+    
+    # Добавляем общие файлы
+    common_files = ['PS_license_details.xlsx', 'vEPC_license_details.xlsx']
+    for common_file in common_files:
+        file_path = os.path.join(details_path, common_file)
+        files.append({
+            'name': common_file,
+            'path': file_path,
+            'exists': os.path.exists(file_path)
+        })
+    
+    missing_count = sum(1 for f in files if not f['exists'])
+    
+    return jsonify({
+        'success': True,
+        'details_path': details_path,
+        'files': files,
+        'missing_count': missing_count,
+        'total_count': len(files)
+    })
   
 @web_bp.route('/<operator>/license_by_esn/<esn>')
 def license_detail_by_esn(operator, esn):

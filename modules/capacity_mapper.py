@@ -3,6 +3,7 @@
 Модуль для загрузки описаний CapacityKey из Excel файлов
 Файлы: license_details/{domain}_license_details.xlsx
 Поиск: сначала в сетевом хранилище, потом локально
+Поддерживает маппинг NE Type -> Domain -> Файл описаний
 """
 
 import os
@@ -15,13 +16,110 @@ logger = get_logger(__name__)
 # Кэш описаний (загружается один раз)
 _capacity_descriptions_cache = {}
 
-def _find_description_file(domain, network_storage_path, local_path):
+# Кэш для маппинга NE Type -> Domain -> Файл
+_ne_type_mapping_cache = None
+
+def load_ne_type_mapping(mapping_file=None):
+    """
+    Загружает маппинг NE Type -> Domain -> Файл описаний из Excel
+    """
+    global _ne_type_mapping_cache
+    
+    if _ne_type_mapping_cache is not None:
+        return _ne_type_mapping_cache
+    
+    # Если путь не передан, пытаемся получить из конфига
+    if mapping_file is None:
+        try:
+            from flask import current_app
+            mapping_file = current_app.config.get('ne_type_mapping_file')
+        except (ImportError, RuntimeError):
+            # Вне контекста Flask, пробуем прочитать config.json напрямую
+            import json
+            try:
+                with open('config.json', 'r', encoding='utf-8') as f:
+                    config = json.load(f)
+                    mapping_file = config.get('ne_type_mapping_file')
+            except:
+                mapping_file = None
+    
+    # Если путь всё ещё не определён, используем стандартный
+    if not mapping_file:
+        mapping_file = 'mapping/ne_type_mapping.xlsx'
+    
+    # Пробуем разные варианты пути
+    if not os.path.exists(mapping_file):
+        # Пробуем с сетевым путём
+        alt_path1 = r'\\A00742028-C5NC5\_Licenses\mapping\ne_type_mapping.xlsx'
+        if os.path.exists(alt_path1):
+            mapping_file = alt_path1
+    
+    if not os.path.exists(mapping_file):
+        # Пробуем с прямыми слешами
+        alt_path2 = '//A00742028-C5NC5/_Licenses/mapping/ne_type_mapping.xlsx'
+        if os.path.exists(alt_path2):
+            mapping_file = alt_path2
+    
+    if not os.path.exists(mapping_file):
+        logger.warning(f"Файл маппинга NE Type не найден: {mapping_file}")
+        return {}
+    
+    try:
+        wb = openpyxl.load_workbook(mapping_file, data_only=True)
+        sheet = wb.active
+        
+        mapping = {}
+        for row in sheet.iter_rows(min_row=2, values_only=True):
+            if not row or not row[0]:
+                continue
+            
+            ne_type = str(row[0]).strip() if row[0] else ''
+            domain = str(row[1]).strip() if row[1] else ''
+            details_file = str(row[2]).strip() if row[2] else ''
+            sheet_name = str(row[3]).strip() if row[3] else ''
+            
+            if ne_type:
+                mapping[ne_type] = {
+                    'domain': domain,
+                    'details_file': details_file,
+                    'sheet_name': sheet_name
+                }
+        
+        _ne_type_mapping_cache = mapping
+        logger.info(f"Загружен маппинг NE Type: {len(mapping)} записей из {mapping_file}")
+        return mapping
+        
+    except Exception as e:
+        logger.error(f"Ошибка загрузки маппинга NE Type: {e}")
+        return {}
+
+
+def reload_mapping():
+    """Принудительная перезагрузка маппинга NE Type"""
+    global _ne_type_mapping_cache
+    _ne_type_mapping_cache = None
+    return load_ne_type_mapping()
+
+def get_description_file_and_sheet(ne_type):
+    """
+    Получает имя файла описаний и имя листа для NE типа
+    Returns:
+        dict: {'domain': str, 'details_file': str, 'sheet_name': str} или None
+    """
+    mapping = load_ne_type_mapping()
+    return mapping.get(ne_type, {})
+
+
+def _col_letter_to_index(letter):
+    """Преобразует букву колонки в индекс (A->1, B->2)"""
+    return ord(letter.upper()) - 64
+
+
+def _find_description_file(filename, network_storage_path, local_path):
     """
     Ищет файл описаний сначала в сетевом хранилище, потом локально
     """
-    filename = f'{domain}_license_details.xlsx'
-    
-    # 1. Пробуем сетевой путь (только если файл существует)
+    # 1. Пробуем сетевой путь
     if network_storage_path:
         remote_file = os.path.join(network_storage_path, 'license_details', filename)
         if os.path.exists(remote_file):
@@ -45,12 +143,35 @@ def _find_description_file(domain, network_storage_path, local_path):
         logger.info(f"Файл найден в папке проекта: {project_file}")
         return project_file
     
-    logger.warning(f"Файл описаний не найден для домена {domain} ни в одном из мест")
+    logger.warning(f"Файл описаний не найден: {filename}")
     return None
 
-def load_capacity_descriptions(domain, network_storage_path):
+
+def get_capacity_mapping_config():
+    """
+    Получить настройки маппинга колонок
+    """
+    return {
+        'col_key': 'A',      # CapacityKey
+        'col_desc': 'B',     # Description
+        'col_unit': 'C',     # Unit (размерность)
+        'col_part': 'D',     # Part-number
+        'col_type': 'E',     # Type (spart/bpart/main)
+        'col_parent': 'F'    # Parent SPart (для BPart)
+    }
+
+
+def load_capacity_descriptions(domain, network_storage_path, ne_type=None):
     """
     Загружает описания CapacityKey из Excel файла для указанного домена
+    
+    Args:
+        domain: str - имя домена (например, 'CScore')
+        network_storage_path: str - путь к корню сетевого хранилища
+        ne_type: str - тип NE (опционально, для маппинга)
+    
+    Returns:
+        dict: {capacity_key: {'description': str, 'unit': str, 'part_number': str, 'type': str, 'parent': str}}
     """
     global _capacity_descriptions_cache
     
@@ -58,40 +179,63 @@ def load_capacity_descriptions(domain, network_storage_path):
         logger.warning("Домен не указан, пропускаем загрузку описаний")
         return {}
     
+    # Определяем файл и лист по NE типу, если передан
+    details_file = None
+    sheet_name = None
+    
+    if ne_type:
+        mapping = get_description_file_and_sheet(ne_type)
+        if mapping:
+            details_file = mapping.get('details_file')
+            sheet_name = mapping.get('sheet_name')
+            # Если в маппинге указан другой домен, используем его
+            if mapping.get('domain'):
+                domain = mapping['domain']
+    
+    # Fallback: используем домен как имя файла
+    if not details_file:
+        details_file = f'{domain}_license_details.xlsx'
+    
+    cache_key = f"{domain}_{details_file}_{sheet_name or 'active'}"
+    
     # Проверяем кэш
-    if domain in _capacity_descriptions_cache:
-        return _capacity_descriptions_cache[domain]
+    if cache_key in _capacity_descriptions_cache:
+        return _capacity_descriptions_cache[cache_key]
     
     # Получаем локальный путь из конфига
     local_path = None
     try:
-        from flask import current_app
         local_path = current_app.config.get('local_license_details_path', '')
     except:
         pass
     
     # Ищем файл
-    file_path = _find_description_file(domain, network_storage_path, local_path)
+    file_path = _find_description_file(details_file, network_storage_path, local_path)
     
     if not file_path:
-        logger.warning(f"Файл описаний не найден для домена {domain}")
+        logger.warning(f"Файл описаний не найден для домена {domain}: {details_file}")
         return {}
     
     try:
         wb = openpyxl.load_workbook(file_path, data_only=True)
-        sheet = wb.active
+        
+        # Выбираем лист
+        if sheet_name and sheet_name in wb.sheetnames:
+            sheet = wb[sheet_name]
+            logger.info(f"Используем лист '{sheet_name}' из {file_path}")
+        else:
+            sheet = wb.active
+            if sheet_name:
+                logger.debug(f"Лист '{sheet_name}' не найден в {file_path}, используем активный")
         
         config = get_capacity_mapping_config()
-        capacity_key_col = config.get('col_a', 'A')
-        description_col = config.get('col_b', 'B')
-        unit_col = config.get('col_c', 'C')
         
-        def col_letter_to_index(letter):
-            return ord(letter.upper()) - 64
-        
-        col_idx_key = col_letter_to_index(capacity_key_col)
-        col_idx_desc = col_letter_to_index(description_col)
-        col_idx_unit = col_letter_to_index(unit_col)
+        col_idx_key = _col_letter_to_index(config['col_key'])
+        col_idx_desc = _col_letter_to_index(config['col_desc'])
+        col_idx_unit = _col_letter_to_index(config['col_unit'])
+        col_idx_part = _col_letter_to_index(config['col_part'])
+        col_idx_type = _col_letter_to_index(config['col_type'])
+        col_idx_parent = _col_letter_to_index(config['col_parent'])
         
         descriptions = {}
         
@@ -102,43 +246,129 @@ def load_capacity_descriptions(domain, network_storage_path):
             capacity_key = str(row[col_idx_key - 1]).strip()
             description = str(row[col_idx_desc - 1]).strip() if col_idx_desc <= len(row) else ''
             unit = str(row[col_idx_unit - 1]).strip() if col_idx_unit <= len(row) else ''
+            part_number = str(row[col_idx_part - 1]).strip() if col_idx_part <= len(row) else ''
+            key_type = str(row[col_idx_type - 1]).strip().lower() if col_idx_type <= len(row) else 'bpart'
+            parent = str(row[col_idx_parent - 1]).strip() if col_idx_parent <= len(row) else ''
             
             if capacity_key:
                 descriptions[capacity_key] = {
                     'description': description,
-                    'unit': unit
+                    'unit': unit,
+                    'part_number': part_number,
+                    'type': key_type,  # 'spart', 'bpart', 'main'
+                    'parent': parent if parent else None,
+                    'is_main': key_type == 'main',
+                    'valid_date': ''
                 }
         
-        _capacity_descriptions_cache[domain] = descriptions
-        logger.info(f"Загружено {len(descriptions)} описаний для домена {domain} из {file_path}")
+        _capacity_descriptions_cache[cache_key] = descriptions
+        logger.info(f"Загружено {len(descriptions)} описаний для домена {domain} из файла {details_file}, лист: {sheet_name or 'active'}")
         
         return descriptions
         
     except Exception as e:
         logger.error(f"Ошибка загрузки файла {file_path}: {e}")
         return {}
+    
+def load_full_capacity_list(domain, network_storage_path, ne_type=None):
+    """
+    Загружает полный список CapacityKey из Excel файла с сохранением порядка
+    Возвращает список словарей с полями: name, type, parent, part_number, dimension, description, is_main
+    """
+    descriptions = load_capacity_descriptions(domain, network_storage_path, ne_type)
+    
+    # Сохраняем порядок из Excel
+    result = []
+    for cap_key, info in descriptions.items():
+        result.append({
+            'name': cap_key,
+            'type': info.get('type', 'bpart'),
+            'parent': info.get('parent'),
+            'part_number': info.get('part_number', ''),
+            'dimension': info.get('unit', ''),
+            'description': info.get('description', ''),
+            'is_main': info.get('is_main', False),
+            'value': 0,
+            'valid_date': ''
+        })
+    
+    return result
 
-def get_capacity_description(capacity_key, domain, network_storage_path):
+def load_license_structure(domain, network_storage_path, ne_type=None):
+    """
+    Загружает полную структуру лицензии из Excel файла описаний
+    Возвращает список SPart с их BPart (как в файле)
+    """
+    descriptions = load_capacity_descriptions(domain, network_storage_path, ne_type)
+    
+    # Группируем по SPart
+    sparts_dict = {}
+    
+    for cap_key, info in descriptions.items():
+        key_type = info.get('type', 'bpart')
+        parent = info.get('parent')
+        
+        if key_type == 'spart':
+            sparts_dict[cap_key] = {
+                'name': cap_key,
+                'value': 0,
+                'valid_date': '',
+                'part_number': info.get('part_number', ''),
+                'dimension': info.get('unit', ''),
+                'description': info.get('description', ''),
+                'children': []
+            }
+        elif key_type == 'bpart' and parent:
+            if parent in sparts_dict:
+                sparts_dict[parent]['children'].append({
+                    'name': cap_key,
+                    'value': 0,
+                    'valid_date': '',
+                    'part_number': info.get('part_number', ''),
+                    'dimension': info.get('unit', ''),
+                    'description': info.get('description', ''),
+                    'is_main': info.get('is_main', False)
+                })
+    
+    # Сортируем SPart по порядку появления в файле
+    return list(sparts_dict.values())
+
+def get_capacity_description(capacity_key, domain, network_storage_path, ne_type=None):
     """
     Получить описание для конкретного CapacityKey
+    
+    Args:
+        capacity_key: str - код лицензии
+        domain: str - домен
+        network_storage_path: str - путь к сетевому хранилищу
+        ne_type: str - тип NE (опционально)
+    
+    Returns:
+        dict: {'description': str, 'unit': str, 'part_number': str, 'type': str, 'parent': str, 'is_main': bool}
     """
     if not domain or not capacity_key:
         return None
     
-    descriptions = load_capacity_descriptions(domain, network_storage_path)
+    descriptions = load_capacity_descriptions(domain, network_storage_path, ne_type)
     return descriptions.get(capacity_key)
 
-def get_capacity_mapping_config():
+
+def get_all_capacity_descriptions(domain, network_storage_path, ne_type=None):
     """
-    Получить настройки маппинга колонок
+    Получить все описания для домена
     """
-    return {
-        'col_a': 'A',  # CapacityKey
-        'col_b': 'B',  # Description
-        'col_c': 'C'   # Unit
-    }
+    return load_capacity_descriptions(domain, network_storage_path, ne_type)
+
 
 def clear_cache():
     """Очистить кэш описаний"""
-    global _capacity_descriptions_cache
+    global _capacity_descriptions_cache, _ne_type_mapping_cache
     _capacity_descriptions_cache = {}
+    _ne_type_mapping_cache = None
+
+
+def reload_mapping():
+    """Принудительная перезагрузка маппинга NE Type"""
+    global _ne_type_mapping_cache
+    _ne_type_mapping_cache = None
+    return load_ne_type_mapping()

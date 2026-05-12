@@ -1,8 +1,3 @@
-"""
-Huawei License Analyzer - главный файл приложения
-Web-интерфейс для анализа лицензий Huawei (XML/DAT)
-"""
-
 import os
 import sys
 import json
@@ -30,6 +25,7 @@ def create_default_config():
     default_config = {
         "log_level": "INFO",
         "network_storage_path": "",
+        "ne_type_mapping_file": "mapping/ne_type_mapping.xlsx",
         "operators": [
             {
                 "name": "mts",
@@ -63,11 +59,14 @@ app.config.update(config)
 app.config['OPERATORS'] = config.get('operators', [])
 app.config['LOG_LEVEL'] = config.get('log_level', 'INFO')
 app.config['network_storage_path'] = config.get('network_storage_path', '')
-app.config['local_license_details_path'] = config.get('local_license_details_path', '')
+app.config['NE_TYPE_MAPPING_FILE'] = config.get('ne_type_mapping_file', 'mapping/ne_type_mapping.xlsx')
+app.config['MAPPING_PATH'] = config.get('mapping_path', '')
+app.config['LICENSE_DETAILS_PATH'] = config.get('license_details_path', '')
 
 print(f"📋 Загружено операторов: {len(app.config['OPERATORS'])}")
 for op in app.config['OPERATORS']:
     print(f"   - {op.get('name')}: {op.get('title')}")
+print(f"📁 NE Type маппинг: {app.config['NE_TYPE_MAPPING_FILE']}")
 
 # ========== ЗАГРУЗКА ПРАВИЛ ИЗВЛЕЧЕНИЯ ==========
 
@@ -110,48 +109,20 @@ logger = logging.getLogger(__name__)
 
 app.register_blueprint(web_bp)
 
+# ========== ДОПОЛНИТЕЛЬНЫЕ МАРШРУТЫ ==========
+
 @app.route('/style_guide')
 def style_guide():
     """Страница гайдлайна стилей"""
     return render_template('style_guide.html', 
                          current_operator='',
                          current_operator_title='Гайдлайн')
-    
-@app.route('/settings')
-def settings():
-    """Страница настроек"""
-    from modules.logger import get_log_level
-    
-    # Получаем информацию о системе
-    stats = {
-        'licenses_count': 0,
-        'operators_count': len(config.get('operators', [])),
-        'db_size': 0
-    }
-    
-    # Подсчёт лицензий
-    try:
-        from modules.database import get_db
-        db = get_db()
-        cursor = db.cursor()
-        cursor.execute("SELECT COUNT(*) FROM licenses")
-        stats['licenses_count'] = cursor.fetchone()[0]
-        
-        # Размер БД
-        import os
-        db_path = 'local_licenses.db'
-        if os.path.exists(db_path):
-            stats['db_size'] = round(os.path.getsize(db_path) / (1024 * 1024), 1)
-    except Exception as e:
-        print(f"Error getting stats: {e}")
-    
-    return render_template('settings.html',
-                         operators=config.get('operators', []),
-                         network_storage=config.get('network_storage', ''),
-                         stats=stats,
-                         app_path=os.getcwd(),
-                         current_operator='',
-                         current_operator_title='Настройки')
+
+
+with app.app_context():
+    from modules.capacity_mapper import load_ne_type_mapping
+    load_ne_type_mapping()
+    print("✅ Маппинг NE Type загружен")
 
 # ========== ЗАПУСК ==========
 
@@ -161,6 +132,7 @@ if __name__ == '__main__':
     print("=" * 60)
     print(f"Путь к БД: {DB_PATH}")
     print(f"Сетевое хранилище: {app.config.get('network_storage_path', 'не указано')}")
+    print(f"NE Type маппинг: {app.config.get('NE_TYPE_MAPPING_FILE', 'не указан')}")
     print(f"Уровень логирования: {log_level}")
     print(f"Правил извлечения: {len(app.config['EXTRACTION_RULES'].get('rules', {}))}")
     print(f"Операторов: {len(app.config['OPERATORS'])}")

@@ -1,12 +1,18 @@
-# test_scan.py
+# test_scan_debug.py
 import sys
-sys.path.insert(0, r'D:\MyDocs\License management')
+sys.path.insert(0, 'D:\\MyDocs\\License management')
 
-from modules.scanner import scan_local_folder
+from flask import Flask
+app = Flask(__name__)
 
-path = r'D:\_Beeline\_Licenses\_All Licenses\CS_CORE'
-result = scan_local_folder(path, 'veon')
-
-print(f'Найдено лицензий: {len(result)}')
-for i, lic in enumerate(result[:3]):
-    print(f'{i}: {lic.get("filename")} - LSN: {lic.get("lsn")} - Ресурсов: {len(lic.get("resources", []))}')
+with app.app_context():
+    from modules.scanner import scan_local_folder
+    path = r'D:\_Beeline\_Licenses\_All Licenses\PS_CORE\CG9812\2027-03-01'
+    result = scan_local_folder(path, 'veon')
+    
+    print(f'Найдено: {len(result)}')
+    if result:
+        print(f'Первый файл: {result[0].get("filename")}')
+        print(f'Ресурсов: {len(result[0].get("resources", []))}')
+        if result[0].get('resources'):
+            print('Первый ресурс:', result[0]['resources'][0])
