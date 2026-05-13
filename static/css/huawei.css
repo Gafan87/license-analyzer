@@ -98,6 +98,34 @@ body {
 .top-bar-actions { display: flex; gap: 0.5rem; flex-shrink: 0; }
 .container { max-width: 1600px; margin: 1.5rem auto; padding: 0 2rem; }
 
+.top-bar-info {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 1rem;
+    padding-bottom: 0.5rem;
+    border-bottom: 1px solid var(--border-light);
+}
+
+.back-button-inline {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.35rem 0.75rem;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-light);
+    border-radius: var(--radius-md);
+    text-decoration: none;
+    color: var(--text-secondary);
+    font-size: 0.75rem;
+    transition: var(--transition);
+}
+
+.back-button-inline:hover {
+    border-color: var(--huawei-red);
+    color: var(--huawei-red);
+}
+
 /* ========== ЕДИНЫЕ СТИЛИ КНОПОК ========== */
 button, 
 .btn-primary, .secondary2-btn, .secondary3-btn, .action-btn, 

@@ -130,13 +130,57 @@ def parse_xml_license(file_path):
         if create_elem is not None and create_elem.text:
             result['create_time'] = create_elem.text.strip()
         
-        # ========== АГРЕГАЦИЯ РЕСУРСОВ ==========
+        # ========== АГРЕГАЦИЯ РЕСУРСОВ (только из SaleInfo) ==========
         resources_dict = {}
         future_dates = []
         permanent_found = False
-        raw_resources = []  # для отладки
+        raw_resources = []
         
-        for cap_key in root.findall('.//CapacityKey'):
+        # Находим секцию SaleInfo
+        sale_info = root.find('.//SaleInfo')
+        if sale_info is None:
+            logger.warning("Тег SaleInfo не найден, парсим все CapacityKey")
+            search_root = root
+        else:
+            search_root = sale_info
+
+        # Добавляем SPart (SaleItem) в ресурсы для агрегации
+        for sales_item in sale_info.findall('.//SaleItem'):
+            spart_name = sales_item.get('name')
+            if not spart_name:
+                continue
+            
+            for value_elem in sales_item.findall('Value'):
+                valid_date = value_elem.get('validDate', 'UNKNOWN')
+                try:
+                    value = int(value_elem.text.strip()) if value_elem.text else 0
+                except (ValueError, AttributeError):
+                    value = 0
+                
+                if spart_name not in resources_dict:
+                    resources_dict[spart_name] = {
+                        'name': spart_name,
+                        'total_value': 0,
+                        'permanent_value': 0,
+                        'dated_values': [],
+                        'latest_date': None,
+                        'latest_value': 0
+                    }
+                
+                entry = resources_dict[spart_name]
+                entry['total_value'] += value
+                
+                if valid_date == 'PERMANENT':
+                    entry['permanent_value'] += value
+                    permanent_found = True
+                elif valid_date not in ['UNKNOWN', '']:
+                    entry['dated_values'].append({'date': valid_date, 'value': value})
+                    future_dates.append(valid_date)
+                    if entry['latest_date'] is None or valid_date > entry['latest_date']:
+                        entry['latest_date'] = valid_date
+                        entry['latest_value'] = value
+        
+        for cap_key in search_root.findall('.//CapacityKey'):
             name = cap_key.get('name')
             if not name:
                 continue
@@ -148,20 +192,18 @@ def parse_xml_license(file_path):
                 except (ValueError, AttributeError):
                     value = 0
                 
-                # Сохраняем сырые данные для отладки (опционально)
                 raw_resources.append({
                     'name': name,
                     'value': value,
                     'valid_date': valid_date
                 })
                 
-                # Инициализируем запись для ключа
                 if name not in resources_dict:
                     resources_dict[name] = {
                         'name': name,
                         'total_value': 0,
                         'permanent_value': 0,
-                        'dated_values': [],  # список {date: value}
+                        'dated_values': [],
                         'latest_date': None,
                         'latest_value': 0
                     }
@@ -175,7 +217,49 @@ def parse_xml_license(file_path):
                 elif valid_date not in ['UNKNOWN', '']:
                     entry['dated_values'].append({'date': valid_date, 'value': value})
                     future_dates.append(valid_date)
-                    # Обновляем самую позднюю дату
+                    if entry['latest_date'] is None or valid_date > entry['latest_date']:
+                        entry['latest_date'] = valid_date
+                        entry['latest_value'] = value
+
+        # Добавляем FeatureKey в ресурсы
+        for feat_key in search_root.findall('.//FeatureKey'):
+            name = feat_key.get('name')
+            if not name:
+                continue
+            
+            for value_elem in feat_key.findall('Value'):
+                valid_date = value_elem.get('validDate', 'UNKNOWN')
+                try:
+                    value = int(value_elem.text.strip()) if value_elem.text else 0
+                except (ValueError, AttributeError):
+                    value = 0
+                
+                # Сохраняем сырые данные
+                raw_resources.append({
+                    'name': name,
+                    'value': value,
+                    'valid_date': valid_date
+                })
+                
+                if name not in resources_dict:
+                    resources_dict[name] = {
+                        'name': name,
+                        'total_value': 0,
+                        'permanent_value': 0,
+                        'dated_values': [],
+                        'latest_date': None,
+                        'latest_value': 0
+                    }
+                
+                entry = resources_dict[name]
+                entry['total_value'] += value
+                
+                if valid_date == 'PERMANENT':
+                    entry['permanent_value'] += value
+                    permanent_found = True
+                elif valid_date not in ['UNKNOWN', '']:
+                    entry['dated_values'].append({'date': valid_date, 'value': value})
+                    future_dates.append(valid_date)
                     if entry['latest_date'] is None or valid_date > entry['latest_date']:
                         entry['latest_date'] = valid_date
                         entry['latest_value'] = value
@@ -237,29 +321,20 @@ def parse_xml_license(file_path):
 
 def extract_spart_hierarchy(root):
     """
-    Извлекает иерархическую структуру SPart (SalesItem) и BPart (CapacityKey/FeatureKey)
-    Возвращает:
-    {
-        'sparts': [
-            {
-                'name': 'SF4SMBVOISW02',
-                'value': 100,
-                'valid_date': '2028-03-01',
-                'bparts': [
-                    {'name': 'LCF4REGUSR01', 'value': 500, 'valid_date': '2028-03-01'},
-                    {'name': 'LCF4BASESW01', 'value': 2, 'valid_date': 'PERMANENT'}
-                ]
-            }
-        ],
-        'orphan_bparts': []  # CapacityKey не входящие ни в один SalesItem
-    }
+    Извлекает иерархическую структуру SPart (SaleItem) и BPart (CapacityKey/FeatureKey)
     """
     result = {'sparts': [], 'orphan_bparts': []}
     
-    # Находим все SalesItem (SPart)
-    sales_items = root.findall('.//SalesItem')
+    # Находим секцию SaleInfo
+    sale_info = root.find('.//SaleInfo')
+    if sale_info is None:
+        logger.warning("Тег SaleInfo не найден")
+        return result
     
-    # Собираем все CapacityKey/FeatureKey, чтобы потом найти "сирот"
+    # Находим все SaleItem внутри SaleInfo
+    sales_items = sale_info.findall('.//SaleItem')
+    
+    # Собираем все BPart из SPart для поиска "сирот"
     all_bparts = set()
     
     for sales_item in sales_items:
@@ -267,14 +342,21 @@ def extract_spart_hierarchy(root):
         if not spart_name:
             continue
         
-        # Значение SPart (value атрибут)
-        spart_value_str = sales_item.get('value', '0')
-        try:
-            spart_value = int(spart_value_str)
-        except:
-            spart_value = 0
-        
-        spart_valid_date = sales_item.get('validDate', 'UNKNOWN')
+        # Значение SPart (из тега Value) - берём первое значение (суммирование будет в resources_dict)
+        value_elem = sales_item.find('Value')
+        if value_elem is not None and value_elem.text:
+            try:
+                spart_value = int(value_elem.text.strip())
+            except:
+                spart_value = 0
+            spart_valid_date = value_elem.get('validDate', 'UNKNOWN')
+        else:
+            spart_value_str = sales_item.get('value', '0')
+            try:
+                spart_value = int(spart_value_str)
+            except:
+                spart_value = 0
+            spart_valid_date = sales_item.get('validDate', 'UNKNOWN')
         
         bparts = []
         
@@ -283,16 +365,23 @@ def extract_spart_hierarchy(root):
             name = cap_key.get('name')
             if not name:
                 continue
+            
+            value_elem = cap_key.find('Value')
+            if value_elem is not None and value_elem.text:
+                try:
+                    value = int(value_elem.text.strip())
+                except:
+                    value = 0
+                valid_date = value_elem.get('validDate', 'UNKNOWN')
+            else:
+                value_str = cap_key.get('value', '0')
+                try:
+                    value = int(value_str)
+                except:
+                    value = 0
+                valid_date = cap_key.get('validDate', 'UNKNOWN')
+            
             all_bparts.add(name)
-            
-            value_str = cap_key.get('value', '0')
-            try:
-                value = int(value_str)
-            except:
-                value = 0
-            
-            valid_date = cap_key.get('validDate', 'UNKNOWN')
-            
             bparts.append({
                 'name': name,
                 'value': value,
@@ -304,16 +393,23 @@ def extract_spart_hierarchy(root):
             name = feat_key.get('name')
             if not name:
                 continue
+            
+            value_elem = feat_key.find('Value')
+            if value_elem is not None and value_elem.text:
+                try:
+                    value = int(value_elem.text.strip())
+                except:
+                    value = 0
+                valid_date = value_elem.get('validDate', 'UNKNOWN')
+            else:
+                value_str = feat_key.get('value', '0')
+                try:
+                    value = int(value_str)
+                except:
+                    value = 0
+                valid_date = feat_key.get('validDate', 'UNKNOWN')
+            
             all_bparts.add(name)
-            
-            value_str = feat_key.get('value', '0')
-            try:
-                value = int(value_str)
-            except:
-                value = 0
-            
-            valid_date = feat_key.get('validDate', 'UNKNOWN')
-            
             bparts.append({
                 'name': name,
                 'value': value,
@@ -327,30 +423,29 @@ def extract_spart_hierarchy(root):
             'bparts': bparts
         })
     
-    # Теперь найдём все CapacityKey/FeatureKey, которые не входят ни в один SalesItem
-    all_keys = root.findall('.//CapacityKey') + root.findall('.//FeatureKey')
-    for key in all_keys:
-        name = key.get('name')
-        if not name:
-            continue
-        
-        # Проверяем, есть ли этот ключ в каком-либо SPart
-        found = False
-        for spart in result['sparts']:
-            for bpart in spart['bparts']:
-                if bpart['name'] == name:
-                    found = True
-                    break
-            if found:
-                break
-        
-        if not found:
-            value_str = key.get('value', '0')
-            try:
-                value = int(value_str)
-            except:
-                value = 0
-            valid_date = key.get('validDate', 'UNKNOWN')
+    # Находим "сирот" — CapacityKey/FeatureKey, которые являются прямыми потомками SaleInfo (не внутри SaleItem)
+    for elem in sale_info:
+        if elem.tag in ('CapacityKey', 'FeatureKey'):
+            name = elem.get('name')
+            if not name or name in all_bparts:
+                continue
+            
+            # Извлекаем значение
+            value_elem = elem.find('Value')
+            if value_elem is not None and value_elem.text:
+                try:
+                    value = int(value_elem.text.strip())
+                except:
+                    value = 0
+                valid_date = value_elem.get('validDate', 'UNKNOWN')
+            else:
+                value_str = elem.get('value', '0')
+                try:
+                    value = int(value_str)
+                except:
+                    value = 0
+                valid_date = elem.get('validDate', 'UNKNOWN')
+            
             result['orphan_bparts'].append({
                 'name': name,
                 'value': value,

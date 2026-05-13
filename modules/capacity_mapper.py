@@ -157,7 +157,8 @@ def get_capacity_mapping_config():
         'col_unit': 'C',     # Unit (размерность)
         'col_part': 'D',     # Part-number
         'col_type': 'E',     # Type (spart/bpart/main)
-        'col_parent': 'F'    # Parent SPart (для BPart)
+        'col_parent': 'F',    # Parent SPart (для BPart)
+        'col_is_main': 'G'   # IsMainForSPart (TRUE)
     }
 
 
@@ -174,6 +175,7 @@ def load_capacity_descriptions(domain, network_storage_path, ne_type=None):
         dict: {capacity_key: {'description': str, 'unit': str, 'part_number': str, 'type': str, 'parent': str}}
     """
     global _capacity_descriptions_cache
+    
     
     if not domain:
         logger.warning("Домен не указан, пропускаем загрузку описаний")
@@ -236,6 +238,7 @@ def load_capacity_descriptions(domain, network_storage_path, ne_type=None):
         col_idx_part = _col_letter_to_index(config['col_part'])
         col_idx_type = _col_letter_to_index(config['col_type'])
         col_idx_parent = _col_letter_to_index(config['col_parent'])
+        col_idx_is_main = _col_letter_to_index(config['col_is_main'])
         
         descriptions = {}
         
@@ -249,6 +252,7 @@ def load_capacity_descriptions(domain, network_storage_path, ne_type=None):
             part_number = str(row[col_idx_part - 1]).strip() if col_idx_part <= len(row) else ''
             key_type = str(row[col_idx_type - 1]).strip().lower() if col_idx_type <= len(row) else 'bpart'
             parent = str(row[col_idx_parent - 1]).strip() if col_idx_parent <= len(row) else ''
+            is_main_for_spart = str(row[col_idx_is_main - 1]).strip().upper() == 'TRUE' if col_idx_is_main <= len(row) else False
             
             if capacity_key:
                 descriptions[capacity_key] = {
@@ -258,7 +262,8 @@ def load_capacity_descriptions(domain, network_storage_path, ne_type=None):
                     'type': key_type,  # 'spart', 'bpart', 'main'
                     'parent': parent if parent else None,
                     'is_main': key_type == 'main',
-                    'valid_date': ''
+                    'valid_date': '',
+                    'is_main_for_spart': is_main_for_spart
                 }
         
         _capacity_descriptions_cache[cache_key] = descriptions
@@ -277,8 +282,8 @@ def load_full_capacity_list(domain, network_storage_path, ne_type=None):
     """
     descriptions = load_capacity_descriptions(domain, network_storage_path, ne_type)
     
-    # Сохраняем порядок из Excel
     result = []
+    sort_order = 0
     for cap_key, info in descriptions.items():
         result.append({
             'name': cap_key,
@@ -288,9 +293,10 @@ def load_full_capacity_list(domain, network_storage_path, ne_type=None):
             'dimension': info.get('unit', ''),
             'description': info.get('description', ''),
             'is_main': info.get('is_main', False),
-            'value': 0,
-            'valid_date': ''
+            'is_main_for_spart': info.get('is_main_for_spart', False),
+            'sort_order': sort_order
         })
+        sort_order += 1
     
     return result
 

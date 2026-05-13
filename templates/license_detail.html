@@ -3,6 +3,7 @@
 {% block title %}Детали лицензии{% endblock %}
 
 {% block extra_css %}
+
 <style>
 /* Двухколоночный макет */
 .license-detail-container {
@@ -51,6 +52,7 @@
 
 .info-block-content {
     padding: 1rem;
+    overflow-x: auto;
 }
 
 .info-table {
@@ -104,24 +106,61 @@
     font-size: 0.75rem;
 }
 
-/* Таблица ресурсов */
+/* ========== ТАБЛИЦА РЕСУРСОВ (ЕДИНЫЙ СТИЛЬ) ========== */
 .resources-table {
     width: 100%;
+    min-width: 700px;
     border-collapse: collapse;
-    font-size: 0.8rem;
+    font-size: var(--table-font-size, 12px);
 }
 
 .resources-table th,
 .resources-table td {
-    padding: 0.5rem;
+    padding: 0.15rem 0.4rem;
     text-align: left;
     border-bottom: 1px solid var(--border-light);
+    font-size: inherit;
+    font-family: inherit;
+    font-weight: normal;
+    white-space: nowrap;
+}
+
+.resources-table td:nth-child(2) {
+    color: var(--huawei-red);
+    font-weight: 500;
 }
 
 .resources-table th {
+    padding: 0.6rem 0.5rem;
     background: var(--bg-secondary);
     font-weight: 600;
     color: var(--text-secondary);
+}
+
+.resources-table code {
+    font-size: inherit;
+    background: none;
+    padding: 0;
+    font-family: inherit;
+}
+
+.resources-table small {
+    font-size: inherit;
+}
+
+.resources-table .main-badge {
+    font-size: 0.85em;
+    color: var(--huawei-red);
+    margin-left: 0.5rem;
+}
+
+.resources-table tbody tr {
+    height: var(--table-row-height, 32px);
+}
+
+.resources-table .spart-row {
+    height: calc(var(--table-row-height, 32px) + 4px);
+    font-weight: bold !important;
 }
 
 /* Фильтры ресурсов */
@@ -185,6 +224,34 @@
     cursor: pointer;
 }
 
+/* SPart строки — жирные во всех колонках */
+.spart-row td,
+.spart-row td code,
+.spart-row .toggle-icon {
+    font-weight: bold !important;
+}
+
+/* BPart строки — отступы */
+.bpart-row td {
+    padding-left: 1.5rem !important;
+}
+
+.bpart-row td:first-child {
+    padding-left: 2.5rem !important;
+}
+
+/* Orphan строки */
+.orphan-row td {
+    padding-left: 1.5rem !important;
+}
+
+.orphan-row td:first-child {
+    padding-left: 2rem !important;
+}
+
+
+
+
 .spart-row:hover {
     background-color: var(--bg-hover) !important;
 }
@@ -196,10 +263,11 @@
     user-select: none;
 }
 
-.main-badge {
-    font-size: 0.6rem;
-    color: var(--huawei-red);
-    margin-left: 0.5rem;
+.toggle-all-sparts {
+    cursor: pointer;
+    display: inline-block;
+    width: 20px;
+    user-select: none;
 }
 
 .bpart-row, .orphan-row {
@@ -208,7 +276,6 @@
 
 .valid-date-cell {
     white-space: nowrap;
-    line-height: 1.3;
 }
 
 .selected-version {
@@ -221,6 +288,23 @@
 
 .version-table tbody tr:hover {
     background: var(--bg-hover);
+}
+
+/* Управление размером шрифта */
+.font-size-control {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin-left: auto;
+}
+
+.font-size-control input {
+    width: 55px;
+    padding: 0.2rem 0.3rem;
+    font-size: 0.7rem;
+    border: 1px solid var(--border-light);
+    border-radius: var(--radius-sm);
+    background: var(--bg-primary);
 }
 
 /* Комментарии */
@@ -348,28 +432,38 @@
     }
 }
 </style>
+
 {% endblock %}
 
 {% block content %}
-<a href="/{{ current_operator }}/" class="back-button">
-    <i class="fas fa-arrow-left"></i> Назад к списку
-</a>
 
 <div class="license-detail-container">
     <div class="left-column">
         <div class="info-block">
-            <div class="info-block-header">
-                <i class="fas fa-chart-bar"></i> Ресурсы (CapacityKey)
-                <div class="resource-filters">
-                    <button class="filter-chip active" data-mode="total">📊 Суммарные</button>
-                    <button class="filter-chip" data-mode="latest">📅 По дате</button>
-                    <button class="filter-chip" data-mode="permanent">♾️ Постоянные</button>
-                </div>
+        <div class="info-block-header">
+            <i class="fas fa-chart-bar"></i> Ресурсы (CapacityKey)
+            <button id="openTableSettingsBtn" class="filter-chip" style="margin-left: auto;" title="Настройки таблицы">⚙️</button>
+            <div class="resource-filters">
+                <button class="filter-chip active" data-mode="total">📊 Суммарные</button>
+                <button class="filter-chip" data-mode="latest">📅 По дате</button>
+                <button class="filter-chip" data-mode="permanent">♾️ Постоянные</button>
             </div>
-            <div class="info-block-content" style="padding: 0;">
-                <table class="resources-table">
+            
+        </div>
+            <div class="info-block-content" style="padding: 0; overflow-x: auto;">
+                <table class="resources-table" style="min-width: 600px;">
                     <thead>
-                        <tr><th>CapacityKey</th><th>Значение</th><th>Действителен до</th><th>Part-number</th><th>Размерность</th><th>Описание</th></tr>
+                        <tr>
+                            <th>
+                                <span class="toggle-all-sparts" style="cursor: pointer; display: inline-block; width: 20px; user-select: none;" title="Свернуть/развернуть все">▼</span>
+                                CapacityKey
+                            </th>
+                            <th>Value</th>
+                            <th>Valid till</th>
+                            <th>Bpart</th>
+                            <th>Unit</th>
+                            <th>Description</th>
+                        </tr>
                     </thead>
                     <tbody id="resourcesTableBody">
                         <tr><td colspan="6" class="text-center">Загрузка...</td></tr>
@@ -513,6 +607,43 @@
     </div>
 </div>
 
+<!-- Модальное окно настроек таблицы -->
+<div id="tableSettingsModal" class="modal" style="display: none;">
+    <div class="modal-content" style="max-width: 400px;">
+        <span class="modal-close">&times;</span>
+        <h3>⚙️ Настройки таблицы</h3>
+        
+        <div style="margin-bottom: 1rem;">
+            <label style="display: block; margin-bottom: 0.3rem; font-weight: 600;">Размер шрифта</label>
+            <input type="range" id="modalFontSize" min="10" max="18" step="1" value="12" style="width: 100%;">
+            <span id="modalFontSizeValue" style="font-size: 0.7rem;">12px</span>
+        </div>
+        
+        <div style="margin-bottom: 1rem;">
+            <label style="display: block; margin-bottom: 0.3rem; font-weight: 600;">Высота строки</label>
+            <input type="range" id="modalRowHeight" min="24" max="48" step="2" value="32" style="width: 100%;">
+            <span id="modalRowHeightValue" style="font-size: 0.7rem;">32px</span>
+        </div>
+        
+        <div style="margin-bottom: 1rem;">
+            <label style="display: block; margin-bottom: 0.3rem; font-weight: 600;">Отображаемые колонки</label>
+            <div id="visibleColumnsCheckboxes">
+                <label style="display: block; margin-bottom: 0.3rem;"><input type="checkbox" value="capacity_key" checked> CapacityKey</label>
+                <label style="display: block; margin-bottom: 0.3rem;"><input type="checkbox" value="value" checked> Значение</label>
+                <label style="display: block; margin-bottom: 0.3rem;"><input type="checkbox" value="valid_date" checked> Действителен до</label>
+                <label style="display: block; margin-bottom: 0.3rem;"><input type="checkbox" value="part_number" checked> Part-number</label>
+                <label style="display: block; margin-bottom: 0.3rem;"><input type="checkbox" value="dimension" checked> Размерность</label>
+                <label style="display: block; margin-bottom: 0.3rem;"><input type="checkbox" value="description" checked> Описание</label>
+            </div>
+        </div>
+        
+        <div style="display: flex; gap: 0.5rem; margin-top: 1rem;">
+            <button id="saveTableSettingsBtn" class="btn-primary" style="flex: 1;">Сохранить</button>
+            <button id="closeSettingsBtn" class="btn-secondary" style="flex: 1;">Отмена</button>
+        </div>
+    </div>
+</div>
+
 <script>
     // ========== ГЛОБАЛЬНЫЕ ПЕРЕМЕННЫЕ ==========
     let currentResourceMode = 'total';
@@ -618,6 +749,13 @@
         }
 
         tbody.innerHTML = html;
+
+        const allSparts = currentHierarchy?.sparts?.map(s => s.name) || [];
+        const allCollapsed = allSparts.length > 0 && allSparts.every(name => collapsedSparts.has(name));
+        const globalIcon = document.querySelector('.toggle-all-sparts');
+        if (globalIcon) {
+            globalIcon.textContent = allCollapsed ? '▶' : '▼';
+        }
 
         // Обработчики для иконок (одиночный клик)
         document.querySelectorAll('.toggle-icon').forEach(icon => {
@@ -736,5 +874,189 @@
         const currentRow = document.querySelector(`.version-table tbody tr[data-license-id="${currentLicenseId}"]`);
         if (currentRow) currentRow.classList.add('selected-version');
     });
+
+// Управление размером шрифта
+const fontSizeInput = document.getElementById('tableFontSize');
+if (fontSizeInput) {
+    // Загружаем сохранённое значение
+    const savedFontSize = localStorage.getItem('license_detail_font_size');
+    if (savedFontSize) {
+        fontSizeInput.value = savedFontSize;
+        document.querySelector('.resources-table').style.setProperty('--table-font-size', savedFontSize + 'px');
+    }
+    
+    fontSizeInput.addEventListener('change', () => {
+        const size = fontSizeInput.value;
+        localStorage.setItem('license_detail_font_size', size);
+        document.querySelector('.resources-table').style.setProperty('--table-font-size', size + 'px');
+    });
+}
+
+// Управление высотой строки
+const rowHeightInput = document.getElementById('tableRowHeight');
+if (rowHeightInput) {
+    const savedRowHeight = localStorage.getItem('license_detail_row_height');
+    if (savedRowHeight) {
+        rowHeightInput.value = savedRowHeight;
+        document.querySelector('.resources-table').style.setProperty('--table-row-height', savedRowHeight + 'px');
+    }
+    
+    rowHeightInput.addEventListener('change', () => {
+        const height = rowHeightInput.value;
+        localStorage.setItem('license_detail_row_height', height);
+        document.querySelector('.resources-table').style.setProperty('--table-row-height', height + 'px');
+    });
+}
+
+// Обработчик для глобального сворачивания/разворачивания
+document.querySelector('.toggle-all-sparts')?.addEventListener('click', () => {
+    const allSparts = currentHierarchy?.sparts?.map(s => s.name) || [];
+    // Проверяем, все ли свёрнуты
+    const allCollapsed = allSparts.length > 0 && allSparts.every(name => collapsedSparts.has(name));
+    
+    if (allCollapsed) {
+        // Разворачиваем все
+        allSparts.forEach(name => collapsedSparts.delete(name));
+    } else {
+        // Сворачиваем все
+        allSparts.forEach(name => collapsedSparts.add(name));
+    }
+    if (currentHierarchy) {
+        renderHierarchyTable(currentHierarchy.sparts, currentHierarchy.orphans);
+    }
+    
+    // Обновляем иконку
+    const icon = document.querySelector('.toggle-all-sparts');
+    const newAllCollapsed = allSparts.length > 0 && allSparts.every(name => collapsedSparts.has(name));
+    icon.textContent = newAllCollapsed ? '▶' : '▼';
+});
+
+
+// ========== НАСТРОЙКИ ТАБЛИЦЫ ==========
+const modal = document.getElementById('tableSettingsModal');
+const openBtn = document.getElementById('openTableSettingsBtn');
+const closeBtn = document.getElementById('closeSettingsBtn');
+const modalClose = document.querySelector('#tableSettingsModal .modal-close');
+
+// Загрузка сохранённых настроек
+let savedFontSize = localStorage.getItem('license_detail_font_size') || '12';
+let savedRowHeight = localStorage.getItem('license_detail_row_height') || '32';
+let savedColumns = JSON.parse(localStorage.getItem('license_detail_visible_columns') || 
+    '["capacity_key", "value", "valid_date", "part_number", "dimension", "description"]');
+
+// Колонки и их порядок
+const columnConfig = [
+    { key: 'capacity_key', label: 'CapacityKey', defaultWidth: 200 },
+    { key: 'value', label: 'Value', defaultWidth: 80 },
+    { key: 'valid_date', label: 'Valid till', defaultWidth: 100 },
+    { key: 'part_number', label: 'Part-number', defaultWidth: 100 },
+    { key: 'dimension', label: 'Размерность', defaultWidth: 100 },
+    { key: 'description', label: 'Description', defaultWidth: 200 }
+];
+
+// Применение размера шрифта и высоты строки
+function applyFontAndRow() {
+    document.querySelector('.resources-table').style.setProperty('--table-font-size', savedFontSize + 'px');
+    document.querySelector('.resources-table').style.setProperty('--table-row-height', savedRowHeight + 'px');
+}
+
+// Обновление видимости колонок (работает для всей таблицы)
+function updateColumnsVisibility() {
+    const columnIndices = {};
+    columnConfig.forEach((col, idx) => {
+        columnIndices[col.key] = idx;
+    });
+    
+    // Скрываем/показываем заголовки
+    const ths = document.querySelectorAll('.resources-table thead th');
+    ths.forEach((th, idx) => {
+        const colKey = columnConfig[idx]?.key;
+        if (colKey && !savedColumns.includes(colKey)) {
+            th.style.display = 'none';
+        } else if (colKey) {
+            th.style.display = '';
+        }
+    });
+    
+    // Скрываем/показываем ячейки во всех строках
+    const rows = document.querySelectorAll('#resourcesTableBody tr');
+    rows.forEach(row => {
+        const cells = row.querySelectorAll('td');
+        cells.forEach((cell, idx) => {
+            const colKey = columnConfig[idx]?.key;
+            if (colKey && !savedColumns.includes(colKey)) {
+                cell.style.display = 'none';
+            } else if (colKey) {
+                cell.style.display = '';
+            }
+        });
+    });
+}
+
+// Переопределяем renderHierarchyTable, чтобы после отрисовки применять настройки
+const originalRender = renderHierarchyTable;
+renderHierarchyTable = function(sparts, orphans) {
+    originalRender(sparts, orphans);
+    applyFontAndRow();
+    updateColumnsVisibility();
+};
+
+// Инициализация модального окна
+openBtn?.addEventListener('click', () => {
+    document.getElementById('modalFontSize').value = savedFontSize;
+    document.getElementById('modalRowHeight').value = savedRowHeight;
+    document.getElementById('modalFontSizeValue').innerText = savedFontSize + 'px';
+    document.getElementById('modalRowHeightValue').innerText = savedRowHeight + 'px';
+    
+    // Устанавливаем чекбоксы
+    document.querySelectorAll('#visibleColumnsCheckboxes input').forEach(cb => {
+        cb.checked = savedColumns.includes(cb.value);
+    });
+    
+    modal.style.display = 'flex';
+});
+
+function closeModal() {
+    modal.style.display = 'none';
+}
+
+closeBtn?.addEventListener('click', closeModal);
+modalClose?.addEventListener('click', closeModal);
+modal?.addEventListener('click', (e) => {
+    if (e.target === modal) closeModal();
+});
+
+// Сохранение настроек
+document.getElementById('saveTableSettingsBtn')?.addEventListener('click', () => {
+    savedFontSize = document.getElementById('modalFontSize').value;
+    savedRowHeight = document.getElementById('modalRowHeight').value;
+    savedColumns = [];
+    document.querySelectorAll('#visibleColumnsCheckboxes input:checked').forEach(cb => {
+        savedColumns.push(cb.value);
+    });
+    
+    localStorage.setItem('license_detail_font_size', savedFontSize);
+    localStorage.setItem('license_detail_row_height', savedRowHeight);
+    localStorage.setItem('license_detail_visible_columns', JSON.stringify(savedColumns));
+    
+    applyFontAndRow();
+    updateColumnsVisibility();
+    closeModal();
+});
+
+// Обработчики слайдеров
+document.getElementById('modalFontSize')?.addEventListener('input', (e) => {
+    document.getElementById('modalFontSizeValue').innerText = e.target.value + 'px';
+});
+document.getElementById('modalRowHeight')?.addEventListener('input', (e) => {
+    document.getElementById('modalRowHeightValue').innerText = e.target.value + 'px';
+});
+
+// При загрузке страницы применяем настройки
+setTimeout(() => {
+    applyFontAndRow();
+    updateColumnsVisibility();
+}, 100);
+
 </script>
 {% endblock %}

@@ -157,10 +157,16 @@
             </div>
         </div>
         
-        <!-- Текущий оператор -->
-        <div class="current-operator-info">
-            <i class="fas fa-building"></i>
-            <span>Текущий оператор: <strong>{{ current_operator_title }}</strong></span>
+        <div class="top-bar-info">
+            {% if request.endpoint != 'web.license_list' and request.endpoint != 'web.index' %}
+            <a href="/{{ current_operator }}/" class="back-button-inline">
+                <i class="fas fa-arrow-left"></i> Назад к списку
+            </a>
+            {% endif %}
+            <div class="current-operator-info">
+                <i class="fas fa-building"></i>
+                <span>Текущий оператор: <strong>{{ current_operator_title }}</strong></span>
+            </div>
         </div>
         {% endif %}
         
@@ -170,17 +176,6 @@
     
     <script>        
 // ========== УПРАВЛЕНИЕ ТЕМОЙ ==========
-
-// Применяем тему ДО загрузки CSS
-(function() {
-    const savedTheme = localStorage.getItem('theme');
-    const systemDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
-    const isDark = savedTheme === 'dark' || (savedTheme === 'auto' && systemDark) || (!savedTheme && systemDark);
-    if (isDark) {
-        document.documentElement.classList.add('dark');
-        document.body.classList.add('dark');
-    }
-})();
 
 // Определение системной темы
 function getSystemTheme() {

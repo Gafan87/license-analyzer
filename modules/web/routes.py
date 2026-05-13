@@ -1056,7 +1056,7 @@ def api_get_license_resources(license_id):
                 latest_date = max([dv['date'] for dv in dated_values_list])
                 date_parts.append(latest_date)
 
-            valid_date = '<br>'.join(date_parts) if date_parts else 'N/A'
+            valid_date = ', '.join(date_parts) if date_parts else 'N/A'
 
         elif mode == 'permanent':
             value = permanent_value if permanent_value > 0 else 0
@@ -1110,22 +1110,46 @@ def api_get_license_hierarchy(license_id):
     # Получаем NE тип лицензии
     conn = get_connection()
     cursor = conn.cursor()
+    cursor.execute('SELECT filename FROM licenses WHERE id = ?', (license_id,))
+    row = cursor.fetchone()
+    filename = row[0] if row else ''
+    is_xml = filename.lower().endswith('.xml')
+    conn.close()
+
+    if is_xml:
+        # Для XML используем иерархию из БД (которая заполняется при парсинге)
+        return get_xml_hierarchy(license_id, mode, domain)
+    else:
+        # Для DAT используем маппинг из Excel
+        return get_dat_hierarchy(license_id, mode, domain)
+    
+           
+# ========== API ДЛЯ ПРОВЕРКИ ФАЙЛОВ ==========
+
+def get_dat_hierarchy(license_id, mode, domain):
+    from modules.database import get_connection
+    from modules.capacity_mapper import load_full_capacity_list
+    from flask import current_app
+    
+    network_storage_path = current_app.config.get('network_storage_path', '')
+    
+    conn = get_connection()
+    cursor = conn.cursor()
+    
+    # Получаем NE тип для определения маппинга
     cursor.execute('SELECT ne_type FROM licenses WHERE id = ?', (license_id,))
     row = cursor.fetchone()
     ne_type = row[0] if row else None
     conn.close()
     
-    print(f"DEBUG: license_id={license_id}, ne_type={ne_type}, domain={domain}, mode={mode}")
-    
-    # Загружаем полный список из маппинга
+    # Загружаем полный список из маппинга Excel
     full_list = load_full_capacity_list(domain, network_storage_path, ne_type)
-    print(f"DEBUG: loaded {len(full_list)} items from mapping")
     
     # Группируем по SPart
     sparts_dict = {}
     orphans = []
     
-    # Сначала создаём всех SPart
+    # Создаём SPart
     for item in full_list:
         if item['type'] == 'spart':
             sparts_dict[item['name']] = {
@@ -1135,10 +1159,11 @@ def api_get_license_hierarchy(license_id):
                 'part_number': item.get('part_number', ''),
                 'dimension': item.get('dimension', ''),
                 'description': item.get('description', ''),
-                'children': []
+                'children': [],
+                'main_bpart': None
             }
     
-    # Затем добавляем BPart к их родителям
+    # Добавляем BPart к родителям
     for item in full_list:
         if item['type'] == 'bpart':
             parent = item.get('parent')
@@ -1150,34 +1175,25 @@ def api_get_license_hierarchy(license_id):
                     'part_number': item.get('part_number', ''),
                     'dimension': item.get('dimension', ''),
                     'description': item.get('description', ''),
-                    'is_main': item.get('is_main', False)
+                    'is_main': item.get('is_main', False),
                 })
+                if item.get('is_main_for_spart'):
+                    sparts_dict[parent]['main_bpart'] = item['name']
             else:
                 orphans.append(item)
         elif item['type'] != 'spart' and not item.get('parent'):
             orphans.append(item)
-    
-    print(f"DEBUG: sparts count={len(sparts_dict)}, orphans count={len(orphans)}")
     
     # Получаем значения из capacity_aggregated
     conn = get_connection()
     cursor = conn.cursor()
     
     if mode == 'total':
-        cursor.execute('''
-            SELECT capacity_key, total_value, latest_date 
-            FROM capacity_aggregated WHERE license_id = ?
-        ''', (license_id,))
+        cursor.execute('SELECT capacity_key, total_value, latest_date FROM capacity_aggregated WHERE license_id = ?', (license_id,))
     elif mode == 'permanent':
-        cursor.execute('''
-            SELECT capacity_key, permanent_value, 'PERMANENT' 
-            FROM capacity_aggregated WHERE license_id = ? AND permanent_value > 0
-        ''', (license_id,))
+        cursor.execute('SELECT capacity_key, permanent_value, ? FROM capacity_aggregated WHERE license_id = ? AND permanent_value > 0', ('PERMANENT', license_id))
     else:  # mode == 'latest'
-        cursor.execute('''
-            SELECT capacity_key, latest_value, latest_date 
-            FROM capacity_aggregated WHERE license_id = ? AND latest_date IS NOT NULL
-        ''', (license_id,))
+        cursor.execute('SELECT capacity_key, latest_value, latest_date FROM capacity_aggregated WHERE license_id = ? AND latest_date IS NOT NULL', (license_id,))
     
     values_map = {}
     date_map = {}
@@ -1186,13 +1202,22 @@ def api_get_license_hierarchy(license_id):
         date_map[row[0]] = row[2] if len(row) > 2 and row[2] else ''
     conn.close()
     
-    print(f"DEBUG: values_map count={len(values_map)}")
-    
     # Заполняем значениями
     for spart in sparts_dict.values():
+        # Сначала ищем прямое значение SPart
         if spart['name'] in values_map:
             spart['value'] = values_map[spart['name']]
             spart['valid_date'] = date_map.get(spart['name'], '')
+        else:
+            # Ищем значение от main_bpart
+            main_bpart = spart.get('main_bpart')
+            if main_bpart and main_bpart in values_map:
+                spart['value'] = values_map[main_bpart]
+                spart['valid_date'] = date_map.get(main_bpart, '')
+            else:
+                spart['value'] = 0
+                spart['valid_date'] = ''
+        
         for bpart in spart['children']:
             if bpart['name'] in values_map:
                 bpart['value'] = values_map[bpart['name']]
@@ -1207,9 +1232,115 @@ def api_get_license_hierarchy(license_id):
         'sparts': list(sparts_dict.values()),
         'orphans': orphans
     })
-           
-# ========== API ДЛЯ ПРОВЕРКИ ФАЙЛОВ ==========
 
+def get_xml_hierarchy(license_id, mode, domain):
+    from modules.database import get_connection
+    from modules.capacity_mapper import get_capacity_description
+    from flask import current_app
+    
+    network_storage_path = current_app.config.get('network_storage_path', '')
+    
+    conn = get_connection()
+    cursor = conn.cursor()
+    
+    # Получаем ne_type лицензии
+    cursor.execute('SELECT ne_type FROM licenses WHERE id = ?', (license_id,))
+    row = cursor.fetchone()
+    ne_type = row[0] if row else None
+    
+    # Получаем SPart иерархию
+    cursor.execute('''
+        SELECT id, spart_name, spart_value, spart_valid_date
+        FROM license_spart_hierarchy WHERE license_id = ?
+        ORDER BY sort_order
+    ''', (license_id,))
+    sparts = cursor.fetchall()
+    
+    result = []
+    for spart_id, spart_name, spart_value, spart_valid_date in sparts:
+        # Получаем BPart для этого SPart
+        cursor.execute('''
+            SELECT bpart_name, bpart_value, bpart_valid_date, is_main
+            FROM license_bpart_hierarchy 
+            WHERE license_id = ? AND spart_id = ?
+            ORDER BY sort_order
+        ''', (license_id, spart_id))
+        bparts = cursor.fetchall()
+        
+        # Значение SPart (из таблицы, не из capacity_aggregated)
+        spart_val = spart_value or 0
+        spart_date = spart_valid_date or ''
+        
+        spart_desc = get_capacity_description(spart_name, domain, network_storage_path)
+        
+        children = []
+        for bp_name, bp_value, bp_valid_date, is_main in bparts:
+            bp_val = bp_value or 0
+            bp_date = bp_valid_date or ''
+            bp_desc = get_capacity_description(bp_name, domain, network_storage_path)
+            
+            children.append({
+                'name': bp_name,
+                'value': bp_val,
+                'valid_date': bp_date,
+                'is_main': bool(is_main),
+                'part_number': bp_desc.get('part_number', '') if bp_desc else '',
+                'dimension': bp_desc.get('unit', '') if bp_desc else '',
+                'description': bp_desc.get('description', '') if bp_desc else ''
+            })
+        
+        result.append({
+            'name': spart_name,
+            'value': spart_val,
+            'valid_date': spart_date,
+            'children': children,
+            'part_number': spart_desc.get('part_number', '') if spart_desc else '',
+            'dimension': spart_desc.get('unit', '') if spart_desc else '',
+            'description': spart_desc.get('description', '') if spart_desc else ''
+        })
+    
+    # Получаем "сирот" (bpart без родителя)
+    cursor.execute('''
+        SELECT bpart_name, bpart_value, bpart_valid_date
+        FROM license_bpart_hierarchy 
+        WHERE license_id = ? AND spart_id IS NULL
+        ORDER BY sort_order
+    ''', (license_id,))
+    orphans_rows = cursor.fetchall()
+    
+    orphans = []
+    for bp_name, bp_value, bp_valid_date in orphans_rows:
+        bp_val = bp_value or 0
+        bp_date = bp_valid_date or ''
+        bp_desc = get_capacity_description(bp_name, domain, network_storage_path)
+        orphans.append({
+            'name': bp_name,
+            'value': bp_val,
+            'valid_date': bp_date,
+            'part_number': bp_desc.get('part_number', '') if bp_desc else '',
+            'dimension': bp_desc.get('unit', '') if bp_desc else '',
+            'description': bp_desc.get('description', '') if bp_desc else ''
+        })
+    
+    conn.close()
+    
+    # Сортируем согласно Excel порядку (если нужен)
+    from modules.capacity_mapper import load_full_capacity_list
+    full_list = load_full_capacity_list(domain, network_storage_path, ne_type)
+    excel_spart_order = [item['name'] for item in full_list if item.get('type') == 'spart']
+    
+    # Сортируем результат
+    result_dict = {s['name']: s for s in result}
+    sorted_result = [result_dict[name] for name in excel_spart_order if name in result_dict]
+    for name, spart in result_dict.items():
+        if name not in excel_spart_order:
+            sorted_result.append(spart)
+    
+    return jsonify({
+        'sparts': sorted_result,
+        'orphans': orphans
+    })
+      
 @web_bp.route('/api/check_esn_mapping_files', methods=['GET'])
 def api_check_esn_mapping_files():
     """Проверяет наличие файлов ESN маппинга для всех операторов"""
