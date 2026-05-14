@@ -187,6 +187,7 @@ function getSystemTheme() {
 
 // Проверка наличия отсканированных лицензий при загрузке страницы
 async function checkPendingSync() {
+    const operator = '{{ current_operator }}';
     const resp = await fetch(`/${operator}/scan_status`);
     const data = await resp.json();
     const syncBadge = document.getElementById('syncBadge');

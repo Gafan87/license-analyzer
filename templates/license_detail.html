@@ -697,21 +697,20 @@
     }
 
     // ========== ЗАГРУЗКА ИЕРАРХИИ ==========
-    async function loadHierarchy(licenseId, mode) {
-        try {
-            const url = `/api/license/${licenseId}/hierarchy?domain=${encodeURIComponent(currentDomain)}&mode=${mode}`;
-            const response = await fetch(url);
-            if (!response.ok) {
-                throw new Error(`HTTP ${response.status}`);
-            }
-            const data = await response.json();
-            currentHierarchy = data;
-            renderHierarchyTable(data.sparts, data.orphans);
-        } catch (error) {
-            console.error('Ошибка загрузки иерархии:', error);
-            document.getElementById('resourcesTableBody').innerHTML = '<tr><td colspan="6" class="text-center">❌ Ошибка загрузки данных</td></tr>';
-        }
+async function loadHierarchy(licenseId, mode) {
+    try {
+        const showAll = localStorage.getItem('showAllSparts') === 'true';
+        const url = `/api/license/${licenseId}/hierarchy?domain=${encodeURIComponent(currentDomain)}&mode=${mode}&show_all=${showAll}`;
+        const response = await fetch(url);
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        const data = await response.json();
+        currentHierarchy = data;
+        renderHierarchyTable(data.sparts, data.orphans);
+    } catch (error) {
+        console.error('Ошибка загрузки иерархии:', error);
+        document.getElementById('resourcesTableBody').innerHTML = '<tr><td colspan="6" class="text-center">❌ Ошибка загрузки данных</td></tr>';
     }
+}
 
 // ========== ОТРИСОВКА ТАБЛИЦЫ ==========
 function renderHierarchyTable(sparts, orphans) {
@@ -861,18 +860,19 @@ function renderHierarchyTable(sparts, orphans) {
     }
 
     // ========== ПЕРЕКЛЮЧЕНИЕ РЕЖИМОВ ==========
-    function initResourceFilters() {
-        const chips = document.querySelectorAll('.filter-chip');
-        chips.forEach(chip => {
-            chip.addEventListener('click', function() {
-                const mode = this.dataset.mode;
-                chips.forEach(c => c.classList.remove('active'));
-                this.classList.add('active');
-                currentResourceMode = mode;
-                loadHierarchy(currentLicenseId, mode);
-            });
+function initResourceFilters() {
+    const chips = document.querySelectorAll('.filter-chip');
+    chips.forEach(chip => {
+        chip.addEventListener('click', function() {
+            const mode = this.dataset.mode;
+            console.log('Переключение режима на:', mode);  // Для отладки
+            chips.forEach(c => c.classList.remove('active'));
+            this.classList.add('active');
+            currentResourceMode = mode;
+            loadHierarchy(currentLicenseId, mode);
         });
-    }
+    });
+}
 
     // ========== ТЕГИ ==========
     document.getElementById('addTagBtn')?.addEventListener('click', async () => {
@@ -1102,23 +1102,6 @@ if (showAllSpartsToggle) {
         const currentMode = document.querySelector('.mode-btn.active')?.dataset?.mode || 'total';
         loadHierarchy(currentMode);
     });
-}
-
-// ========== ЗАГРУЗКА ИЕРАРХИИ ==========
-function loadHierarchy(mode) {
-    const showAll = localStorage.getItem('showAllSparts') === 'true';
-    
-    fetch(`/api/license/${currentLicenseId}/hierarchy?mode=${mode}&domain=${currentDomain}&show_all=${showAll}`)
-        .then(response => response.json())
-        .then(data => {
-            currentHierarchy = data;
-            renderHierarchyTable(data.sparts || [], data.orphans || []);
-        })
-        .catch(error => {
-            console.error('Ошибка загрузки иерархии:', error);
-            document.getElementById('resourcesTableBody').innerHTML = 
-                '<tr><td colspan="6" class="text-center">Ошибка загрузки данных</td></tr>';
-        });
 }
 
 // Сохранение настроек

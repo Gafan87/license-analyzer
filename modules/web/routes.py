@@ -1241,20 +1241,20 @@ def get_xml_hierarchy(license_id, mode, domain, show_all_sparts=False):
     conn = get_connection()
     cursor = conn.cursor()
 
-    # Получаем ne_type лицензии
     cursor.execute('SELECT ne_type FROM licenses WHERE id = ?', (license_id,))
     row = cursor.fetchone()
     ne_type = row[0] if row else None
 
-    # Загружаем полный список из маппинга Excel
     full_list = load_full_capacity_list(domain, network_storage_path, ne_type)
 
-    # Строим словарь порядка SPart и структуру всех SPart из Excel
     spart_order = {}
-    excel_sparts = {}  # {spart_name: {main_bpart, description, ...}}
+    excel_sparts = {}
+    sections = []
     
     for item in full_list:
-        if item['type'] == 'spart':
+        if item['type'] == 'section':
+            sections.append({'name': item['name'], 'position': item['sort_order']})
+        elif item['type'] == 'spart':
             order = len(spart_order)
             spart_order[item['name']] = order
             excel_sparts[item['name']] = {
@@ -1263,14 +1263,29 @@ def get_xml_hierarchy(license_id, mode, domain, show_all_sparts=False):
                 'dimension': item.get('dimension', ''),
                 'description': item.get('description', ''),
                 'main_bpart': None,
-                'order': order
+                'order': order,
+                'section': None
             }
         elif item['type'] == 'bpart' and item.get('is_main_for_spart'):
             parent = item.get('parent')
             if parent and parent in excel_sparts:
                 excel_sparts[parent]['main_bpart'] = item['name']
 
-    # Получаем SPart иерархию из БД
+    # Привязка SPart к разделам
+    if sections:
+        for spart_name, spart_info in excel_sparts.items():
+            spart_position = None
+            for item in full_list:
+                if item['name'] == spart_name:
+                    spart_position = item['sort_order']
+                    break
+            if spart_position is not None:
+                prev_section = None
+                for section in sections:
+                    if section['position'] < spart_position:
+                        prev_section = section['name']
+                spart_info['section'] = prev_section
+
     cursor.execute('''
         SELECT id, spart_name, spart_value, spart_valid_date,
                permanent_value, dated_value, dated_date
@@ -1279,54 +1294,44 @@ def get_xml_hierarchy(license_id, mode, domain, show_all_sparts=False):
     ''', (license_id,))
     sparts = cursor.fetchall()
 
-    # Строим словарь существующих SPart: {spart_name: данные}
     existing_sparts = {}
     for spart_id, spart_name, spart_value, spart_valid_date, permanent_value, dated_value, dated_date in sparts:
         existing_sparts[spart_name] = {
-            'spart_id': spart_id,
-            'spart_name': spart_name,
-            'spart_value': spart_value,
-            'spart_valid_date': spart_valid_date,
-            'permanent_value': permanent_value,
-            'dated_value': dated_value,
+            'spart_id': spart_id, 'spart_name': spart_name,
+            'spart_value': spart_value, 'spart_valid_date': spart_valid_date,
+            'permanent_value': permanent_value, 'dated_value': dated_value,
             'dated_date': dated_date
         }
 
+    if show_all_sparts:
+        for spart_name in excel_sparts:
+            if spart_name not in existing_sparts:
+                existing_sparts[spart_name] = {
+                    'spart_id': None, 'spart_name': spart_name,
+                    'spart_value': 0, 'spart_valid_date': '',
+                    'permanent_value': 0, 'dated_value': 0, 'dated_date': None
+                }
+
+    sorted_spart_names = sorted(existing_sparts.keys(), key=lambda n: spart_order.get(n, 9999))
     result_sparts = []
     all_orphan_bparts = []
-
-    # ========== ЕСЛИ show_all_sparts — ДОБАВЛЯЕМ НЕДОСТАЮЩИЕ ИЗ EXCEL ==========
-    if show_all_sparts:
-        # Сортируем по порядку из Excel
-        ordered_spart_names = sorted(excel_sparts.keys(), key=lambda n: excel_sparts[n]['order'])
-        
-        for spart_name in ordered_spart_names:
-            if spart_name not in existing_sparts:
-                # Добавляем фиктивный SPart с нулевыми значениями
-                existing_sparts[spart_name] = {
-                    'spart_id': None,
-                    'spart_name': spart_name,
-                    'spart_value': 0,
-                    'spart_valid_date': '',
-                    'permanent_value': 0,
-                    'dated_value': 0,
-                    'dated_date': None
-                }
-    # ====================================================================
-
-    # Сортируем итоговый список SPart по порядку из Excel
-    sorted_spart_names = sorted(existing_sparts.keys(), key=lambda n: spart_order.get(n, 9999))
+    current_section = None
 
     for spart_name in sorted_spart_names:
         spart_data = existing_sparts[spart_name]
-        spart_id = spart_data['spart_id']
-        spart_value = spart_data['spart_value']
-        spart_valid_date = spart_data['spart_valid_date']
-        permanent_value = spart_data['permanent_value']
-        dated_value = spart_data['dated_value']
-        dated_date = spart_data['dated_date']
+        excel_info = excel_sparts.get(spart_name, {})
+        
+        spart_section = excel_info.get('section')
+        if spart_section and spart_section != current_section:
+            current_section = spart_section
+            result_sparts.append({
+                'name': current_section, 'is_section': True,
+                'value': '', 'valid_date': '', 'children': [], 'is_empty': False
+            })
 
-        # Получаем BPart для этого SPart (если spart_id есть)
+        spart_id = spart_data['spart_id']
+        
+        # BPart для этого SPart
         if spart_id is not None:
             cursor.execute('''
                 SELECT bpart_name, bpart_value, bpart_valid_date, is_main,
@@ -1339,31 +1344,25 @@ def get_xml_hierarchy(license_id, mode, domain, show_all_sparts=False):
         else:
             bparts = []
 
-        # === ВЫБИРАЕМ ЗНАЧЕНИЕ SPart В ЗАВИСИМОСТИ ОТ РЕЖИМА ===
+        # Выбор значения по режиму
         if mode == 'permanent':
-            spart_val = permanent_value if permanent_value else 0
-            spart_date = 'PERMANENT' if permanent_value and permanent_value > 0 else ''
+            spart_val = spart_data['permanent_value'] if spart_data['permanent_value'] else 0
+            spart_date = 'PERMANENT' if spart_data['permanent_value'] and spart_data['permanent_value'] > 0 else ''
         elif mode == 'latest':
-            spart_val = dated_value if dated_value else 0
-            spart_date = dated_date if dated_date else ''
-        else:  # mode == 'total'
-            spart_val = spart_value if spart_value else 0
-            spart_date = spart_valid_date if spart_valid_date else ''
+            spart_val = spart_data['dated_value'] if spart_data['dated_value'] else 0
+            spart_date = spart_data['dated_date'] if spart_data['dated_date'] else ''
+        else:
+            spart_val = spart_data['spart_value'] if spart_data['spart_value'] else 0
+            spart_date = spart_data['spart_valid_date'] if spart_data['spart_valid_date'] else ''
 
-        # Получаем описание SPart
         spart_desc = get_capacity_description(spart_name, domain, network_storage_path)
 
-        # Строим порядок BPart из Excel
         bpart_order = {}
         for item in full_list:
             if item['type'] == 'bpart' and item.get('parent') == spart_name:
                 bpart_order[item['name']] = len(bpart_order)
 
-        # Сортируем bparts по порядку из Excel
-        bparts_list = []
-        for bp_name, bp_value, bp_valid_date, is_main, bp_permanent, bp_dated, bp_dated_date in bparts:
-            bparts_list.append((bp_name, bp_value, bp_valid_date, is_main, bp_permanent, bp_dated, bp_dated_date))
-
+        bparts_list = list(bparts)
         bparts_list.sort(key=lambda b: bpart_order.get(b[0], 9999))
 
         children = []
@@ -1379,33 +1378,25 @@ def get_xml_hierarchy(license_id, mode, domain, show_all_sparts=False):
                 bp_date = bp_valid_date if bp_valid_date else ''
 
             bp_desc = get_capacity_description(bp_name, domain, network_storage_path)
-
             children.append({
-                'name': bp_name,
-                'value': bp_val,
-                'valid_date': bp_date,
+                'name': bp_name, 'value': bp_val, 'valid_date': bp_date,
                 'is_main': bool(is_main),
                 'part_number': bp_desc.get('part_number', '') if bp_desc else '',
                 'dimension': bp_desc.get('dimension', '') if bp_desc else '',
                 'description': bp_desc.get('description', '') if bp_desc else ''
             })
 
-        # Информация из Excel о SPart
-        excel_info = excel_sparts.get(spart_name, {})
-
         result_sparts.append({
-            'name': spart_name,
-            'value': spart_val,
-            'valid_date': spart_date,
+            'name': spart_name, 'value': spart_val, 'valid_date': spart_date,
             'part_number': spart_desc.get('part_number', '') if spart_desc else excel_info.get('part_number', ''),
             'dimension': spart_desc.get('dimension', '') if spart_desc else excel_info.get('dimension', ''),
             'description': spart_desc.get('description', '') if spart_desc else excel_info.get('description', ''),
             'children': children,
             'main_bpart': excel_info.get('main_bpart'),
-            'is_empty': spart_id is None  # Флаг, что SPart отсутствует в лицензии
+            'is_empty': spart_id is None, 'is_section': False
         })
 
-    # Получаем "сирот"
+    # Сироты
     cursor.execute('''
         SELECT bpart_name, bpart_value, bpart_valid_date, is_main,
                permanent_value, dated_value, dated_date
@@ -1427,11 +1418,8 @@ def get_xml_hierarchy(license_id, mode, domain, show_all_sparts=False):
             bp_date = bp_valid_date if bp_valid_date else ''
 
         bp_desc = get_capacity_description(bp_name, domain, network_storage_path)
-
         all_orphan_bparts.append({
-            'name': bp_name,
-            'value': bp_val,
-            'valid_date': bp_date,
+            'name': bp_name, 'value': bp_val, 'valid_date': bp_date,
             'is_main': bool(is_main),
             'part_number': bp_desc.get('part_number', '') if bp_desc else '',
             'dimension': bp_desc.get('dimension', '') if bp_desc else '',
@@ -1439,12 +1427,8 @@ def get_xml_hierarchy(license_id, mode, domain, show_all_sparts=False):
         })
 
     conn.close()
-
-    return jsonify({
-        'sparts': result_sparts,
-        'orphans': all_orphan_bparts
-    })
-             
+    return jsonify({'sparts': result_sparts, 'orphans': all_orphan_bparts})
+            
 @web_bp.route('/api/check_esn_mapping_files', methods=['GET'])
 def api_check_esn_mapping_files():
     """Проверяет наличие файлов ESN маппинга для всех операторов"""
