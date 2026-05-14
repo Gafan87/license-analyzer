@@ -440,6 +440,111 @@
     color: var(--text-muted);
 }
 
+/* Список ESN */
+.esn-list {
+    max-height: 300px;
+    overflow-y: auto;
+}
+
+.esn-list-item {
+    padding: 0.6rem 0.75rem;
+    border-bottom: 1px solid var(--border-light);
+    cursor: pointer;
+    transition: background 0.15s;
+}
+
+.esn-list-item:hover {
+    background: var(--bg-hover);
+}
+
+.esn-list-item.active {
+    background: var(--huawei-red-light, rgba(230, 0, 18, 0.08));
+    border-left: 3px solid var(--huawei-red);
+}
+
+.esn-list-item-main {
+    margin-bottom: 0.25rem;
+}
+
+.esn-value {
+    font-size: 0.75rem;
+    word-break: break-all;
+}
+
+.esn-list-item-meta {
+    display: flex;
+    gap: 0.35rem;
+    flex-wrap: wrap;
+}
+
+.esn-list-item-meta .badge {
+    font-size: 0.6rem;
+    padding: 0.1rem 0.4rem;
+    background: var(--bg-tertiary);
+    border-radius: 3px;
+    color: var(--text-secondary);
+}
+
+/* Таблица выбранных ESN */
+.esn-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.7rem;
+}
+
+.esn-table th {
+    padding: 0.4rem 0.5rem;
+    text-align: left;
+    background: var(--bg-tertiary);
+    font-weight: 600;
+    color: var(--text-secondary);
+    font-size: 0.65rem;
+    border-bottom: 1px solid var(--border-light);
+}
+
+.esn-table td {
+    padding: 0.35rem 0.5rem;
+    border-bottom: 1px solid var(--border-light);
+    vertical-align: middle;
+}
+
+.esn-table tr {
+    cursor: pointer;
+    transition: background 0.15s;
+}
+
+.esn-table tr:hover {
+    background: var(--bg-hover);
+}
+
+.esn-table tr.active {
+    background: var(--huawei-red-light, rgba(230, 0, 18, 0.08));
+}
+
+.esn-table tr.active td:first-child {
+    border-left: 3px solid var(--huawei-red);
+    padding-left: calc(0.5rem - 3px);
+}
+
+.esn-table code {
+    font-size: 0.65rem;
+    background: none;
+    padding: 0;
+}
+
+.esn-table .badge {
+    font-size: 0.6rem;
+    padding: 0.1rem 0.4rem;
+    background: var(--bg-tertiary);
+    border-radius: 3px;
+    color: var(--text-secondary);
+}
+
+.esn-table-wrapper {
+    max-height: 300px;
+    overflow-y: auto;
+}
+
 @media (max-width: 768px) {
     .license-detail-container {
         flex-direction: column;
@@ -514,38 +619,66 @@
     <div class="right-column">
         <div class="info-block">
             <div class="info-block-header">
-                <i class="fas fa-microchip"></i> ESN устройства
-            </div>
-            <div class="info-block-content">
-                <code style="word-break: break-all;">{{ license.esn or '-' }}</code>
-            </div>
-        </div>
-
-        <div class="info-block">
-            <div class="info-block-header">
-                <i class="fas fa-code-branch"></i> Все версии (LSN)
+                <i class="fas fa-microchip"></i> 
+                {% if selected_esns and selected_esns|length > 0 %}
+                    Выбранные ESN ({{ selected_esns|length }})
+                {% else %}
+                    ESN устройства
+                {% endif %}
             </div>
             <div class="info-block-content" style="padding: 0;">
-                <div class="version-table-wrapper">
-                    <table class="version-table">
-                        <thead>
-                            <tr>
-                                <th>LSN</th><th>Файл</th><th>Создан</th><th>Действует до</th><th>Версия</th><th>Продукт</th>
-                            </tr>
-                        </thead>
+                {% if selected_esns and selected_esns|length > 1 %}
+                    <div class="esn-table-wrapper">
+                        <table class="esn-table">
+                            <thead>
+                                <tr>
+                                    <th>ESN</th>
+                                    <th>NE тип</th>
+                                    <th>Город</th>
+                                </tr>
+                            </thead>
                         <tbody>
-                            {% for lic in all_licenses_for_esn %}
-                            <tr data-license-id="{{ lic.id }}">
-                                <td><code>{{ lic.lsn or '-' }}</code></td>
-                                <td>{{ lic.filename or '-' }}</td>
-                                <td>{{ lic.create_time[:10] if lic.create_time else '-' }}</td>
-                                <td>{{ lic.valid_date or '-' }}</td>
-                                <td>{{ lic.version or '-' }}</td>
-                                <td>{{ lic.product or '-' }}</td>
+                            {% for esn_item in selected_esns %}
+                            <tr class="esn-list-item {% if esn_item.license_id == license.id %}active{% endif %}" 
+                                data-license-id="{{ esn_item.license_id }}">
+                                <td>{{ esn_item.esn }}</code></td>
+                                <td>{{ esn_item.ne_type or '-' }}</td>
+                                <td>{{ esn_item.city or '-' }}</td>
                             </tr>
                             {% endfor %}
                         </tbody>
-                    </table>
+                        </table>
+                    </div>
+                {% else %}
+                    <code style="word-break: break-all; display: block; padding: 1rem;">{{ license.esn or '-' }}</code>
+                {% endif %}
+            </div>
+            <div class="info-block">
+                <div class="info-block-header">
+                    <i class="fas fa-code-branch"></i> Все версии (LSN)
+                </div>
+                <div class="info-block-content" style="padding: 0;">
+                    <div class="version-table-wrapper">
+                        <table class="version-table">
+                            <thead>
+                                <tr>
+                                    <th>LSN</th><th>Файл</th><th>Создан</th><th>Действует до</th><th>Версия</th><th>Продукт</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for lic in all_licenses_for_esn %}
+                                <tr data-license-id="{{ lic.id }}">
+                                    <td>{{ lic.lsn or '-' }}</code></td>
+                                    <td>{{ lic.filename or '-' }}</td>
+                                    <td>{{ lic.create_time[:10] if lic.create_time else '-' }}</td>
+                                    <td>{{ lic.valid_date or '-' }}</td>
+                                    <td>{{ lic.version or '-' }}</td>
+                                    <td>{{ lic.product or '-' }}</td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
                 </div>
             </div>
         </div>
@@ -556,7 +689,7 @@
             </div>
             <div class="info-block-content">
                 <div class="info-two-columns">
-                    <div class="info-item"><span class="info-label">LSN:</span><span class="info-value"><code>{{ license.lsn or '-' }}</code></span></div>
+                    <div class="info-item"><span class="info-label">LSN:</span><span class="info-value">{{ license.lsn or '-' }}</span></div>
                     <div class="info-item"><span class="info-label">Продукт:</span><span class="info-value">{{ license.product or '-' }}</span></div>
                     <div class="info-item"><span class="info-label">Версия:</span><span class="info-value">{{ license.version or '-' }}</span></div>
                     <div class="info-item"><span class="info-label">Оператор:</span><span class="info-value">{{ license.operator or '-' }}</span></div>
@@ -568,7 +701,7 @@
                     <div class="info-item"><span class="info-label">Дата создания:</span><span class="info-value">{{ license.create_time or '-' }}</span></div>
                     <div class="info-item"><span class="info-label">Узел:</span><span class="info-value">{{ license.node or '-' }}</span></div>
                     <div class="info-item"><span class="info-label">Домен:</span><span class="info-value">{{ domain or license.domain or '-' }}</span></div>
-                    <div class="info-item"><span class="info-label">Имя файла:</span><span class="info-value"><code>{{ license.filename or '-' }}</code></span></div>
+                    <div class="info-item"><span class="info-label">Имя файла:</span><span class="info-value">{{ license.filename or '-' }}</span></div>
                     <div class="info-item"><span class="info-label">Последнее изменение:</span><span class="info-value">{{ license.last_modified or '-' }}</span></div>
                     <div class="info-item"><span class="info-label">Кем изменено:</span><span class="info-value">{{ license.modified_by or '-' }}</span></div>
                 </div>
@@ -676,11 +809,15 @@
 
 <script>
     // ========== ГЛОБАЛЬНЫЕ ПЕРЕМЕННЫЕ ==========
+    const operator = '{{ current_operator }}'; 
     let currentResourceMode = 'total';
     let currentLicenseId = {{ license.id }};
-    let currentDomain = '{{ domain }}';
+    let currentDomain = '{{ domain or license.domain or "" }}';
     let currentHierarchy = null;
     let collapsedSparts = new Set();
+
+    let currentEsn = '{{ esn or license.esn or "" }}';
+    let hasSelectedEsns = {{ 'true' if selected_esns and selected_esns|length > 1 else 'false' }};
     
 
     console.log('currentDomain:', currentDomain);
@@ -750,7 +887,7 @@ function renderHierarchyTable(sparts, orphans) {
             <tr class="${rowClass}" data-spart="${spart.name}" ${isEmpty ? 'data-empty="true"' : ''}>
                 <td style="padding-left: 0.5rem;">
                     <span class="toggle-icon" data-spart="${spart.name}">${toggleIcon}</span>
-                    <code>${escapeHtml(spart.name)}</code>
+                    ${escapeHtml(spart.name)}
                     ${isEmpty ? '<span class="empty-badge">нет в лицензии</span>' : ''}
                 </td>
                 <td>${valueDisplay}</td>
@@ -767,7 +904,7 @@ function renderHierarchyTable(sparts, orphans) {
                 html += `
                     <tr class="bpart-row" data-parent="${spart.name}">
                         <td style="padding-left: 2rem;">
-                            <code>${escapeHtml(bpart.name)}</code>
+                            ${escapeHtml(bpart.name)}
                             ${bpart.is_main ? '<span class="main-badge">(main)</span>' : ''}
                          </td>
                         <td>${bpart.value}</td>
@@ -796,7 +933,7 @@ function renderHierarchyTable(sparts, orphans) {
             const orphanValidDate = orphan.valid_date || '-';
             html += `
                 <tr class="orphan-row">
-                    <td style="padding-left: 2rem;"><code>${escapeHtml(orphan.name)}</code></td>
+                    <td style="padding-left: 2rem;">${escapeHtml(orphan.name)}</td>
                     <td>${orphan.value}</td>
                     <td class="valid-date-cell">${orphanValidDate}</td>
                     <td>${escapeHtml(orphan.part_number || '-')}</td>
@@ -910,30 +1047,244 @@ function initResourceFilters() {
     });
 
     // ========== ИНИЦИАЛИЗАЦИЯ ==========
-    document.addEventListener('DOMContentLoaded', function() {
-        initResourceFilters();
-        if (currentLicenseId) {
-            loadHierarchy(currentLicenseId, currentResourceMode);
+document.addEventListener('DOMContentLoaded', function() {
+    // Инициализация фильтров ресурсов
+    initResourceFilters();
+    
+    // Загрузка иерархии
+    if (currentLicenseId) {
+        loadHierarchy(currentLicenseId, currentResourceMode);
+    }
+
+    // Загрузка версий LSN через API
+    loadVersions();
+
+    // Обработчики для переключения между ESN в списке
+    document.querySelectorAll('.esn-list-item').forEach(item => {
+        item.addEventListener('click', function() {
+            const licenseId = parseInt(this.dataset.licenseId);
+            if (licenseId && licenseId !== currentLicenseId) {
+                const esns = new URL(window.location.href).searchParams.get('esns');
+                if (esns) {
+                    const newUrl = `/${operator}/license_by_esns?esns=${esns}&license_id=${licenseId}`;
+                    window.location.href = newUrl;
+                }
+            }
+        });
+    });
+
+    // Применяем настройки шрифта и строк
+    setTimeout(() => {
+        applyFontAndRow();
+        updateColumnsVisibility();
+    }, 100);
+});
+
+// ========== ЗАГРУЗКА ВЕРСИЙ LSN ==========
+async function loadVersions() {
+    try {
+        const tbody = document.querySelector('.version-table tbody');
+        if (!tbody) return;
+        
+        tbody.innerHTML = '<tr><td colspan="6" class="text-center">Загрузка...</td></tr>';
+        
+        const resp = await fetch(`/api/license_versions?operator=${encodeURIComponent(operator)}&esn=${encodeURIComponent(currentEsn)}`);
+        if (!resp.ok) {
+            tbody.innerHTML = '<tr><td colspan="6" class="text-center">Ошибка загрузки версий</td></tr>';
+            return;
+        }
+        const versions = await resp.json();
+        
+        if (versions.length > 0) {
+            tbody.innerHTML = versions.map(lic => `
+                <tr data-license-id="${lic.id}" class="${lic.id === currentLicenseId ? 'selected-version' : ''}">
+                    <td>${escapeHtml(lic.lsn || '-')}</td>
+                    <td>${escapeHtml(lic.filename || '-')}</td>
+                    <td>${(lic.create_time || '').substring(0, 10) || '-'}</td>
+                    <td>${escapeHtml(lic.valid_date || '-')}</td>
+                    <td>${escapeHtml(lic.version || '-')}</td>
+                    <td>${escapeHtml(lic.product || '-')}</td>
+                </tr>
+            `).join('');
+            
+            // Навешиваем обработчики на строки версий
+            bindVersionRowHandlers();
+        } else {
+            tbody.innerHTML = '<tr><td colspan="6" class="text-center">Нет доступных версий</td></tr>';
+        }
+    } catch(e) {
+        console.error('Ошибка загрузки версий:', e);
+        const tbody = document.querySelector('.version-table tbody');
+        if (tbody) {
+            tbody.innerHTML = '<tr><td colspan="6" class="text-center">Ошибка загрузки</td></tr>';
+        }
+    }
+}
+
+// ========== ОБРАБОТЧИКИ СТРОК ВЕРСИЙ ==========
+function bindVersionRowHandlers() {
+    const versionRows = document.querySelectorAll('.version-table tbody tr');
+    versionRows.forEach(row => {
+        row.addEventListener('click', async function(e) {
+            if (e.target.tagName === 'A' || e.target.tagName === 'BUTTON') return;
+            const licenseId = parseInt(this.getAttribute('data-license-id'));
+            if (licenseId) {
+                currentLicenseId = licenseId;
+                collapsedSparts.clear();
+                
+                // Сначала получаем информацию о лицензии (включая domain)
+                await updateLicenseInfoFromApi(licenseId);
+                
+                // Затем загружаем иерархию
+                loadHierarchy(currentLicenseId, currentResourceMode);
+                
+                // Обновляем выделение
+                versionRows.forEach(r => r.classList.remove('selected-version'));
+                this.classList.add('selected-version');
+                
+                // ===== ВАЖНО: сохраняем esns в URL =====
+                const esns = new URL(window.location.href).searchParams.get('esns');
+                let newUrl;
+                if (esns) {
+                    newUrl = `/${operator}/license_by_esns?esns=${esns}&license_id=${licenseId}`;
+                } else {
+                    newUrl = `/${operator}/license/${licenseId}`;
+                }
+                history.pushState({licenseId: currentLicenseId}, '', newUrl);
+                // ======================================
+            }
+        });
+    });
+}
+
+// ========== ОБНОВЛЕНИЕ ИНФОРМАЦИИ ЛИЦЕНЗИИ ЧЕРЕЗ API ==========
+async function updateLicenseInfoFromApi(licenseId) {
+    try {
+        const resp = await fetch(`/api/license/${licenseId}/info`);
+        if (!resp.ok) return;
+        const data = await resp.json();
+        
+        // Обновляем основные поля
+        const infoItems = document.querySelectorAll('.info-two-columns .info-item .info-value');
+        if (infoItems.length >= 15) {
+            if (data.lsn) infoItems[0].innerHTML = `${escapeHtml(data.lsn)}`;
+            if (data.product) infoItems[1].textContent = data.product;
+            if (data.version) infoItems[2].textContent = data.version;
+            if (data.operator) infoItems[3].textContent = data.operator;
+            if (data.ne_type) infoItems[4].textContent = data.ne_type;
+            if (data.city) infoItems[5].textContent = data.city;
+            if (data.site) infoItems[6].textContent = data.site;
+            if (data.year) infoItems[7].textContent = data.year === 'permanent' ? '♾️ бессрочная' : data.year;
+            if (data.valid_date) infoItems[8].textContent = data.valid_date;
+            if (data.create_time) infoItems[9].textContent = data.create_time;
+            if (data.node) infoItems[10].textContent = data.node;
+            if (data.domain) {
+                infoItems[11].textContent = data.domain;
+                currentDomain = data.domain;
+            }
+            if (data.filename) infoItems[12].innerHTML = `${escapeHtml(data.filename)}`;
+            if (data.last_modified) infoItems[13].textContent = data.last_modified;
+            if (data.modified_by) infoItems[14].textContent = data.modified_by;
+        }
+        
+        // Обновляем ESN если он показывается отдельно
+        const esnBlock = document.querySelector('.info-block-content code');
+        if (esnBlock && data.esn) {
+            esnBlock.textContent = data.esn;
         }
 
-        const versionRows = document.querySelectorAll('.version-table tbody tr');
-        versionRows.forEach(row => {
-            row.addEventListener('click', function(e) {
-                if (e.target.tagName === 'A' || e.target.tagName === 'BUTTON') return;
-                const licenseId = this.getAttribute('data-license-id');
-                if (licenseId) {
-                    currentLicenseId = parseInt(licenseId);
-                    collapsedSparts.clear();
-                    loadHierarchy(currentLicenseId, currentResourceMode);
-                    versionRows.forEach(r => r.classList.remove('selected-version'));
-                    this.classList.add('selected-version');
-                }
-            });
-        });
+        // Обновляем currentDomain
+        if (data.domain) {
+            currentDomain = data.domain;  // <-- Эта строка должна быть
+        }
+        
+    } catch(e) {
+        console.error('Ошибка обновления информации:', e);
+    }
+}
 
-        const currentRow = document.querySelector(`.version-table tbody tr[data-license-id="${currentLicenseId}"]`);
-        if (currentRow) currentRow.classList.add('selected-version');
-    });
+// Функция обновления основной информации без перезагрузки
+function updateLicenseInfo(data) {
+    // Обновляем ESN
+    const esnBlock = document.querySelector('.info-block-content code');
+    if (esnBlock) esnBlock.textContent = data.esn || '-';
+    
+    // Обновляем LSN
+    const lsnEl = document.querySelector('.info-two-columns .info-item:nth-child(1) .info-value code');
+    if (lsnEl) lsnEl.textContent = data.lsn || '-';
+    
+    // Обновляем продукт
+    const productEl = document.querySelector('.info-two-columns .info-item:nth-child(2) .info-value');
+    if (productEl) productEl.textContent = data.product || '-';
+    
+    // Обновляем версию
+    const versionEl = document.querySelector('.info-two-columns .info-item:nth-child(3) .info-value');
+    if (versionEl) versionEl.textContent = data.version || '-';
+    
+    // Обновляем NE тип
+    const neTypeEl = document.querySelector('.info-two-columns .info-item:nth-child(5) .info-value');
+    if (neTypeEl) neTypeEl.textContent = data.ne_type || '-';
+    
+    // Обновляем город
+    const cityEl = document.querySelector('.info-two-columns .info-item:nth-child(6) .info-value');
+    if (cityEl) cityEl.textContent = data.city || '-';
+    
+    // Обновляем сайт
+    const siteEl = document.querySelector('.info-two-columns .info-item:nth-child(7) .info-value');
+    if (siteEl) siteEl.textContent = data.site || '-';
+    
+    // Обновляем домен (и currentDomain)
+    const domainEl = document.querySelector('.info-two-columns .info-item:nth-child(13) .info-value');
+    if (domainEl && data.domain) {
+        domainEl.textContent = data.domain;
+        currentDomain = data.domain;
+    }
+    
+    // Обновляем имя файла
+    const filenameEl = document.querySelector('.info-two-columns .info-item:nth-child(14) .info-value code');
+    if (filenameEl) filenameEl.textContent = data.filename || '-';
+    
+    // Обновляем даты
+    const yearEl = document.querySelector('.info-two-columns .info-item:nth-child(9) .info-value');
+    if (yearEl) yearEl.textContent = data.year === 'permanent' ? '♾️ бессрочная' : (data.year || '-');
+    
+    const validDateEl = document.querySelector('.info-two-columns .info-item:nth-child(10) .info-value');
+    if (validDateEl) validDateEl.textContent = data.valid_date || '-';
+    
+    const createTimeEl = document.querySelector('.info-two-columns .info-item:nth-child(11) .info-value');
+    if (createTimeEl) createTimeEl.textContent = data.create_time || '-';
+    
+    const nodeEl = document.querySelector('.info-two-columns .info-item:nth-child(12) .info-value');
+    if (nodeEl) nodeEl.textContent = data.node || '-';
+}
+
+// Обновление списка версий
+async function updateVersionsList(esn) {
+    try {
+        const resp = await fetch(`/api/license_versions?operator=${operator}&esn=${encodeURIComponent(esn)}`);
+        if (!resp.ok) return;
+        const versions = await resp.json();
+        
+        const tbody = document.querySelector('.version-table tbody');
+        if (tbody && versions.length > 0) {
+            tbody.innerHTML = versions.map(lic => `
+                <tr data-license-id="${lic.id}" class="${lic.id === currentLicenseId ? 'selected-version' : ''}">
+                    <td>${lic.lsn || '-'}</td>
+                    <td>${lic.filename || '-'}</td>
+                    <td>${(lic.create_time || '').substring(0, 10) || '-'}</td>
+                    <td>${lic.valid_date || '-'}</td>
+                    <td>${lic.version || '-'}</td>
+                    <td>${lic.product || '-'}</td>
+                </tr>
+            `).join('');
+            
+            // Перепривязываем обработчики
+            bindVersionRowHandlers();
+        }
+    } catch(e) {
+        console.error('Ошибка обновления версий:', e);
+    }
+}
 
 // Управление размером шрифта
 const fontSizeInput = document.getElementById('tableFontSize');

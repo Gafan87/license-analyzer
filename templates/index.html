@@ -262,6 +262,7 @@
 <!-- Панель массовых операций -->
 <div id="bulkPanel" class="bulk-panel">
     <span class="selected-count">Выбрано: <span id="selectedCount">0</span></span>
+    <button id="bulkDetailBtn" class="action-btn">🔍 Детали выбранных</button>  <!-- НОВАЯ КНОПКА -->
     <button id="bulkAddTagBtn" class="action-btn">➕ Добавить тег</button>
     <button id="bulkRemoveTagBtn" class="action-btn">❌ Удалить тег</button>
     <button id="bulkExportBtn" class="action-btn">📊 Экспорт</button>
@@ -1372,6 +1373,30 @@ document.getElementById('bulkExportBtn').addEventListener('click', async () => {
     a.download = `licenses_export_${operator}_${new Date().toISOString().slice(0,19)}.xlsx`;
     a.click();
     URL.revokeObjectURL(url);
+});
+
+// Кнопка "Детали выбранных"
+document.getElementById('bulkDetailBtn')?.addEventListener('click', () => {
+    if (selectedLicenseIds.size === 0) {
+        alert('Выберите хотя бы одну лицензию');
+        return;
+    }
+    
+    // Получаем ESN выбранных лицензий
+    const selectedEsns = [];
+    document.querySelectorAll('.license-checkbox:checked').forEach(cb => {
+        const row = cb.closest('tr');
+        if (row) {
+            const esn = row.getAttribute('data-esn');
+            if (esn) selectedEsns.push(esn);
+        }
+    });
+    
+    if (selectedEsns.length > 0) {
+        // Открываем license_detail с параметром esns
+        const url = `/${operator}/license_by_esns?esns=${selectedEsns.join(',')}`;
+        window.location.href = url;
+    }
 });
 
 document.getElementById('bulkAddTagBtn').addEventListener('click', () => {

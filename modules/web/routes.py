@@ -130,19 +130,28 @@ def license_detail(operator, license_id):
     if not license_data:
         abort(404)
 
-    # ========== НОВАЯ ЛОГИКА (скопировано из license_detail_by_esn) ==========
-    # Получаем домен и обогащаем ресурсы
-    domain = license_data.get('domain', '')
+    # ===== ДОБАВЬТЕ ЭТОТ БЛОК =====
+    domain = license_data.get('domain')
+    if not domain:
+        conn = get_connection()
+        cur = conn.cursor()
+        cur.execute('SELECT domain FROM licenses WHERE id = ?', (license_id,))
+        row = cur.fetchone()
+        domain = row[0] if row else ''
+        conn.close()
+        license_data['domain'] = domain
+    # ================================
+
     network_storage_path = current_app.config.get('network_storage_path', '')
-    
+
     from modules.license_service import LicenseService
     license_data = LicenseService.enrich_resources_with_descriptions(
         license_data, domain, network_storage_path
     )
-    # ====================================================================
 
     license_data['tags'] = get_license_tags(license_id)
     license_data['comments'] = get_comments(license_id)
+    license_data['dynamic_values'] = get_dynamic_values_for_license(license_id)
 
     return render_template('license_detail.html',
                           operators=current_app.config['OPERATORS'],
@@ -151,7 +160,7 @@ def license_detail(operator, license_id):
                           license=license_data,
                           all_licenses_for_esn=[license_data],
                           esn=license_data.get('esn'),
-                          domain=domain)  # <-- Явно передаём domain
+                          domain=domain)
 
 
 # ========== СКАНИРОВАНИЕ Ии СИНХРОНИЗАЦИЯ ==========
@@ -1504,6 +1513,42 @@ def api_check_license_details_files():
         'missing_count': missing_count,
         'total_count': len(files)
     })
+       
+@web_bp.route('/api/license/<int:license_id>/info')
+def api_get_license_info(license_id):
+    """Получить базовую информацию о лицензии"""
+    license_data = get_license_by_id(license_id)
+    if not license_data:
+        return jsonify({'error': 'Not found'}), 404
+    
+    return jsonify({
+        'id': license_data['id'],
+        'esn': license_data.get('esn'),
+        'lsn': license_data.get('lsn'),
+        'product': license_data.get('product'),
+        'version': license_data.get('version'),
+        'ne_type': license_data.get('ne_type'),
+        'city': license_data.get('city'),
+        'site': license_data.get('site'),
+        'year': license_data.get('year'),
+        'valid_date': license_data.get('valid_date'),
+        'create_time': license_data.get('create_time'),
+        'node': license_data.get('node'),
+        'domain': license_data.get('domain'),
+        'filename': license_data.get('filename'),
+        'operator': license_data.get('operator')
+    })
+
+@web_bp.route('/api/license_versions')
+def api_get_license_versions():
+    """Получить все версии для ESN"""
+    operator = request.args.get('operator')
+    esn = request.args.get('esn')
+    if not operator or not esn:
+        return jsonify({'error': 'operator and esn required'}), 400
+    
+    licenses = get_all_licenses_for_esn(operator, esn)
+    return jsonify(licenses)
   
 @web_bp.route('/<operator>/license_by_esn/<esn>')
 def license_detail_by_esn(operator, esn):
@@ -1568,6 +1613,103 @@ def license_detail_by_esn(operator, esn):
                           esn=esn,
                           network_storage_path=network_storage_path,
                           domain=domain)
+
+@web_bp.route('/<operator>/license_by_esns')
+def license_detail_by_esns(operator):
+    """Детали лицензии с возможностью переключения между ESN"""
+    op_config = get_operator_config(operator)
+    if not op_config:
+        abort(404)
+
+    esns_param = request.args.get('esns', '')
+    esn_list = list(dict.fromkeys([e.strip() for e in esns_param.split(',') if e.strip()]))
+
+    if not esn_list:
+        abort(400, description="Не указаны ESN")
+
+    # Получаем первую лицензию для каждого ESN (одна запись на ESN)
+    conn = get_connection()
+    cursor = conn.cursor()
+    placeholders = ','.join('?' * len(esn_list))
+    cursor.execute(f'''
+        SELECT l.esn, l.ne_type, l.city, l.site, l.domain, l.id
+        FROM licenses l
+        WHERE l.operator = ? AND l.esn IN ({placeholders})
+        AND l.id = (
+            SELECT l2.id FROM licenses l2 
+            WHERE l2.esn = l.esn AND l2.operator = l.operator
+            ORDER BY l2.create_time DESC LIMIT 1
+        )
+        ORDER BY l.ne_type, l.city, l.esn
+    ''', [operator] + esn_list)
+    esn_info = cursor.fetchall()
+    conn.close()
+
+    # Строим список уникальных ESN
+    selected_esns = []
+    seen_esns = set()
+    for row in esn_info:
+        esn = row[0]
+        if esn not in seen_esns:
+            seen_esns.add(esn)
+            selected_esns.append({
+                'esn': esn,
+                'ne_type': row[1] or '',
+                'city': row[2] or '',
+                'site': row[3] or '',
+                'domain': row[4] or '',
+                'license_id': row[5]
+            })
+
+    if not selected_esns:
+        abort(404, description="Лицензии не найдены")
+
+    # Берём ID из параметра или первую лицензию
+    first_license_id = request.args.get('license_id', type=int) or selected_esns[0]['license_id']
+    valid_ids = [e['license_id'] for e in selected_esns]
+    if first_license_id not in valid_ids:
+        first_license_id = selected_esns[0]['license_id']
+
+    # ===== ВАЖНО: Получаем domain из БД как в license_detail_by_esn =====
+    main_license = get_license_by_id(first_license_id)
+    if not main_license:
+        abort(404)
+
+    # Получаем домен — сначала из license_data, потом из БД
+    domain = main_license.get('domain')
+    if not domain:
+        conn = get_connection()
+        cur = conn.cursor()
+        cur.execute('SELECT domain FROM licenses WHERE id = ?', (first_license_id,))
+        row = cur.fetchone()
+        domain = row[0] if row else ''
+        conn.close()
+
+    network_storage_path = current_app.config.get('network_storage_path', '')
+
+    # Обогащаем ресурсы
+    from modules.license_service import LicenseService
+    main_license = LicenseService.enrich_resources_with_descriptions(
+        main_license, domain, network_storage_path
+    )
+
+    main_license['tags'] = get_license_tags(first_license_id)
+    main_license['comments'] = get_comments(first_license_id)
+    main_license['dynamic_values'] = get_dynamic_values_for_license(first_license_id)
+
+    # Получаем все версии для выбранного ESN
+    current_esn = main_license.get('esn', esn_list[0])
+    all_licenses_for_esn = get_all_licenses_for_esn(operator, current_esn)
+
+    return render_template('license_detail.html',
+                          operators=current_app.config['OPERATORS'],
+                          current_operator=operator,
+                          current_operator_title=op_config.get('title', operator),
+                          license=main_license,
+                          all_licenses_for_esn=all_licenses_for_esn,
+                          esn=current_esn,
+                          domain=domain,
+                          selected_esns=selected_esns)
 
 # ========== РЕЗЕРВНОЕ КОПИРОВАНИЕ ==========
 
