@@ -421,45 +421,6 @@ tbody tr:hover td { background: var(--bg-tertiary); }
 .color-picker { width: 50px; height: 32px; border: 1px solid var(--border-light); border-radius: var(--radius-sm); cursor: pointer; }
 .comments-badge { display: inline-flex; align-items: center; gap: 0.2rem; background: var(--bg-secondary); padding: 0.15rem 0.5rem; border-radius: 20px; font-size: 0.65rem; }
 
-
-/* Пустые SPart (отсутствуют в лицензии) */
-.spart-empty {
-    opacity: 0.55;
-    background: var(--bg-secondary) !important;
-    border-left: 3px dashed var(--border-light) !important;
-}
-
-.spart-empty:hover {
-    opacity: 0.75;
-    background: var(--bg-hover) !important;
-}
-
-.spart-empty code {
-    color: var(--text-muted);
-}
-
-.empty-value {
-    color: var(--text-muted);
-    font-style: italic;
-}
-
-.empty-badge {
-    display: inline-block;
-    margin-left: 0.5rem;
-    padding: 0.1rem 0.4rem;
-    font-size: 0.65rem;
-    background: var(--bg-tertiary);
-    color: var(--text-muted);
-    border-radius: 3px;
-    vertical-align: middle;
-}
-
-.spart-empty-child td {
-    font-size: 0.8rem;
-    padding-top: 0.3rem !important;
-    padding-bottom: 0.3rem !important;
-}
-
 /* ========== ТЁМНАЯ ТЕМА ========== */
 body.dark {
     --bg-primary: #1E293B;
@@ -470,31 +431,6 @@ body.dark {
     --text-secondary: #CBD5E1;
     --text-muted: #94A3B8;
     --border-light: #334155;
-}
-
-/* Заголовок раздела */
-.section-header-row {
-    background: var(--bg-primary) !important;
-    border-top: 1px solid var(--huawei-red) !important;
-}
-
-.section-header-row td {
-    padding: 0.5rem 0.5rem !important;
-}
-
-.section-header {
-    display: flex;
-    align-items: center;
-    gap: 0.3rem;
-    font-weight: 400;
-    color: var(--text-primary);
-}
-
-.section-title {
-    font-size: 0.9rem;
-    text-transform: uppercase;
-    letter-spacing: 0.05em;
-    color: var(--huawei-red);
 }
 
 body.dark .stats { background: #2D1E1E; color: #FFB3B3; }

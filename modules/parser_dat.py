@@ -100,12 +100,21 @@ def parse_dat_license(file_path):
             feature_match = re.search(r'Feature=(\w+)', section)
             feature = feature_match.group(1) if feature_match else 'Unknown'
             
-            # Извлекаем Resource
+            resources_str = ""
             resource_match = re.search(r'Resource="([^"]+)"', section)
-            if not resource_match:
+            if resource_match:
+                resources_str = resource_match.group(1).strip()
+
+            function_match = re.search(r'Function="([^"]+)"', section)
+            if function_match:
+                function_str = function_match.group(1).strip()
+                if resources_str:
+                    resources_str += ", " + function_str
+                else:
+                    resources_str = function_str
+
+            if not resources_str:
                 continue
-            
-            resources_str = resource_match.group(1).strip()
             
             # Извлекаем Attrib для определения valid_date
             attrib_match = re.search(r'Attrib="([^"]+)"', section)

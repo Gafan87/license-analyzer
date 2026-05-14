@@ -417,12 +417,12 @@ function cacheTableData() {
 function initFilters() {
     const rows = document.querySelectorAll('#licensesTable tbody tr');
     const filterFields = ['ne_type', 'city', 'site', 'year', 'product', 'version', 'lsn', 'esn', 'domain', 'tags_agg'];
-    
+
     for (let col of filterFields) {
         filterValues[col] = new Set();
         activeFilters[col] = new Set();
     }
-    
+
     rows.forEach(row => {
         for (let col in filterValues) {
             let val = row.getAttribute(`data-${col}`) || '';
@@ -431,9 +431,38 @@ function initFilters() {
             }
         }
     });
-    
+
     buildFiltersBar();
     cacheTableData();
+    
+    // Восстанавливаем сохранённые фильтры
+    const restored = restoreFiltersState();
+    
+    if (restored) {
+        // Обновляем поля ввода
+        for (let col in activeFilters) {
+            if (activeFilters[col] && activeFilters[col].size > 0) {
+                const manualInput = document.querySelector(`.filter-manual-input[data-field="${col}"]`);
+                if (manualInput) {
+                    manualInput.value = Array.from(activeFilters[col]).join(', ');
+                }
+                // Обновляем чекбоксы
+                const listContainer = document.getElementById(`list-${col}`);
+                if (listContainer) {
+                    listContainer.querySelectorAll('input[type="checkbox"]').forEach(cb => {
+                        cb.checked = activeFilters[col].has(cb.value);
+                    });
+                }
+            }
+        }
+    }
+    
+    // Применяем фильтры
+    applyFiltersFast();
+    selectedLicenseIds.forEach(id => {
+        const checkbox = document.querySelector(`.license-checkbox[data-id="${id}"]`);
+        if (checkbox) checkbox.checked = true;
+    });
 }
 
 function buildFiltersBar() {
@@ -650,11 +679,9 @@ function applyFiltersFast() {
     
     updateActiveFiltersDisplay();
     updateFiltersCount(visibleCount);
-    
-    // ОБНОВЛЯЕМ ДОСТУПНЫЕ ОПЦИИ ПОСЛЕ ФИЛЬТРАЦИИ
     updateAllFilterOptions();
-    
     applyColorGrouping();
+    saveFiltersState();
     
     return ids;
 }
@@ -2450,6 +2477,90 @@ function updateAllFilterOptions() {
         }
     }
 }
+
+// Ключ для хранения фильтров
+const FILTERS_STORAGE_KEY = `license_filters_${operator}`;
+
+// Сохранение фильтров перед уходом со страницы
+function saveFiltersState() {
+    const state = {
+        activeFilters: {},
+        currentSearchQuery: currentSearchQuery,
+        currentSorting: currentSorting,
+        currentVisibleColumns: currentVisibleColumns,
+         selectedCheckboxes: Array.from(selectedLicenseIds),
+        timestamp: Date.now()
+    };
+    
+    for (let col in activeFilters) {
+        if (activeFilters[col] && activeFilters[col].size > 0) {
+            state.activeFilters[col] = Array.from(activeFilters[col]);
+        }
+    }
+    
+    sessionStorage.setItem(FILTERS_STORAGE_KEY, JSON.stringify(state));
+}
+
+// Восстановление фильтров при загрузке страницы
+function restoreFiltersState() {
+    const saved = sessionStorage.getItem(FILTERS_STORAGE_KEY);
+    if (!saved) return false;
+    
+    try {
+        const state = JSON.parse(saved);
+        
+        // Восстанавливаем только если сохранено недавно (в течение 30 минут)
+        if (Date.now() - state.timestamp > 30 * 60 * 1000) {
+            sessionStorage.removeItem(FILTERS_STORAGE_KEY);
+            return false;
+        }
+        
+        // Восстанавливаем фильтры
+        for (let col in state.activeFilters) {
+            if (activeFilters[col]) {
+                activeFilters[col] = new Set(state.activeFilters[col]);
+            }
+        }
+        
+        // Восстанавливаем поиск
+        currentSearchQuery = state.currentSearchQuery || '';
+        if (currentSearchQuery) {
+            document.getElementById('smartSearchInput').value = currentSearchQuery;
+        }
+        
+        // Восстанавливаем сортировку
+        if (state.currentSorting) {
+            currentSorting = state.currentSorting;
+        }
+        
+        // Восстанавливаем видимые колонки
+        if (state.currentVisibleColumns) {
+            currentVisibleColumns = state.currentVisibleColumns;
+        }
+
+        if (state.selectedCheckboxes) {
+            selectedLicenseIds = new Set(state.selectedCheckboxes);
+        }
+        
+        return true;
+    } catch(e) {
+        console.error('Ошибка восстановления фильтров:', e);
+        return false;
+    }
+}
+
+// Сохраняем фильтры перед уходом
+window.addEventListener('beforeunload', () => {
+    saveFiltersState();
+});
+
+// Сохраняем при клике на ссылки (переход на другую страницу)
+document.addEventListener('click', (e) => {
+    const link = e.target.closest('a');
+    if (link && !link.target && link.href && !link.href.startsWith('javascript')) {
+        saveFiltersState();
+    }
+});
 
 // ========== КОПИРОВАНИЕ ЗНАЧЕНИЙ ИЗ ТАБЛИЦЫ ==========
 let selectionStartCell = null;
