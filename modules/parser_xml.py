@@ -320,136 +320,168 @@ def parse_xml_license(file_path):
         return None
 
 def extract_spart_hierarchy(root):
-    """
-    Извлекает иерархическую структуру SPart (SaleItem) и BPart (CapacityKey/FeatureKey)
-    """
     result = {'sparts': [], 'orphan_bparts': []}
     
-    # Находим секцию SaleInfo
     sale_info = root.find('.//SaleInfo')
     if sale_info is None:
         logger.warning("Тег SaleInfo не найден")
         return result
     
-    # Находим все SaleItem внутри SaleInfo
-    sales_items = sale_info.findall('.//SaleItem')
-    
-    # Собираем все BPart из SPart для поиска "сирот"
     all_bparts = set()
     
-    for sales_item in sales_items:
+    for sales_item in sale_info.findall('.//SaleItem'):
         spart_name = sales_item.get('name')
         if not spart_name:
             continue
         
-        # Значение SPart (из тега Value) - берём первое значение (суммирование будет в resources_dict)
-        value_elem = sales_item.find('Value')
-        if value_elem is not None and value_elem.text:
+        # Собираем ВСЕ значения Value
+        values = sales_item.findall('Value')
+        permanent_value = 0
+        dated_value = 0
+        dated_date = None
+        
+        for value_elem in values:
+            valid_date = value_elem.get('validDate', 'UNKNOWN')
             try:
-                spart_value = int(value_elem.text.strip())
-            except:
-                spart_value = 0
-            spart_valid_date = value_elem.get('validDate', 'UNKNOWN')
+                value = int(value_elem.text.strip()) if value_elem.text else 0
+            except (ValueError, AttributeError):
+                value = 0
+            
+            if valid_date == 'PERMANENT':
+                permanent_value = value
+            elif valid_date not in ['UNKNOWN', '']:
+                dated_value = value
+                dated_date = valid_date
+        
+        # Общее значение и дата для обратной совместимости
+        total_value = permanent_value + dated_value
+        # Если есть датированная часть — показываем её дату, иначе PERMANENT
+        if dated_date:
+            spart_valid_date = dated_date
+        elif permanent_value > 0:
+            spart_valid_date = 'PERMANENT'
         else:
-            spart_value_str = sales_item.get('value', '0')
-            try:
-                spart_value = int(spart_value_str)
-            except:
-                spart_value = 0
-            spart_valid_date = sales_item.get('validDate', 'UNKNOWN')
+            spart_valid_date = 'UNKNOWN'
         
         bparts = []
         
-        # Ищем CapacityKey внутри SalesItem
+        # CapacityKey внутри SaleItem
         for cap_key in sales_item.findall('.//CapacityKey'):
             name = cap_key.get('name')
             if not name:
                 continue
             
-            value_elem = cap_key.find('Value')
-            if value_elem is not None and value_elem.text:
-                try:
-                    value = int(value_elem.text.strip())
-                except:
-                    value = 0
+            # Собираем все значения
+            cap_permanent = 0
+            cap_dated = 0
+            cap_dated_date = None
+            
+            for value_elem in cap_key.findall('Value'):
                 valid_date = value_elem.get('validDate', 'UNKNOWN')
-            else:
-                value_str = cap_key.get('value', '0')
                 try:
-                    value = int(value_str)
-                except:
+                    value = int(value_elem.text.strip()) if value_elem.text else 0
+                except (ValueError, AttributeError):
                     value = 0
-                valid_date = cap_key.get('validDate', 'UNKNOWN')
+                
+                if valid_date == 'PERMANENT':
+                    cap_permanent = value
+                elif valid_date not in ['UNKNOWN', '']:
+                    cap_dated = value
+                    cap_dated_date = valid_date
+            
+            cap_total = cap_permanent + cap_dated
+            cap_date = cap_dated_date or ('PERMANENT' if cap_permanent > 0 else 'UNKNOWN')
             
             all_bparts.add(name)
             bparts.append({
                 'name': name,
-                'value': value,
-                'valid_date': valid_date
+                'value': cap_total,
+                'permanent_value': cap_permanent,
+                'dated_value': cap_dated,
+                'dated_date': cap_dated_date,
+                'valid_date': cap_date
             })
         
-        # Ищем FeatureKey внутри SalesItem
+        # FeatureKey внутри SaleItem — аналогично CapacityKey
         for feat_key in sales_item.findall('.//FeatureKey'):
             name = feat_key.get('name')
             if not name:
                 continue
             
-            value_elem = feat_key.find('Value')
-            if value_elem is not None and value_elem.text:
-                try:
-                    value = int(value_elem.text.strip())
-                except:
-                    value = 0
+            feat_permanent = 0
+            feat_dated = 0
+            feat_dated_date = None
+            
+            for value_elem in feat_key.findall('Value'):
                 valid_date = value_elem.get('validDate', 'UNKNOWN')
-            else:
-                value_str = feat_key.get('value', '0')
                 try:
-                    value = int(value_str)
-                except:
+                    value = int(value_elem.text.strip()) if value_elem.text else 0
+                except (ValueError, AttributeError):
                     value = 0
-                valid_date = feat_key.get('validDate', 'UNKNOWN')
+                
+                if valid_date == 'PERMANENT':
+                    feat_permanent = value
+                elif valid_date not in ['UNKNOWN', '']:
+                    feat_dated = value
+                    feat_dated_date = valid_date
+            
+            feat_total = feat_permanent + feat_dated
+            feat_date = feat_dated_date or ('PERMANENT' if feat_permanent > 0 else 'UNKNOWN')
             
             all_bparts.add(name)
             bparts.append({
                 'name': name,
-                'value': value,
-                'valid_date': valid_date
+                'value': feat_total,
+                'permanent_value': feat_permanent,
+                'dated_value': feat_dated,
+                'dated_date': feat_dated_date,
+                'valid_date': feat_date
             })
         
         result['sparts'].append({
             'name': spart_name,
-            'value': spart_value,
+            'value': total_value,
+            'permanent_value': permanent_value,
+            'dated_value': dated_value,
+            'dated_date': dated_date,
             'valid_date': spart_valid_date,
             'bparts': bparts
         })
     
-    # Находим "сирот" — CapacityKey/FeatureKey, которые являются прямыми потомками SaleInfo (не внутри SaleItem)
+    # "Сироты" — аналогично
     for elem in sale_info:
         if elem.tag in ('CapacityKey', 'FeatureKey'):
             name = elem.get('name')
             if not name or name in all_bparts:
                 continue
             
-            # Извлекаем значение
-            value_elem = elem.find('Value')
-            if value_elem is not None and value_elem.text:
-                try:
-                    value = int(value_elem.text.strip())
-                except:
-                    value = 0
+            orphan_permanent = 0
+            orphan_dated = 0
+            orphan_dated_date = None
+            
+            for value_elem in elem.findall('Value'):
                 valid_date = value_elem.get('validDate', 'UNKNOWN')
-            else:
-                value_str = elem.get('value', '0')
                 try:
-                    value = int(value_str)
-                except:
+                    value = int(value_elem.text.strip()) if value_elem.text else 0
+                except (ValueError, AttributeError):
                     value = 0
-                valid_date = elem.get('validDate', 'UNKNOWN')
+                
+                if valid_date == 'PERMANENT':
+                    orphan_permanent = value
+                elif valid_date not in ['UNKNOWN', '']:
+                    orphan_dated = value
+                    orphan_dated_date = valid_date
+            
+            orphan_total = orphan_permanent + orphan_dated
+            orphan_date = orphan_dated_date or ('PERMANENT' if orphan_permanent > 0 else 'UNKNOWN')
             
             result['orphan_bparts'].append({
                 'name': name,
-                'value': value,
-                'valid_date': valid_date
+                'value': orphan_total,
+                'permanent_value': orphan_permanent,
+                'dated_value': orphan_dated,
+                'dated_date': orphan_dated_date,
+                'valid_date': orphan_date
             })
     
     return result

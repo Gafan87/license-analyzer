@@ -420,6 +420,26 @@
     transform: translateX(-3px);
 }
 
+/* Пустые SPart (отсутствуют в лицензии) */
+.spart-empty {
+    opacity: 0.45;
+    border-left: 3px dashed var(--border-light) !important;
+    background: var(--bg-secondary) !important;
+}
+
+.spart-empty:hover {
+    opacity: 0.65;
+}
+
+.spart-empty .spart-value {
+    color: var(--text-muted);
+    font-style: italic;
+}
+
+.spart-empty .spart-name {
+    color: var(--text-muted);
+}
+
 @media (max-width: 768px) {
     .license-detail-container {
         flex-direction: column;
@@ -612,6 +632,16 @@
     <div class="modal-content" style="max-width: 400px;">
         <span class="modal-close">&times;</span>
         <h3>⚙️ Настройки таблицы</h3>
+
+        <div style="margin-top: 1rem; padding-top: 1rem; border-top: 1px solid var(--border-light);">
+            <label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer;">
+                <input type="checkbox" id="showAllSpartsToggle" style="width: 18px; height: 18px;">
+                <span>📋 Показывать все SPart из Excel</span>
+            </label>
+            <small class="text-muted" style="display: block; margin-top: 0.25rem; margin-left: 26px;">
+                Отсутствующие в лицензии SPart будут показаны с нулевыми значениями
+            </small>
+        </div>
         
         <div style="margin-bottom: 1rem;">
             <label style="display: block; margin-bottom: 0.3rem; font-weight: 600;">Размер шрифта</label>
@@ -651,6 +681,7 @@
     let currentDomain = '{{ domain }}';
     let currentHierarchy = null;
     let collapsedSparts = new Set();
+    
 
     console.log('currentDomain:', currentDomain);
     console.log('currentLicenseId:', currentLicenseId);
@@ -682,93 +713,122 @@
         }
     }
 
-    // ========== ОТРИСОВКА ТАБЛИЦЫ ==========
-    function renderHierarchyTable(sparts, orphans) {
-        const tbody = document.getElementById('resourcesTableBody');
-        if ((!sparts || sparts.length === 0) && (!orphans || orphans.length === 0)) {
-            tbody.innerHTML = '<tr><td colspan="6" class="text-center">Нет данных ("license_details" файл не загружен)</td></tr>';
-            return;
-        }
+// ========== ОТРИСОВКА ТАБЛИЦЫ ==========
+function renderHierarchyTable(sparts, orphans) {
+    const tbody = document.getElementById('resourcesTableBody');
+    if ((!sparts || sparts.length === 0) && (!orphans || orphans.length === 0)) {
+        tbody.innerHTML = '<tr><td colspan="6" class="text-center">Нет данных ("license_details" файл не загружен)</td></tr>';
+        return;
+    }
 
-        let html = '';
+    let html = '';
 
-        sparts.forEach((spart) => {
-            const isCollapsed = collapsedSparts.has(spart.name);
-            const toggleIcon = isCollapsed ? '▶' : '▼';
-            const validDate = spart.valid_date || '-';
-
+    sparts.forEach((spart) => {
+        // === ОБРАБОТКА ЗАГОЛОВКА РАЗДЕЛА ===
+        if (spart.is_section) {
             html += `
-                <tr class="spart-row" data-spart="${spart.name}">
-                    <td style="padding-left: 0.5rem;">
-                        <span class="toggle-icon" data-spart="${spart.name}">${toggleIcon}</span>
-                        <code>${escapeHtml(spart.name)}</code>
+                <tr class="section-header-row">
+                    <td colspan="6">
+                        <div class="section-header">
+                            <span class="section-title">${escapeHtml(spart.name)}</span>
+                        </div>
                     </td>
-                    <td>${spart.value}</td>
-                    <td class="valid-date-cell">${validDate}</td>
-                    <td>${escapeHtml(spart.part_number || '-')}</td>
-                    <td>${escapeHtml(spart.dimension || '-')}</td>
-                    <td><small>${escapeHtml(spart.description || '—')}</small></td>
                 </tr>
             `;
+            return;  // Пропускаем остальную обработку
+        }
 
-            if (!isCollapsed && spart.children && spart.children.length > 0) {
-                spart.children.forEach(bpart => {
-                    const bpartValidDate = bpart.valid_date || '-';
-                    html += `
-                        <tr class="bpart-row" data-parent="${spart.name}">
-                            <td style="padding-left: 2rem;">
-                                <code>${escapeHtml(bpart.name)}</code>
-                                ${bpart.is_main ? '<span class="main-badge">(main)</span>' : ''}
-                             </td>
-                            <td>${bpart.value}</td>
-                            <td class="valid-date-cell">${bpartValidDate}</td>
-                            <td>${escapeHtml(bpart.part_number || '-')}</td>
-                            <td>${escapeHtml(bpart.dimension || '-')}</td>
-                            <td><small>${escapeHtml(bpart.description || '—')}</small></td>
-                        </tr>
-                    `;
-                });
-            }
-        });
+        // Обычная обработка SPart...
+        const isCollapsed = collapsedSparts.has(spart.name);
+        const toggleIcon = isCollapsed ? '▶' : '▼';
+        const validDate = spart.valid_date || '-';
+        const isEmpty = spart.is_empty === true;
+        const rowClass = isEmpty ? 'spart-row spart-empty' : 'spart-row';
+        const valueDisplay = isEmpty ? '<span class="empty-value">—</span>' : spart.value;
+        const dateDisplay = isEmpty ? '<span class="empty-value">—</span>' : escapeHtml(validDate);
 
-        if (orphans && orphans.length > 0) {
-            html += `<tr class="separator"><td colspan="6" style="background: var(--bg-secondary); padding: 0.5rem;"><strong>📌 Прочие CapacityKey</strong></td></tr>`;
-            orphans.forEach(orphan => {
-                const orphanValidDate = orphan.valid_date || '-';
+        html += `
+            <tr class="${rowClass}" data-spart="${spart.name}" ${isEmpty ? 'data-empty="true"' : ''}>
+                <td style="padding-left: 0.5rem;">
+                    <span class="toggle-icon" data-spart="${spart.name}">${toggleIcon}</span>
+                    <code>${escapeHtml(spart.name)}</code>
+                    ${isEmpty ? '<span class="empty-badge">нет в лицензии</span>' : ''}
+                </td>
+                <td>${valueDisplay}</td>
+                <td class="valid-date-cell">${dateDisplay}</td>
+                <td>${escapeHtml(spart.part_number || '-')}</td>
+                <td>${escapeHtml(spart.dimension || '-')}</td>
+                <td><small>${escapeHtml(spart.description || '—')}</small></td>
+            </tr>
+        `;
+
+        if (!isCollapsed && spart.children && spart.children.length > 0) {
+            spart.children.forEach(bpart => {
+                const bpartValidDate = bpart.valid_date || '-';
                 html += `
-                    <tr class="orphan-row">
-                        <td style="padding-left: 2rem;"><code>${escapeHtml(orphan.name)}</code></td>
-                        <td>${orphan.value}</td>
-                        <td class="valid-date-cell">${orphanValidDate}</td>
-                        <td>${escapeHtml(orphan.part_number || '-')}</td>
-                        <td>${escapeHtml(orphan.dimension || '-')}</td>
-                        <td><small>${escapeHtml(orphan.description || '—')}</small></td>
+                    <tr class="bpart-row" data-parent="${spart.name}">
+                        <td style="padding-left: 2rem;">
+                            <code>${escapeHtml(bpart.name)}</code>
+                            ${bpart.is_main ? '<span class="main-badge">(main)</span>' : ''}
+                         </td>
+                        <td>${bpart.value}</td>
+                        <td class="valid-date-cell">${bpartValidDate}</td>
+                        <td>${escapeHtml(bpart.part_number || '-')}</td>
+                        <td>${escapeHtml(bpart.dimension || '-')}</td>
+                        <td><small>${escapeHtml(bpart.description || '—')}</small></td>
                     </tr>
                 `;
             });
+        } else if (!isCollapsed && isEmpty) {
+            // Для пустых SPart показываем сообщение, что нет данных
+            html += `
+                <tr class="bpart-row spart-empty-child" data-parent="${spart.name}">
+                    <td colspan="6" style="padding-left: 2rem; color: var(--text-muted); font-style: italic;">
+                        ⚠️ Этот SPart отсутствует в файле лицензии. Значения не заданы.
+                    </td>
+                </tr>
+            `;
         }
+    });
 
-        tbody.innerHTML = html;
-
-        const allSparts = currentHierarchy?.sparts?.map(s => s.name) || [];
-        const allCollapsed = allSparts.length > 0 && allSparts.every(name => collapsedSparts.has(name));
-        const globalIcon = document.querySelector('.toggle-all-sparts');
-        if (globalIcon) {
-            globalIcon.textContent = allCollapsed ? '▶' : '▼';
-        }
-
-        // Обработчики для иконок (одиночный клик)
-        document.querySelectorAll('.toggle-icon').forEach(icon => {
-            icon.removeEventListener('click', handleToggleClick);
-            icon.addEventListener('click', handleToggleClick);
-        });
-
-        // Обработчики для двойного клика по строке SPart
-        document.querySelectorAll('.spart-row').forEach(row => {
-            row.removeEventListener('dblclick', handleSpartDoubleClick);
-            row.addEventListener('dblclick', handleSpartDoubleClick);
+    if (orphans && orphans.length > 0) {
+        html += `<tr class="separator"><td colspan="6" style="background: var(--bg-secondary); padding: 0.5rem;"><strong>📌 Прочие CapacityKey</strong></td></tr>`;
+        orphans.forEach(orphan => {
+            const orphanValidDate = orphan.valid_date || '-';
+            html += `
+                <tr class="orphan-row">
+                    <td style="padding-left: 2rem;"><code>${escapeHtml(orphan.name)}</code></td>
+                    <td>${orphan.value}</td>
+                    <td class="valid-date-cell">${orphanValidDate}</td>
+                    <td>${escapeHtml(orphan.part_number || '-')}</td>
+                    <td>${escapeHtml(orphan.dimension || '-')}</td>
+                    <td><small>${escapeHtml(orphan.description || '—')}</small></td>
+                </tr>
+            `;
         });
     }
+
+    tbody.innerHTML = html;
+
+    const allSparts = currentHierarchy?.sparts?.map(s => s.name) || [];
+    const allCollapsed = allSparts.length > 0 && allSparts.every(name => collapsedSparts.has(name));
+    const globalIcon = document.querySelector('.toggle-all-sparts');
+    if (globalIcon) {
+        globalIcon.textContent = allCollapsed ? '▶' : '▼';
+    }
+
+    // Обработчики для иконок (одиночный клик)
+    document.querySelectorAll('.toggle-icon').forEach(icon => {
+        icon.removeEventListener('click', handleToggleClick);
+        icon.addEventListener('click', handleToggleClick);
+    });
+
+    // Обработчики для двойного клика по строке SPart
+    document.querySelectorAll('.spart-row').forEach(row => {
+        row.removeEventListener('dblclick', handleSpartDoubleClick);
+        row.addEventListener('dblclick', handleSpartDoubleClick);
+    });
+}
 
     function handleToggleClick(e) {
         e.stopPropagation();
@@ -1025,6 +1085,41 @@ modalClose?.addEventListener('click', closeModal);
 modal?.addEventListener('click', (e) => {
     if (e.target === modal) closeModal();
 });
+
+// Переключатель "Показывать все SPart"
+const showAllSpartsToggle = document.getElementById('showAllSpartsToggle');
+
+if (showAllSpartsToggle) {
+    // Загружаем сохранённое значение
+    const savedShowAll = localStorage.getItem('showAllSparts') === 'true';
+    showAllSpartsToggle.checked = savedShowAll;
+    
+    // При изменении — сохраняем и перезагружаем иерархию
+    showAllSpartsToggle.addEventListener('change', function() {
+        localStorage.setItem('showAllSparts', this.checked);
+        
+        // Перезагружаем иерархию с новым параметром
+        const currentMode = document.querySelector('.mode-btn.active')?.dataset?.mode || 'total';
+        loadHierarchy(currentMode);
+    });
+}
+
+// ========== ЗАГРУЗКА ИЕРАРХИИ ==========
+function loadHierarchy(mode) {
+    const showAll = localStorage.getItem('showAllSparts') === 'true';
+    
+    fetch(`/api/license/${currentLicenseId}/hierarchy?mode=${mode}&domain=${currentDomain}&show_all=${showAll}`)
+        .then(response => response.json())
+        .then(data => {
+            currentHierarchy = data;
+            renderHierarchyTable(data.sparts || [], data.orphans || []);
+        })
+        .catch(error => {
+            console.error('Ошибка загрузки иерархии:', error);
+            document.getElementById('resourcesTableBody').innerHTML = 
+                '<tr><td colspan="6" class="text-center">Ошибка загрузки данных</td></tr>';
+        });
+}
 
 // Сохранение настроек
 document.getElementById('saveTableSettingsBtn')?.addEventListener('click', () => {

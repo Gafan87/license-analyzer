@@ -1102,11 +1102,12 @@ def api_get_license_hierarchy(license_id):
     from modules.database import get_connection
     from modules.capacity_mapper import load_full_capacity_list
     from flask import current_app
-    
+
     mode = request.args.get('mode', 'total')
     domain = request.args.get('domain', '')
+    show_all = request.args.get('show_all', 'false').lower() == 'true'
     network_storage_path = current_app.config.get('network_storage_path', '')
-    
+
     # Получаем NE тип лицензии
     conn = get_connection()
     cursor = conn.cursor()
@@ -1117,12 +1118,9 @@ def api_get_license_hierarchy(license_id):
     conn.close()
 
     if is_xml:
-        # Для XML используем иерархию из БД (которая заполняется при парсинге)
-        return get_xml_hierarchy(license_id, mode, domain)
+        return get_xml_hierarchy(license_id, mode, domain, show_all_sparts=show_all)
     else:
-        # Для DAT используем маппинг из Excel
         return get_dat_hierarchy(license_id, mode, domain)
-    
            
 # ========== API ДЛЯ ПРОВЕРКИ ФАЙЛОВ ==========
 
@@ -1233,114 +1231,220 @@ def get_dat_hierarchy(license_id, mode, domain):
         'orphans': orphans
     })
 
-def get_xml_hierarchy(license_id, mode, domain):
+def get_xml_hierarchy(license_id, mode, domain, show_all_sparts=False):
     from modules.database import get_connection
-    from modules.capacity_mapper import get_capacity_description
+    from modules.capacity_mapper import get_capacity_description, load_full_capacity_list
     from flask import current_app
-    
+
     network_storage_path = current_app.config.get('network_storage_path', '')
-    
+
     conn = get_connection()
     cursor = conn.cursor()
-    
+
     # Получаем ne_type лицензии
     cursor.execute('SELECT ne_type FROM licenses WHERE id = ?', (license_id,))
     row = cursor.fetchone()
     ne_type = row[0] if row else None
+
+    # Загружаем полный список из маппинга Excel
+    full_list = load_full_capacity_list(domain, network_storage_path, ne_type)
+
+    # Строим словарь порядка SPart и структуру всех SPart из Excel
+    spart_order = {}
+    excel_sparts = {}  # {spart_name: {main_bpart, description, ...}}
     
-    # Получаем SPart иерархию
+    for item in full_list:
+        if item['type'] == 'spart':
+            order = len(spart_order)
+            spart_order[item['name']] = order
+            excel_sparts[item['name']] = {
+                'name': item['name'],
+                'part_number': item.get('part_number', ''),
+                'dimension': item.get('dimension', ''),
+                'description': item.get('description', ''),
+                'main_bpart': None,
+                'order': order
+            }
+        elif item['type'] == 'bpart' and item.get('is_main_for_spart'):
+            parent = item.get('parent')
+            if parent and parent in excel_sparts:
+                excel_sparts[parent]['main_bpart'] = item['name']
+
+    # Получаем SPart иерархию из БД
     cursor.execute('''
-        SELECT id, spart_name, spart_value, spart_valid_date
+        SELECT id, spart_name, spart_value, spart_valid_date,
+               permanent_value, dated_value, dated_date
         FROM license_spart_hierarchy WHERE license_id = ?
         ORDER BY sort_order
     ''', (license_id,))
     sparts = cursor.fetchall()
-    
-    result = []
-    for spart_id, spart_name, spart_value, spart_valid_date in sparts:
-        # Получаем BPart для этого SPart
-        cursor.execute('''
-            SELECT bpart_name, bpart_value, bpart_valid_date, is_main
-            FROM license_bpart_hierarchy 
-            WHERE license_id = ? AND spart_id = ?
-            ORDER BY sort_order
-        ''', (license_id, spart_id))
-        bparts = cursor.fetchall()
+
+    # Строим словарь существующих SPart: {spart_name: данные}
+    existing_sparts = {}
+    for spart_id, spart_name, spart_value, spart_valid_date, permanent_value, dated_value, dated_date in sparts:
+        existing_sparts[spart_name] = {
+            'spart_id': spart_id,
+            'spart_name': spart_name,
+            'spart_value': spart_value,
+            'spart_valid_date': spart_valid_date,
+            'permanent_value': permanent_value,
+            'dated_value': dated_value,
+            'dated_date': dated_date
+        }
+
+    result_sparts = []
+    all_orphan_bparts = []
+
+    # ========== ЕСЛИ show_all_sparts — ДОБАВЛЯЕМ НЕДОСТАЮЩИЕ ИЗ EXCEL ==========
+    if show_all_sparts:
+        # Сортируем по порядку из Excel
+        ordered_spart_names = sorted(excel_sparts.keys(), key=lambda n: excel_sparts[n]['order'])
         
-        # Значение SPart (из таблицы, не из capacity_aggregated)
-        spart_val = spart_value or 0
-        spart_date = spart_valid_date or ''
-        
+        for spart_name in ordered_spart_names:
+            if spart_name not in existing_sparts:
+                # Добавляем фиктивный SPart с нулевыми значениями
+                existing_sparts[spart_name] = {
+                    'spart_id': None,
+                    'spart_name': spart_name,
+                    'spart_value': 0,
+                    'spart_valid_date': '',
+                    'permanent_value': 0,
+                    'dated_value': 0,
+                    'dated_date': None
+                }
+    # ====================================================================
+
+    # Сортируем итоговый список SPart по порядку из Excel
+    sorted_spart_names = sorted(existing_sparts.keys(), key=lambda n: spart_order.get(n, 9999))
+
+    for spart_name in sorted_spart_names:
+        spart_data = existing_sparts[spart_name]
+        spart_id = spart_data['spart_id']
+        spart_value = spart_data['spart_value']
+        spart_valid_date = spart_data['spart_valid_date']
+        permanent_value = spart_data['permanent_value']
+        dated_value = spart_data['dated_value']
+        dated_date = spart_data['dated_date']
+
+        # Получаем BPart для этого SPart (если spart_id есть)
+        if spart_id is not None:
+            cursor.execute('''
+                SELECT bpart_name, bpart_value, bpart_valid_date, is_main,
+                       permanent_value, dated_value, dated_date
+                FROM license_bpart_hierarchy 
+                WHERE license_id = ? AND spart_id = ?
+                ORDER BY sort_order
+            ''', (license_id, spart_id))
+            bparts = cursor.fetchall()
+        else:
+            bparts = []
+
+        # === ВЫБИРАЕМ ЗНАЧЕНИЕ SPart В ЗАВИСИМОСТИ ОТ РЕЖИМА ===
+        if mode == 'permanent':
+            spart_val = permanent_value if permanent_value else 0
+            spart_date = 'PERMANENT' if permanent_value and permanent_value > 0 else ''
+        elif mode == 'latest':
+            spart_val = dated_value if dated_value else 0
+            spart_date = dated_date if dated_date else ''
+        else:  # mode == 'total'
+            spart_val = spart_value if spart_value else 0
+            spart_date = spart_valid_date if spart_valid_date else ''
+
+        # Получаем описание SPart
         spart_desc = get_capacity_description(spart_name, domain, network_storage_path)
-        
+
+        # Строим порядок BPart из Excel
+        bpart_order = {}
+        for item in full_list:
+            if item['type'] == 'bpart' and item.get('parent') == spart_name:
+                bpart_order[item['name']] = len(bpart_order)
+
+        # Сортируем bparts по порядку из Excel
+        bparts_list = []
+        for bp_name, bp_value, bp_valid_date, is_main, bp_permanent, bp_dated, bp_dated_date in bparts:
+            bparts_list.append((bp_name, bp_value, bp_valid_date, is_main, bp_permanent, bp_dated, bp_dated_date))
+
+        bparts_list.sort(key=lambda b: bpart_order.get(b[0], 9999))
+
         children = []
-        for bp_name, bp_value, bp_valid_date, is_main in bparts:
-            bp_val = bp_value or 0
-            bp_date = bp_valid_date or ''
+        for bp_name, bp_value, bp_valid_date, is_main, bp_permanent, bp_dated, bp_dated_date in bparts_list:
+            if mode == 'permanent':
+                bp_val = bp_permanent if bp_permanent else 0
+                bp_date = 'PERMANENT' if bp_permanent and bp_permanent > 0 else ''
+            elif mode == 'latest':
+                bp_val = bp_dated if bp_dated else 0
+                bp_date = bp_dated_date if bp_dated_date else ''
+            else:
+                bp_val = bp_value if bp_value else 0
+                bp_date = bp_valid_date if bp_valid_date else ''
+
             bp_desc = get_capacity_description(bp_name, domain, network_storage_path)
-            
+
             children.append({
                 'name': bp_name,
                 'value': bp_val,
                 'valid_date': bp_date,
                 'is_main': bool(is_main),
                 'part_number': bp_desc.get('part_number', '') if bp_desc else '',
-                'dimension': bp_desc.get('unit', '') if bp_desc else '',
+                'dimension': bp_desc.get('dimension', '') if bp_desc else '',
                 'description': bp_desc.get('description', '') if bp_desc else ''
             })
-        
-        result.append({
+
+        # Информация из Excel о SPart
+        excel_info = excel_sparts.get(spart_name, {})
+
+        result_sparts.append({
             'name': spart_name,
             'value': spart_val,
             'valid_date': spart_date,
+            'part_number': spart_desc.get('part_number', '') if spart_desc else excel_info.get('part_number', ''),
+            'dimension': spart_desc.get('dimension', '') if spart_desc else excel_info.get('dimension', ''),
+            'description': spart_desc.get('description', '') if spart_desc else excel_info.get('description', ''),
             'children': children,
-            'part_number': spart_desc.get('part_number', '') if spart_desc else '',
-            'dimension': spart_desc.get('unit', '') if spart_desc else '',
-            'description': spart_desc.get('description', '') if spart_desc else ''
+            'main_bpart': excel_info.get('main_bpart'),
+            'is_empty': spart_id is None  # Флаг, что SPart отсутствует в лицензии
         })
-    
-    # Получаем "сирот" (bpart без родителя)
+
+    # Получаем "сирот"
     cursor.execute('''
-        SELECT bpart_name, bpart_value, bpart_valid_date
+        SELECT bpart_name, bpart_value, bpart_valid_date, is_main,
+               permanent_value, dated_value, dated_date
         FROM license_bpart_hierarchy 
         WHERE license_id = ? AND spart_id IS NULL
         ORDER BY sort_order
     ''', (license_id,))
-    orphans_rows = cursor.fetchall()
-    
-    orphans = []
-    for bp_name, bp_value, bp_valid_date in orphans_rows:
-        bp_val = bp_value or 0
-        bp_date = bp_valid_date or ''
+    orphans = cursor.fetchall()
+
+    for bp_name, bp_value, bp_valid_date, is_main, bp_permanent, bp_dated, bp_dated_date in orphans:
+        if mode == 'permanent':
+            bp_val = bp_permanent if bp_permanent else 0
+            bp_date = 'PERMANENT' if bp_permanent and bp_permanent > 0 else ''
+        elif mode == 'latest':
+            bp_val = bp_dated if bp_dated else 0
+            bp_date = bp_dated_date if bp_dated_date else ''
+        else:
+            bp_val = bp_value if bp_value else 0
+            bp_date = bp_valid_date if bp_valid_date else ''
+
         bp_desc = get_capacity_description(bp_name, domain, network_storage_path)
-        orphans.append({
+
+        all_orphan_bparts.append({
             'name': bp_name,
             'value': bp_val,
             'valid_date': bp_date,
+            'is_main': bool(is_main),
             'part_number': bp_desc.get('part_number', '') if bp_desc else '',
-            'dimension': bp_desc.get('unit', '') if bp_desc else '',
+            'dimension': bp_desc.get('dimension', '') if bp_desc else '',
             'description': bp_desc.get('description', '') if bp_desc else ''
         })
-    
+
     conn.close()
-    
-    # Сортируем согласно Excel порядку (если нужен)
-    from modules.capacity_mapper import load_full_capacity_list
-    full_list = load_full_capacity_list(domain, network_storage_path, ne_type)
-    excel_spart_order = [item['name'] for item in full_list if item.get('type') == 'spart']
-    
-    # Сортируем результат
-    result_dict = {s['name']: s for s in result}
-    sorted_result = [result_dict[name] for name in excel_spart_order if name in result_dict]
-    for name, spart in result_dict.items():
-        if name not in excel_spart_order:
-            sorted_result.append(spart)
-    
+
     return jsonify({
-        'sparts': sorted_result,
-        'orphans': orphans
+        'sparts': result_sparts,
+        'orphans': all_orphan_bparts
     })
-      
+             
 @web_bp.route('/api/check_esn_mapping_files', methods=['GET'])
 def api_check_esn_mapping_files():
     """Проверяет наличие файлов ESN маппинга для всех операторов"""

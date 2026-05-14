@@ -45,6 +45,69 @@ def init_local_db(db_path=None):
     conn = get_connection(db_path)
     cursor = conn.cursor()
     
+    # Таблица для иерархии SPart
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS license_spart_hierarchy (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            license_id INTEGER NOT NULL,
+            spart_name TEXT NOT NULL,
+            spart_value INTEGER DEFAULT 0,
+            spart_valid_date TEXT,
+            sort_order INTEGER DEFAULT 0,
+            FOREIGN KEY (license_id) REFERENCES licenses(id) ON DELETE CASCADE
+        )
+    ''')
+
+    # Таблица для иерархии BPart
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS license_bpart_hierarchy (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            license_id INTEGER NOT NULL,
+            spart_id INTEGER,
+            bpart_name TEXT NOT NULL,
+            bpart_value INTEGER DEFAULT 0,
+            bpart_valid_date TEXT,
+            is_main BOOLEAN DEFAULT 0,
+            sort_order INTEGER DEFAULT 0,
+            FOREIGN KEY (license_id) REFERENCES licenses(id) ON DELETE CASCADE,
+            FOREIGN KEY (spart_id) REFERENCES license_spart_hierarchy(id) ON DELETE CASCADE
+        )
+    ''')
+
+    # ========== ВОТ СЮДА ДОБАВЛЯЙТЕ ALTER TABLE ==========
+    # Добавляем колонки для разделения PERMANENT и dated значений
+    # (если они ещё не существуют)
+
+    try:
+        cursor.execute('ALTER TABLE license_spart_hierarchy ADD COLUMN permanent_value INTEGER DEFAULT 0')
+    except sqlite3.OperationalError:
+        pass  # Колонка уже существует
+
+    try:
+        cursor.execute('ALTER TABLE license_spart_hierarchy ADD COLUMN dated_value INTEGER DEFAULT 0')
+    except sqlite3.OperationalError:
+        pass
+
+    try:
+        cursor.execute('ALTER TABLE license_spart_hierarchy ADD COLUMN dated_date TEXT')
+    except sqlite3.OperationalError:
+        pass
+
+    try:
+        cursor.execute('ALTER TABLE license_bpart_hierarchy ADD COLUMN permanent_value INTEGER DEFAULT 0')
+    except sqlite3.OperationalError:
+        pass
+
+    try:
+        cursor.execute('ALTER TABLE license_bpart_hierarchy ADD COLUMN dated_value INTEGER DEFAULT 0')
+    except sqlite3.OperationalError:
+        pass
+
+    try:
+        cursor.execute('ALTER TABLE license_bpart_hierarchy ADD COLUMN dated_date TEXT')
+    except sqlite3.OperationalError:
+        pass
+
     # Таблица лицензий
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS licenses (
@@ -407,27 +470,45 @@ def save_licenses_batch(licenses_data, modified_by='system'):
                     for spart in sparts_list:
                         cursor.execute('''
                             INSERT INTO license_spart_hierarchy 
-                            (license_id, spart_name, spart_value, spart_valid_date, sort_order)
-                            VALUES (?, ?, ?, ?, ?)
-                        ''', (license_id, spart.get('name'), spart.get('value', 0), spart.get('valid_date', 'UNKNOWN'), spart.get('sort_order', 0)))
-                        spart_id = cursor.lastrowid
-                        
+                            (license_id, spart_name, spart_value, spart_valid_date, 
+                            permanent_value, dated_value, dated_date, sort_order)
+                            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                        ''', (license_id, spart.get('name'), spart.get('value', 0), 
+                            spart.get('valid_date', 'UNKNOWN'),
+                            spart.get('permanent_value', 0),
+                            spart.get('dated_value', 0),
+                            spart.get('dated_date'),
+                            spart.get('sort_order', 0)))
+                        spart_id = cursor.lastrowid  # <-- Эта строка ОБЯЗАТЕЛЬНА
+
                         for bpart in spart.get('bparts', []):
                             is_main = 1 if bpart.get('is_main') else 0
                             cursor.execute('''
                                 INSERT INTO license_bpart_hierarchy 
-                                (license_id, spart_id, bpart_name, bpart_value, bpart_valid_date, is_main, sort_order)
-                                VALUES (?, ?, ?, ?, ?, ?, ?)
-                            ''', (license_id, spart_id, bpart.get('name'), bpart.get('value', 0), bpart.get('valid_date', 'UNKNOWN'), is_main, bpart.get('sort_order', 0)))
-                    
+                                (license_id, spart_id, bpart_name, bpart_value, bpart_valid_date,
+                                permanent_value, dated_value, dated_date, is_main, sort_order)
+                                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                            ''', (license_id, spart_id, bpart.get('name'), bpart.get('value', 0), 
+                                bpart.get('valid_date', 'UNKNOWN'),
+                                bpart.get('permanent_value', 0),
+                                bpart.get('dated_value', 0),
+                                bpart.get('dated_date'),
+                                is_main, bpart.get('sort_order', 0)))
+                       
                     # Сохраняем "сирот" (bpart без родительского spart) — теперь spart_id может быть NULL
                     for orphan in hierarchy.get('orphan_bparts', []):
                         cursor.execute('''
                             INSERT INTO license_bpart_hierarchy 
-                            (license_id, spart_id, bpart_name, bpart_value, bpart_valid_date, is_main, sort_order)
-                            VALUES (?, ?, ?, ?, ?, ?, ?)
-                        ''', (license_id, None, orphan.get('name'), orphan.get('value', 0), orphan.get('valid_date', 'UNKNOWN'), 0, orphan.get('sort_order', 0)))
-
+                            (license_id, spart_id, bpart_name, bpart_value, bpart_valid_date,
+                            permanent_value, dated_value, dated_date, is_main, sort_order)
+                            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        ''', (license_id, None, orphan.get('name'), orphan.get('value', 0), 
+                            orphan.get('valid_date', 'UNKNOWN'),
+                            orphan.get('permanent_value', 0),
+                            orphan.get('dated_value', 0),
+                            orphan.get('dated_date'),
+                            0, orphan.get('sort_order', 0)))
+    
                 # ========== НОВОЕ: СОХРАНЯЕМ АГРЕГИРОВАННЫЕ ДАННЫЕ ==========
                 # Проверяем, есть ли в license_data агрегированные ресурсы
                 if 'aggregated_resources' in license_data:
