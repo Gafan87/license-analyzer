@@ -995,7 +995,7 @@ Resource="KEY1=1000, KEY2=2000"
         # Проверяем, есть ли реальные лицензии в папке сканирования
         test_paths = [
             "D:/TempLicenses/MTS",
-            "D:/TempLicenses/VEON",
+            "D:/TempLicenses/Beeline",
             "D:/_Beeline/_Licenses"
         ]
         

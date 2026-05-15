@@ -16,7 +16,7 @@ cd license_analyzer
 mkdir excel_formulas 2>nul
 mkdir operators 2>nul
 mkdir operators\mts 2>nul
-mkdir operators\veon 2>nul
+mkdir operators\beeline 2>nul
 mkdir logs 2>nul
 mkdir modules 2>nul
 mkdir modules\web 2>nul
@@ -77,9 +77,9 @@ echo         {"level": 3, "name": "year"} >> config.json
 echo       ] >> config.json
 echo     }, >> config.json
 echo     { >> config.json
-echo       "name": "veon", >> config.json
-echo       "title": "VEON", >> config.json
-echo       "storage_path": "D:/LicenseStorage/VEON", >> config.json
+echo       "name": "beeline", >> config.json
+echo       "title": "Beeline", >> config.json
+echo       "storage_path": "D:/LicenseStorage/Beeline", >> config.json
 echo       "folder_structure": [ >> config.json
 echo         {"level": 1, "name": "ne_type"}, >> config.json
 echo         {"level": 2, "name": "city"}, >> config.json
@@ -104,7 +104,7 @@ echo   - PSCORE_formulas.xlsx
 echo   - PCRF_formulas.xlsx
 echo.
 echo Пример структуры Excel:
-echo   | CapacityKey | Формула | Коэф_МТС | Коэф_VEON |
+echo   | CapacityKey | Формула | Коэф_МТС | Коэф_Билайн |
 echo   | LKV2UPTR01  | =30000  | 1.0      | 1.0       |
 echo   | LKV2WSUBS01 | =B2*C2  | 1.5      | 2.0       |
 

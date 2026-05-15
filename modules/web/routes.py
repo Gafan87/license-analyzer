@@ -203,33 +203,36 @@ def sync_operator_route(operator):
     op_config = get_operator_config(operator)
     if not op_config:
         return jsonify({'success': False, 'message': 'Оператор не найден'}), 404
-    
+
     licenses = get_all_licenses(operator=operator)
-    
+
     if not licenses:
         return jsonify({'success': False, 'message': 'Нет лицензий для синхронизации'}), 400
-    
+
     remote_base = current_app.config.get('network_storage_path')
     if not remote_base:
         return jsonify({'success': False, 'message': 'Не указан путь к сетевому хранилищу'}), 400
-    
+
     try:
         licenses_to_sync = []
         for lic in licenses:
             licenses_to_sync.append({
-                'filename': lic.get('filename'),
+                'filename': lic.get('filename', 'unknown.dat'),
                 'operator': operator,
-                'ne_type': lic.get('ne_type'),
-                'city': lic.get('city'),
-                'site': lic.get('site'),
-                'year': lic.get('year'),
-                'lsn': lic.get('lsn'),
-                'local_path': '',
-                'file_hash': ''
+                'domain': lic.get('domain', 'Unknown'),
+                'ne_type': lic.get('ne_type', 'Unknown'),
+                'city': lic.get('city', 'Unknown'),
+                'site': lic.get('site', 'Unknown'),
+                'year': lic.get('year', 'permanent'),
+                'lsn': lic.get('lsn', ''),
+                'local_path': lic.get('local_path', ''),
+                'file_hash': lic.get('file_hash', ''),
+                'version': lic.get('version', ''),
+                'valid_date': lic.get('valid_date', '')
             })
-        
+
         success, fail = sync_all_licenses(licenses_to_sync, remote_base, modified_by=operator)
-        
+
         return jsonify({
             'success': True,
             'message': f'Синхронизация завершена: успешно {success}, ошибок {fail}'
@@ -237,7 +240,6 @@ def sync_operator_route(operator):
     except Exception as e:
         logger.error(f"Ошибка синхронизации: {e}")
         return jsonify({'success': False, 'message': str(e)}), 500
-
 
 @web_bp.route('/<operator>/download_db', methods=['POST'])
 def download_db_route(operator):

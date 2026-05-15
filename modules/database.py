@@ -107,6 +107,11 @@ def init_local_db(db_path=None):
         cursor.execute('ALTER TABLE license_bpart_hierarchy ADD COLUMN dated_date TEXT')
     except sqlite3.OperationalError:
         pass
+    
+    try:
+        cursor.execute('ALTER TABLE licenses ADD COLUMN local_path TEXT')
+    except sqlite3.OperationalError:
+        pass
 
     # Таблица лицензий
     cursor.execute('''
@@ -129,6 +134,7 @@ def init_local_db(db_path=None):
             last_modified TEXT,
             modified_by TEXT,
             domain TEXT,
+            local_path TEXT,
             parsed_cache TEXT,
             UNIQUE(operator, ne_type, city, site, year, lsn)
         )
@@ -404,7 +410,7 @@ def save_licenses_batch(licenses_data, modified_by='system'):
                     cursor.execute('''
                         UPDATE licenses SET
                             filename=?, file_hash=?, product=?, version=?, esn=?, node=?,
-                            create_time=?, valid_date=?, domain=?, parsed_cache=?,
+                            create_time=?, valid_date=?, domain=?, local_path=?, parsed_cache=?,
                             last_modified=?, modified_by=?
                         WHERE id=?
                     ''', (
@@ -413,30 +419,29 @@ def save_licenses_batch(licenses_data, modified_by='system'):
                         license_data.get('esn'), license_data.get('node'),
                         license_data.get('create_time'), license_data.get('valid_date'),
                         license_data.get('domain'), 
+                        license_data.get('local_path', ''),
                         json.dumps(license_data.get('parsed_cache')) if license_data.get('parsed_cache') else None,
                         now, modified_by, license_id
                     ))
-                    # Удаляем старые ресурсы
-                    cursor.execute('DELETE FROM resources WHERE license_id = ?', (license_id,))
-                    # Удаляем старые агрегированные данные
-                    cursor.execute('DELETE FROM capacity_aggregated WHERE license_id = ?', (license_id,))
                 else:
                     cursor.execute('''
                         INSERT INTO licenses (
                             operator, ne_type, city, site, year, filename, file_hash,
                             lsn, product, version, esn, node, create_time, valid_date,
-                            domain, parsed_cache, last_modified, modified_by
-                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                    ''', (
-                        operator, ne_type, city, site, year,
-                        license_data.get('filename'), license_data.get('file_hash'),
-                        lsn, license_data.get('product'), license_data.get('version'),
-                        license_data.get('esn'), license_data.get('node'),
-                        license_data.get('create_time'), license_data.get('valid_date'),
-                        license_data.get('domain'),
-                        json.dumps(license_data.get('parsed_cache')) if license_data.get('parsed_cache') else None,
-                        now, modified_by
-                    ))
+                            domain, local_path, parsed_cache, last_modified, modified_by
+                            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                            ''', (
+                                operator, ne_type, city, site, year,
+                                license_data.get('filename'), license_data.get('file_hash'),
+                                lsn, license_data.get('product'), license_data.get('version'),
+                                license_data.get('esn'), license_data.get('node'),
+                                license_data.get('create_time'), license_data.get('valid_date'),
+                                license_data.get('domain'),
+                                license_data.get('local_path', ''),
+                                json.dumps(license_data.get('parsed_cache')) if license_data.get('parsed_cache') else None,
+                                now,  # last_modified
+                                modified_by  # modified_by
+                            ))
                     license_id = cursor.lastrowid
 
                 # ========== СОХРАНЯЕМ ОБЫЧНЫЕ РЕСУРСЫ ==========
@@ -824,17 +829,17 @@ def get_license_by_id(license_id):
         conn.close()
         return None
     
+    # Получаем имена колонок
+    columns = [desc[0] for desc in cursor.description]
+    license_dict = dict(zip(columns, row))
+    
     cursor.execute('SELECT capacity_key, value, valid_date FROM resources WHERE license_id = ?', (license_id,))
     resources = cursor.fetchall()
     conn.close()
     
-    return {
-        'id': row[0], 'operator': row[1], 'ne_type': row[2], 'city': row[3],
-        'site': row[4], 'year': row[5], 'filename': row[6], 'file_hash': row[7],
-        'lsn': row[8], 'product': row[9], 'version': row[10], 'esn': row[11],
-        'node': row[12], 'create_time': row[13], 'valid_date': row[14],
-        'resources': [{'name': r[0], 'value': r[1], 'valid_date': r[2]} for r in resources]
-    }
+    license_dict['resources'] = [{'name': r[0], 'value': r[1], 'valid_date': r[2]} for r in resources]
+    
+    return license_dict
     
 def get_unique_esn_licenses(operator):
     """
