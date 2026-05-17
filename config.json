@@ -23,7 +23,7 @@
       "title": "Билайн",
       "local_scan_path": "D:\\_Beeline\\_Licenses\\_All Licenses",
       "incoming_folder": "D:/Incoming/Beeline",
-      "mapping_file": "veon_esn_mapping.xlsx",
+      "mapping_file": "beeline_esn_mapping.xlsx",
       "folder_structure": ["ne_type", "city", "site", "year"]
     }
   ],

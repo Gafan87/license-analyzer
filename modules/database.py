@@ -840,7 +840,7 @@ def get_license_by_id(license_id):
     license_dict['resources'] = [{'name': r[0], 'value': r[1], 'valid_date': r[2]} for r in resources]
     
     return license_dict
-    
+  
 def get_unique_esn_licenses(operator):
     """
     Возвращает уникальные ESN с самой актуальной лицензией

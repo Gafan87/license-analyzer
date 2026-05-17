@@ -38,9 +38,14 @@ def save_esn_mapping_to_db(mappings, modified_by='system'):
     """Сохраняет маппинг ESN в БД (7 колонок)"""
     conn = get_connection()
     cursor = conn.cursor()
-    
+
+    # Получаем старое количество
+    cursor.execute('SELECT COUNT(*) FROM esn_mapping')
+    old_count = cursor.fetchone()[0]
+
+    # Удаляем старые записи
     cursor.execute('DELETE FROM esn_mapping')
-    
+
     added = 0
     for mapping in mappings:
         if mapping.get('esn'):
@@ -53,16 +58,16 @@ def save_esn_mapping_to_db(mappings, modified_by='system'):
                       mapping.get('city'), mapping.get('site')))
                 added += 1
             except Exception as e:
-                print(f"Ошибка вставки {mapping.get('esn')}: {e}")
-    
+                logger.error(f"Ошибка вставки {mapping.get('esn')}: {e}")
+
     conn.commit()
     conn.close()
-    
+
     add_change_history('esn_mapping', 0, 'REPLACE', 
                       {'count': old_count}, 
                       {'count': added}, 
                       modified_by)
-    
+
     return added
 
 def get_mapping_by_esn(esn):

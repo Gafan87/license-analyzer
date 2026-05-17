@@ -1538,9 +1538,11 @@ def api_get_license_info(license_id):
         'node': license_data.get('node'),
         'domain': license_data.get('domain'),
         'filename': license_data.get('filename'),
-        'operator': license_data.get('operator')
+        'operator': license_data.get('operator'),
+        'local_path': license_data.get('local_path'),  # ← ДОБАВИТЬ
+        'file_hash': license_data.get('file_hash')     # ← ДОБАВИТЬ (для синхронизации)
     })
-
+    
 @web_bp.route('/api/license_versions')
 def api_get_license_versions():
     """Получить все версии для ESN"""
