@@ -1515,6 +1515,73 @@ def api_check_license_details_files():
         'missing_count': missing_count,
         'total_count': len(files)
     })
+    
+@web_bp.route('/api/open_folder')
+def api_open_folder():
+    """Открыть папку с файлом лицензии (сначала на сервере, потом локально)"""
+    import subprocess
+    import urllib.parse
+    
+    license_id = request.args.get('license_id', type=int)
+    if not license_id:
+        return jsonify({'success': False, 'error': 'Не указан license_id'})
+    
+    # Получаем данные лицензии
+    lic = get_license_by_id(license_id)
+    if not lic:
+        return jsonify({'success': False, 'error': 'Лицензия не найдена'})
+    
+    network_storage = current_app.config.get('network_storage_path', '')
+    
+    # Пытаемся построить сетевой путь
+    if network_storage and lic.get('domain') and lic.get('city'):
+        # Определяем год как в sync_manager
+        valid_date = lic.get('valid_date', '')
+        year_folder = lic.get('year', 'permanent')
+        if valid_date and valid_date not in ('PERMANENT', 'UNKNOWN'):
+            try:
+                import re
+                date_match = re.match(r'(\d{4})-(\d{2})', valid_date)
+                if date_match:
+                    year = int(date_match.group(1))
+                    month = int(date_match.group(2))
+                    year_folder = str(year - 1) if month <= 3 else str(year)
+            except:
+                pass
+        
+        # Генерируем имя файла как в sync_manager
+        version = lic.get('version', '')
+        version_short = version
+        if version:
+            r_match = re.search(r'R(\d+)', version, re.IGNORECASE)
+            if r_match:
+                version_short = 'R' + str(int(r_match.group(1)))
+        
+        filename = f"LIC{lic.get('ne_type', '')}_{version_short}_{lic.get('city', '')}_{lic.get('site', '')}_{year_folder}.dat"
+        filename = re.sub(r'[^\w\-.]', '_', filename)
+        
+        remote_dir = os.path.join(network_storage, lic.get('operator', ''), lic.get('domain', ''), lic.get('city', ''), year_folder)
+        remote_path = os.path.join(remote_dir, filename)
+        
+        # Если сетевая папка существует — открываем её
+        if os.path.exists(remote_dir):
+            try:
+                subprocess.Popen(['explorer', '/select,', os.path.normpath(remote_path)])
+                return jsonify({'success': True, 'path': remote_path, 'source': 'network'})
+            except Exception as e:
+                return jsonify({'success': False, 'error': str(e)})
+    
+    # Если сетевой путь не найден — пробуем локальный
+    local_path = lic.get('local_path')
+    if local_path and os.path.exists(local_path):
+        try:
+            local_dir = os.path.dirname(local_path)
+            subprocess.Popen(['explorer', os.path.normpath(local_dir)])
+            return jsonify({'success': True, 'path': local_path, 'source': 'local'})
+        except Exception as e:
+            return jsonify({'success': False, 'error': str(e)})
+    
+    return jsonify({'success': False, 'error': 'Файл не найден ни на сервере, ни локально'})
        
 @web_bp.route('/api/license/<int:license_id>/info')
 def api_get_license_info(license_id):
@@ -1552,6 +1619,13 @@ def api_get_license_versions():
         return jsonify({'error': 'operator and esn required'}), 400
     
     licenses = get_all_licenses_for_esn(operator, esn)
+    
+    # Добавляем local_path к каждой версии
+    for lic in licenses:
+        full = get_license_by_id(lic['id'])
+        if full:
+            lic['local_path'] = full.get('local_path')
+    
     return jsonify(licenses)
   
 @web_bp.route('/<operator>/license_by_esn/<esn>')

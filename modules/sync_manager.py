@@ -1,5 +1,4 @@
 import os
-import re
 import shutil
 from datetime import datetime
 from modules.logger import get_logger
@@ -56,6 +55,7 @@ def generate_license_filename(license_info):
     LIC{ne_type}{version_short}_{city}_{site}_{year}.dat
     Пример: LICCloudMRP6600_R23_MSK_IMS_8M_2027.dat
     """
+    import re
     ne_type = license_info.get('ne_type', 'Unknown')
     version = license_info.get('version', '')
     city = license_info.get('city', 'Unknown')
@@ -101,6 +101,7 @@ def generate_license_filename(license_info):
 
 def sync_license_to_remote(license_info, remote_base, modified_by='system'):
     """Синхронизирует один файл лицензии на удалённое хранилище"""
+    import re
     try:
         # Защита от None
         operator = license_info.get('operator') or 'Unknown'

@@ -46,7 +46,7 @@ class LicenseService:
         return save_license(license_data, modified_by)
     
     @staticmethod
-    def apply_mapping_batch(operator=None, max_retries=5):
+    def apply_mapping_batch(operator=None, force=False, max_retries=5):
         """
         Применить ESN маппинг ко всем лицензиям
         Args:
@@ -118,7 +118,7 @@ class LicenseService:
                             new_site = mapping.get('site') or old_site
                             
                             # Проверяем, изменились ли данные
-                            if (new_op == old_op and new_domain == old_domain and 
+                            if not force and (new_op == old_op and new_domain == old_domain and 
                                 new_ne == old_ne and new_city == old_city and 
                                 new_site == old_site):
                                 continue

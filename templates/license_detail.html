@@ -222,10 +222,17 @@
                         <table class="version-table">
                             <thead>
                                 <tr>
-                                    <th>LSN</th><th>Файл</th><th>Создан</th><th>Действует до</th><th>Версия</th><th>Продукт</th>
+                                    <th>Путь</th>
+                                    <th>LSN</th>
+                                    <th>Файл</th>
+                                    <th>Создан</th>
+                                    <th>Действует до</th>
+                                    <th>Версия</th>
+                                    <th>Продукт</th>
                                 </tr>
                             </thead>
                             <tbody>
+
                                 {% for lic in all_licenses_for_esn %}
                                 <tr data-license-id="{{ lic.id }}">
                                     <td>{{ lic.lsn or '-' }}</code></td>
@@ -559,13 +566,21 @@ function renderHierarchyTable(sparts, orphans) {
     // ========== ПЕРЕКЛЮЧЕНИЕ РЕЖИМОВ ==========
 function initResourceFilters() {
     const chips = document.querySelectorAll('.filter-chip');
+    
+    // Восстанавливаем сохранённый режим
+    const savedMode = localStorage.getItem('resourceMode') || 'total';
+    currentResourceMode = savedMode;
+    chips.forEach(c => c.classList.remove('active'));
+    const activeChip = document.querySelector(`.filter-chip[data-mode="${savedMode}"]`);
+    if (activeChip) activeChip.classList.add('active');
+    
     chips.forEach(chip => {
         chip.addEventListener('click', function() {
             const mode = this.dataset.mode;
-            console.log('Переключение режима на:', mode);  // Для отладки
             chips.forEach(c => c.classList.remove('active'));
             this.classList.add('active');
             currentResourceMode = mode;
+            localStorage.setItem('resourceMode', mode);  // ← сохраняем
             loadHierarchy(currentLicenseId, mode);
         });
     });
@@ -646,11 +661,11 @@ async function loadVersions() {
         const tbody = document.querySelector('.version-table tbody');
         if (!tbody) return;
         
-        tbody.innerHTML = '<tr><td colspan="6" class="text-center">Загрузка...</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="7" class="text-center">Загрузка...</td></tr>';
         
         const resp = await fetch(`/api/license_versions?operator=${encodeURIComponent(operator)}&esn=${encodeURIComponent(currentEsn)}`);
         if (!resp.ok) {
-            tbody.innerHTML = '<tr><td colspan="6" class="text-center">Ошибка загрузки версий</td></tr>';
+            tbody.innerHTML = '<tr><td colspan="7" class="text-center">Ошибка загрузки версий</td></tr>';
             return;
         }
         const versions = await resp.json();
@@ -658,6 +673,9 @@ async function loadVersions() {
         if (versions.length > 0) {
             tbody.innerHTML = versions.map(lic => `
                 <tr data-license-id="${lic.id}" class="${lic.id === currentLicenseId ? 'selected-version' : ''}">
+                    <td>
+                        ${lic.local_path || lic.id ? `<a href="#" onclick="event.stopPropagation(); openFolder(${lic.id}); return false;" title="Открыть папку с файлом">📂</a>` : '-'}
+                    </td>
                     <td>${escapeHtml(lic.lsn || '-')}</td>
                     <td>${escapeHtml(lic.filename || '-')}</td>
                     <td>${(lic.create_time || '').substring(0, 10) || '-'}</td>
@@ -666,19 +684,26 @@ async function loadVersions() {
                     <td>${escapeHtml(lic.product || '-')}</td>
                 </tr>
             `).join('');
-            
-            // Навешиваем обработчики на строки версий
             bindVersionRowHandlers();
         } else {
-            tbody.innerHTML = '<tr><td colspan="6" class="text-center">Нет доступных версий</td></tr>';
+            tbody.innerHTML = '<tr><td colspan="7" class="text-center">Нет доступных версий</td></tr>';
         }
     } catch(e) {
         console.error('Ошибка загрузки версий:', e);
         const tbody = document.querySelector('.version-table tbody');
         if (tbody) {
-            tbody.innerHTML = '<tr><td colspan="6" class="text-center">Ошибка загрузки</td></tr>';
+            tbody.innerHTML = '<tr><td colspan="7" class="text-center">Ошибка загрузки</td></tr>';
         }
     }
+}
+
+function openFolder(licenseId) {
+    fetch(`/api/open_folder?license_id=${licenseId}`)
+        .then(r => r.json())
+        .then(d => {
+            if (!d.success) alert('Не удалось открыть папку: ' + d.error);
+        })
+        .catch(e => alert('Ошибка: ' + e));
 }
 
 // ========== ОБРАБОТЧИКИ СТРОК ВЕРСИЙ ==========

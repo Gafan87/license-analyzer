@@ -536,7 +536,11 @@ function buildFiltersBar() {
                 const items = manualInput.value.split(/[,\n]/).map(s => s.trim()).filter(s => s);
                 selected.clear();
                 items.forEach(item => {
-                    if (filterValues[col].has(item)) selected.add(item);
+                    for (let val of filterValues[col]) {
+                        if (val.toLowerCase().includes(item.toLowerCase())) {
+                            selected.add(val);
+                        }
+                    }
                 });
                 manualInput.value = selected.size > 0 ? Array.from(selected).join(', ') : '';
                 updateCheckboxes(listContainer, selected);
@@ -570,7 +574,11 @@ manualInput.addEventListener('keypress', (e) => {
         const items = manualInput.value.split(/[,\n]/).map(s => s.trim()).filter(s => s);
         selected.clear();
         items.forEach(item => {
-            if (filterValues[col].has(item)) selected.add(item);
+            for (let val of filterValues[col]) {
+                if (val.toLowerCase().includes(item.toLowerCase())) {
+                    selected.add(val);
+                }
+            }
         });
         manualInput.value = selected.size > 0 ? Array.from(selected).join(', ') : '';
         updateCheckboxes(listContainer, selected);
@@ -642,7 +650,15 @@ function applyFiltersFast() {
             const selected = activeFilters[col];
             if (selected && selected.size > 0) {
                 const rowVal = row[col] || '';
-                if (!selected.has(rowVal)) {
+                // Поиск по подстроке: проверяем, содержит ли значение строки хотя бы одно из выбранных
+                let found = false;
+                for (let filterVal of selected) {
+                    if (rowVal.toLowerCase().includes(filterVal.toLowerCase())) {
+                        found = true;
+                        break;
+                    }
+                }
+                if (!found) {
                     show = false;
                     break;
                 }
