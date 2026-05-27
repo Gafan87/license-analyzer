@@ -2,6 +2,7 @@
   "log_level": "INFO",
   "network_storage_path": "//A00742028-C5NC5/_Licenses",
   "license_details_path": "//A00742028-C5NC5/_Licenses/license_details",
+  "targets_file": "//A00742028-C5NC5/_Licenses/mapping/targets.xlsx",
   "ne_type_mapping_file": "//A00742028-C5NC5/_Licenses/mapping/ne_type_mapping.xlsx",
   "mapping_path": "//A00742028-C5NC5/_Licenses/mapping",
   "local_db_path": "local_licenses.db",

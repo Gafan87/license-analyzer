@@ -112,6 +112,11 @@ def init_local_db(db_path=None):
         cursor.execute('ALTER TABLE licenses ADD COLUMN local_path TEXT')
     except sqlite3.OperationalError:
         pass
+    
+    try:
+        cursor.execute('ALTER TABLE licenses ADD COLUMN main_capacity_key TEXT')
+    except sqlite3.OperationalError:
+        pass
 
     # Таблица лицензий
     cursor.execute('''
@@ -167,6 +172,50 @@ def init_local_db(db_path=None):
         )
     ''')
     
+    # Таблица доменных целей (из Excel Targets)
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS domain_targets (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            operator TEXT,
+            domain TEXT,
+            type TEXT,
+            city TEXT,
+            value REAL,
+            unit TEXT,
+            UNIQUE(operator, domain, type, city)
+        )
+    ''')
+
+    # Таблица формул (из Excel Formulas)
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS ne_formulas (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            domain TEXT,
+            type TEXT,
+            ne_type TEXT,
+            capacity_key TEXT,
+            formula TEXT,
+            sharing INTEGER DEFAULT 1,
+            main_key BOOLEAN DEFAULT 0,
+            UNIQUE(domain, type, ne_type, capacity_key)
+        )
+    ''')
+
+    # Таблица вычисленных целей
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS license_targets (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            operator TEXT,
+            domain TEXT,
+            type TEXT,
+            city TEXT,
+            ne_type TEXT,
+            capacity_key TEXT,
+            target_value REAL,
+            UNIQUE(operator, domain, type, city, ne_type, capacity_key)
+        )
+    ''')
+        
     # Таблица истории изменений
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS change_history (

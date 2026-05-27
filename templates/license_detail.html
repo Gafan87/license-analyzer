@@ -143,6 +143,7 @@
                                 <span class="toggle-all-sparts" style="cursor: pointer; display: inline-block; width: 20px; user-select: none;" title="Свернуть/развернуть все">▼</span>
                                 CapacityKey
                             </th>
+                            <th>🎯 Цель</th>
                             <th>Value</th>
                             <th>Valid till</th>
                             <th>Bpart</th>
@@ -214,8 +215,16 @@
                 {% endif %}
             </div>
             <div class="info-block">
-                <div class="info-block-header">
-                    <i class="fas fa-code-branch"></i> Все версии (LSN)
+                <div class="info-block-header" style="display: flex; align-items: flex-start;">
+                    <span style="flex: 0 0 auto; padding-top: 0.15rem;">
+                        <i class="fas fa-code-branch"></i> Все версии (LSN)
+                    </span>
+                    <span id="selectedLicensePath" style="flex: 1; margin: 0 1rem; font-size: 0.7rem; color: var(--text-secondary); display: none; line-height: 1.4;">
+                        <code id="pathText" style="font-size: 0.65rem; overflow-wrap: break-word; word-break: break-all; display: block;"></code>
+                    </span>
+                    <span style="flex: 0 0 20%; text-align: right; padding-top: 0.15rem;">
+                        <button id="openFolderBtn" onclick="openFolderFromPath()" class="action-btn" style="font-size: 0.65rem; display: none;">📂 Открыть</button>
+                    </span>
                 </div>
                 <div class="info-block-content" style="padding: 0;">
                     <div class="version-table-wrapper">
@@ -359,6 +368,7 @@
             <label style="display: block; margin-bottom: 0.3rem; font-weight: 600;">Отображаемые колонки</label>
             <div id="visibleColumnsCheckboxes">
                 <label style="display: block; margin-bottom: 0.3rem;"><input type="checkbox" value="capacity_key" checked> CapacityKey</label>
+                <label style="display: block; margin-bottom: 0.3rem;"><input type="checkbox" value="target" checked> 🎯 Цель</label>
                 <label style="display: block; margin-bottom: 0.3rem;"><input type="checkbox" value="value" checked> Значение</label>
                 <label style="display: block; margin-bottom: 0.3rem;"><input type="checkbox" value="valid_date" checked> Действителен до</label>
                 <label style="display: block; margin-bottom: 0.3rem;"><input type="checkbox" value="part_number" checked> Part-number</label>
@@ -420,7 +430,7 @@ async function loadHierarchy(licenseId, mode) {
 function renderHierarchyTable(sparts, orphans) {
     const tbody = document.getElementById('resourcesTableBody');
     if ((!sparts || sparts.length === 0) && (!orphans || orphans.length === 0)) {
-        tbody.innerHTML = '<tr><td colspan="6" class="text-center">Нет данных ("license_details" файл не загружен)</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="7" class="text-center">Нет данных ("license_details" файл не загружен)</td></tr>';
         return;
     }
 
@@ -431,14 +441,14 @@ function renderHierarchyTable(sparts, orphans) {
         if (spart.is_section) {
             html += `
                 <tr class="section-header-row">
-                    <td colspan="6">
+                    <td colspan="7">
                         <div class="section-header">
                             <span class="section-title">${escapeHtml(spart.name)}</span>
                         </div>
                     </td>
                 </tr>
             `;
-            return;  // Пропускаем остальную обработку
+            return;
         }
 
         // Обычная обработка SPart...
@@ -449,6 +459,7 @@ function renderHierarchyTable(sparts, orphans) {
         const rowClass = isEmpty ? 'spart-row spart-empty' : 'spart-row';
         const valueDisplay = isEmpty ? '<span class="empty-value">—</span>' : spart.value;
         const dateDisplay = isEmpty ? '<span class="empty-value">—</span>' : escapeHtml(validDate);
+        const targetDisplay = spart.target_value ? spart.target_value : '';
 
         html += `
             <tr class="${rowClass}" data-spart="${spart.name}" ${isEmpty ? 'data-empty="true"' : ''}>
@@ -457,6 +468,7 @@ function renderHierarchyTable(sparts, orphans) {
                     ${escapeHtml(spart.name)}
                     ${isEmpty ? '<span class="empty-badge">нет в лицензии</span>' : ''}
                 </td>
+                <td>${targetDisplay}</td>
                 <td>${valueDisplay}</td>
                 <td class="valid-date-cell">${dateDisplay}</td>
                 <td>${escapeHtml(spart.part_number || '-')}</td>
@@ -468,12 +480,14 @@ function renderHierarchyTable(sparts, orphans) {
         if (!isCollapsed && spart.children && spart.children.length > 0) {
             spart.children.forEach(bpart => {
                 const bpartValidDate = bpart.valid_date || '-';
+                const bpartTarget = bpart.target_value || '';
                 html += `
                     <tr class="bpart-row" data-parent="${spart.name}">
                         <td style="padding-left: 2rem;">
                             ${escapeHtml(bpart.name)}
                             ${bpart.is_main ? '<span class="main-badge">(main)</span>' : ''}
-                         </td>
+                        </td>
+                        <td>${bpartTarget}</td>
                         <td>${bpart.value}</td>
                         <td class="valid-date-cell">${bpartValidDate}</td>
                         <td>${escapeHtml(bpart.part_number || '-')}</td>
@@ -483,10 +497,9 @@ function renderHierarchyTable(sparts, orphans) {
                 `;
             });
         } else if (!isCollapsed && isEmpty) {
-            // Для пустых SPart показываем сообщение, что нет данных
             html += `
                 <tr class="bpart-row spart-empty-child" data-parent="${spart.name}">
-                    <td colspan="6" style="padding-left: 2rem; color: var(--text-muted); font-style: italic;">
+                    <td colspan="7" style="padding-left: 2rem; color: var(--text-muted); font-style: italic;">
                         ⚠️ Этот SPart отсутствует в файле лицензии. Значения не заданы.
                     </td>
                 </tr>
@@ -495,12 +508,14 @@ function renderHierarchyTable(sparts, orphans) {
     });
 
     if (orphans && orphans.length > 0) {
-        html += `<tr class="separator"><td colspan="6" style="background: var(--bg-secondary); padding: 0.5rem;"><strong>📌 Прочие CapacityKey</strong></td></tr>`;
+        html += `<tr class="separator"><td colspan="7" style="background: var(--bg-secondary); padding: 0.5rem;"><strong>📌 Прочие CapacityKey</strong></td></tr>`;
         orphans.forEach(orphan => {
             const orphanValidDate = orphan.valid_date || '-';
+            const orphanTarget = orphan.target_value || '';
             html += `
                 <tr class="orphan-row">
                     <td style="padding-left: 2rem;">${escapeHtml(orphan.name)}</td>
+                    <td>${orphanTarget}</td>
                     <td>${orphan.value}</td>
                     <td class="valid-date-cell">${orphanValidDate}</td>
                     <td>${escapeHtml(orphan.part_number || '-')}</td>
@@ -520,13 +535,11 @@ function renderHierarchyTable(sparts, orphans) {
         globalIcon.textContent = allCollapsed ? '▶' : '▼';
     }
 
-    // Обработчики для иконок (одиночный клик)
     document.querySelectorAll('.toggle-icon').forEach(icon => {
         icon.removeEventListener('click', handleToggleClick);
         icon.addEventListener('click', handleToggleClick);
     });
 
-    // Обработчики для двойного клика по строке SPart
     document.querySelectorAll('.spart-row').forEach(row => {
         row.removeEventListener('dblclick', handleSpartDoubleClick);
         row.addEventListener('dblclick', handleSpartDoubleClick);
@@ -674,7 +687,7 @@ async function loadVersions() {
             tbody.innerHTML = versions.map(lic => `
                 <tr data-license-id="${lic.id}" class="${lic.id === currentLicenseId ? 'selected-version' : ''}">
                     <td>
-                        ${lic.local_path || lic.id ? `<a href="#" onclick="event.stopPropagation(); openFolder(${lic.id}); return false;" title="Открыть папку с файлом">📂</a>` : '-'}
+                        ${lic.local_path || lic.id ? `<a href="#" onclick="event.stopPropagation(); showPath('${lic.local_path.replace(/\\/g, '\\\\')}', ${lic.id}); return false;" title="Показать путь">📋</a>` : '-'}
                     </td>
                     <td>${escapeHtml(lic.lsn || '-')}</td>
                     <td>${escapeHtml(lic.filename || '-')}</td>
@@ -695,6 +708,42 @@ async function loadVersions() {
             tbody.innerHTML = '<tr><td colspan="7" class="text-center">Ошибка загрузки</td></tr>';
         }
     }
+}
+
+let currentDisplayedPath = '';
+
+function showPath(path, licenseId) {
+    const normalized = path.replace(/\\\\/g, '/').replace(/\\/g, '/');
+    const folderPath = normalized.replace(/\/[^\/]+$/, '');
+    currentDisplayedPath = normalized;
+    
+    // Добавляем возможность переноса после каждого /
+    const displayPath = folderPath.replace(/\//g, '/<wbr>');
+    
+    const pathEl = document.getElementById('selectedLicensePath');
+    const pathText = document.getElementById('pathText');
+    const openBtn = document.getElementById('openFolderBtn');
+    
+    pathText.innerHTML = displayPath;
+    pathEl.style.display = 'block';
+    if (openBtn) openBtn.style.display = 'inline-block';
+    
+    document.querySelectorAll('.version-table tbody tr').forEach(r => r.classList.remove('selected-version'));
+    const row = document.querySelector(`.version-table tbody tr[data-license-id="${licenseId}"]`);
+    if (row) row.classList.add('selected-version');
+}
+
+function openFolderFromPath() {
+    if (!currentDisplayedPath) return;
+    
+    // Заменяем \ на / для URL
+    const winPath = currentDisplayedPath.replace(/\\/g, '/');
+    fetch(`/api/open_folder?path=${encodeURIComponent(winPath)}`)
+        .then(r => r.json())
+        .then(d => {
+            if (!d.success) alert('Не удалось открыть папку: ' + d.error);
+        })
+        .catch(e => alert('Ошибка: ' + e));
 }
 
 function openFolder(licenseId) {
@@ -943,6 +992,7 @@ let savedColumns = JSON.parse(localStorage.getItem('license_detail_visible_colum
 // Колонки и их порядок
 const columnConfig = [
     { key: 'capacity_key', label: 'CapacityKey', defaultWidth: 200 },
+    { key: 'target', label: '🎯 Цель', defaultWidth: 80 },
     { key: 'value', label: 'Value', defaultWidth: 80 },
     { key: 'valid_date', label: 'Valid till', defaultWidth: 100 },
     { key: 'part_number', label: 'Part-number', defaultWidth: 100 },

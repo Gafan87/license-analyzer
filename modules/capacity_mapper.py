@@ -148,17 +148,16 @@ def _find_description_file(filename, network_storage_path, local_path):
 
 
 def get_capacity_mapping_config():
-    """
-    Получить настройки маппинга колонок
-    """
     return {
-        'col_key': 'A',      # CapacityKey
-        'col_desc': 'B',     # Description
-        'col_unit': 'C',     # Unit (размерность)
-        'col_part': 'D',     # Part-number
-        'col_type': 'E',     # Type (spart/bpart/main)
-        'col_parent': 'F',    # Parent SPart (для BPart)
-        'col_is_main': 'G'   # IsMainForSPart (TRUE)
+        'col_key': 'A',
+        'col_desc': 'B',
+        'col_unit': 'C',
+        'col_part': 'D',
+        'col_type': 'E',
+        'col_parent': 'F',
+        'col_spart_coeff': 'G',   # Для SPart: коэф. для MAIN BPart
+        'col_is_main': 'H',       # Для BPart: TRUE/FALSE
+        'col_formula': 'I'        # Универсальная формула
     }
 
 
@@ -238,7 +237,9 @@ def load_capacity_descriptions(domain, network_storage_path, ne_type=None):
         col_idx_part = _col_letter_to_index(config['col_part'])
         col_idx_type = _col_letter_to_index(config['col_type'])
         col_idx_parent = _col_letter_to_index(config['col_parent'])
+        col_idx_spart_coeff = _col_letter_to_index(config['col_spart_coeff'])
         col_idx_is_main = _col_letter_to_index(config['col_is_main'])
+        col_idx_formula = _col_letter_to_index(config.get('col_formula', 'I'))
         
         descriptions = {}
         
@@ -252,7 +253,9 @@ def load_capacity_descriptions(domain, network_storage_path, ne_type=None):
             part_number = str(row[col_idx_part - 1]).strip() if col_idx_part <= len(row) else ''
             key_type = str(row[col_idx_type - 1]).strip().lower() if col_idx_type <= len(row) else 'bpart'
             parent = str(row[col_idx_parent - 1]).strip() if col_idx_parent <= len(row) else ''
-            is_main_for_spart = str(row[col_idx_is_main - 1]).strip().upper() == 'TRUE' if col_idx_is_main <= len(row) else False
+            spart_coeff = str(row[col_idx_spart_coeff - 1]).strip() if col_idx_spart_coeff <= len(row) and row[col_idx_spart_coeff - 1] else ''
+            is_main_for_spart = str(row[col_idx_is_main - 1]).strip().upper() == 'TRUE' if col_idx_is_main <= len(row) and row[col_idx_is_main - 1] else False
+            formula = str(row[col_idx_formula - 1]).strip() if col_idx_formula <= len(row) and row[col_idx_formula - 1] else ''
             
             if capacity_key:
                 descriptions[capacity_key] = {
@@ -263,7 +266,9 @@ def load_capacity_descriptions(domain, network_storage_path, ne_type=None):
                     'parent': parent if parent else None,
                     'is_main': key_type == 'main',
                     'valid_date': '',
-                    'is_main_for_spart': is_main_for_spart
+                    'spart_coeff': spart_coeff if spart_coeff else None,
+                    'is_main_for_spart': is_main_for_spart,
+                    'formula': formula if formula else None
                 }
         
         _capacity_descriptions_cache[cache_key] = descriptions
@@ -278,6 +283,7 @@ def load_capacity_descriptions(domain, network_storage_path, ne_type=None):
 def load_full_capacity_list(domain, network_storage_path, ne_type=None):
     """
     Загружает полный список CapacityKey из Excel файла с сохранением порядка
+    Поддерживает типы: spart, bpart, section (заголовок раздела)
     Возвращает список словарей с полями: name, type, parent, part_number, dimension, description, is_main
     """
     descriptions = load_capacity_descriptions(domain, network_storage_path, ne_type)
@@ -285,16 +291,21 @@ def load_full_capacity_list(domain, network_storage_path, ne_type=None):
     result = []
     sort_order = 0
     for cap_key, info in descriptions.items():
+        item_type = info.get('type', 'bpart')
+        
         result.append({
             'name': cap_key,
-            'type': info.get('type', 'bpart'),
+            'type': item_type,
             'parent': info.get('parent'),
             'part_number': info.get('part_number', ''),
             'dimension': info.get('unit', ''),
             'description': info.get('description', ''),
             'is_main': info.get('is_main', False),
             'is_main_for_spart': info.get('is_main_for_spart', False),
-            'sort_order': sort_order
+            'is_section': item_type == 'section',  # Флаг для заголовка раздела
+            'sort_order': sort_order,
+            'formula': info.get('formula'),
+            'spart_coeff': info.get('spart_coeff'),
         })
         sort_order += 1
     
@@ -378,3 +389,91 @@ def reload_mapping():
     global _ne_type_mapping_cache
     _ne_type_mapping_cache = None
     return load_ne_type_mapping()
+
+
+def load_targets_from_excel(file_path):
+    """
+    Загружает цели и формулы из Excel файла targets.xlsx
+    Лист Targets: Operator, Domain, Type, City, Value, Unit
+    Лист Formulas: Domain, Type, NE_Type, CapacityKey, Formula, Sharing, MainKey
+    """
+    if not os.path.exists(file_path):
+        logger.warning(f"Файл целей не найден: {file_path}")
+        return [], []
+
+    try:
+        wb = openpyxl.load_workbook(file_path, data_only=True)
+        
+        # Загружаем базовые цели
+        targets = []
+        if 'Targets' in wb.sheetnames:
+            sheet = wb['Targets']
+            for row in sheet.iter_rows(min_row=2, values_only=True):
+                if not row[0]:
+                    continue
+                targets.append({
+                    'operator': str(row[0]).strip(),
+                    'domain': str(row[1]).strip(),
+                    'type': str(row[2]).strip(),
+                    'city': str(row[3]).strip(),
+                    'value': float(row[4]) if row[4] else 0,
+                    'unit': str(row[5]).strip() if row[5] else ''
+                })
+        
+        # Загружаем формулы
+        formulas = []
+        if 'Formulas' in wb.sheetnames:
+            sheet = wb['Formulas']
+            for row in sheet.iter_rows(min_row=2, values_only=True):
+                if not row[0]:
+                    continue
+                formulas.append({
+                    'domain': str(row[0]).strip(),
+                    'type': str(row[1]).strip(),
+                    'ne_type': str(row[2]).strip(),
+                    'capacity_key': str(row[3]).strip(),
+                    'formula': str(row[4]).strip(),
+                    'sharing': int(row[5]) if row[5] else 1,
+                    'main_key': str(row[6]).strip().upper() == 'YES'
+                })
+        
+        logger.info(f"Загружено целей: {len(targets)}, формул: {len(formulas)}")
+        return targets, formulas
+        
+    except Exception as e:
+        logger.error(f"Ошибка загрузки целей: {e}")
+        return [], []
+
+def compute_license_targets(targets, formulas):
+    """
+    Вычисляет целевые значения для каждой комбинации город/NE_type/CapacityKey
+    """
+    results = []
+    
+    for target in targets:
+        city = target['city']
+        target_value = target['value']
+        
+        # Находим формулы для этого domain/type
+        for formula in formulas:
+            if formula['domain'] == target['domain'] and formula['type'] == target['type']:
+                # Вычисляем значение по формуле
+                try:
+                    # Заменяем 'target' на значение и вычисляем
+                    expr = formula['formula'].replace('target', str(target_value))
+                    computed = eval(expr)
+                    computed = computed / formula['sharing']
+                    
+                    results.append({
+                        'operator': target['operator'],
+                        'domain': target['domain'],
+                        'type': target['type'],
+                        'city': city,
+                        'ne_type': formula['ne_type'],
+                        'capacity_key': formula['capacity_key'],
+                        'target_value': round(computed, 2)
+                    })
+                except Exception as e:
+                    logger.error(f"Ошибка вычисления формулы {formula['formula']}: {e}")
+    
+    return results

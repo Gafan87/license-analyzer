@@ -96,7 +96,7 @@ body {
 
 /* Кнопки */
 .top-bar-actions { display: flex; gap: 0.5rem; flex-shrink: 0; }
-.container { max-width: 1600px; margin: 1.5rem auto; padding: 0 2rem; }
+.container { max-width: 1900px; margin: 1.5rem auto; padding: 0 2rem; }
 
 .top-bar-info {
     display: flex;
@@ -232,6 +232,8 @@ tbody tr:hover td { background: var(--bg-tertiary); }
 .licenses-table.hover-effect tbody tr:hover { background-color: var(--bg-hover) !important; }
 .licenses-table { table-layout: fixed; width: 100%; }
 .licenses-table th, .licenses-table td { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.licenses-table th:last-child,
+.licenses-table td:last-child {width: 40px;text-align: center;}
 
 /* ========== СТРУКТУРА ФИЛЬТРОВ ========== */
 .filters-container {

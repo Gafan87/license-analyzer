@@ -228,7 +228,7 @@
                 {% endif %}
                 {% if 'esn' in visible_columns %}
                 <td class="esn-cell" title="{{ lic.esn or '' }}" data-full-value="{{ lic.esn or '' }}">
-                    {{ lic.esn[:30] if lic.esn else '-' }}{% if lic.esn and lic.esn|length > 30 %}...{% endif %}
+                    {{ lic.esn or '-' }}
                 </td>
                 {% endif %}
                 {% if 'domain' in visible_columns %}
