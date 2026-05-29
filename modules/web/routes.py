@@ -904,25 +904,64 @@ def set_log_level():
 # ========== ТЕСТИРОВАНИЕ ==========
 
 @web_bp.route('/run_tests', methods=['POST'])
-def run_system_tests():
+def run_tests():
+    """Запуск всех тестов"""
     try:
-        config = {
-            'operators': current_app.config.get('OPERATORS', []),
-            'network_storage_path': current_app.config.get('network_storage_path', '')
+        from modules.tester import SystemTester
+        
+        # Получаем app_config
+        app_config = {
+            'network_storage_path': current_app.config.get('network_storage_path', ''),
+            'operators': current_app.config.get('OPERATORS', [])
         }
-        result = run_tests(config)
+        
+        tester = SystemTester()
+        result = tester.run_all_tests(app_config)
         return jsonify(result)
     except Exception as e:
-        logger.error(f"Ошибка при тестировании: {e}")
+        logger.error(f"Ошибка запуска тестов: {e}", exc_info=True)
         return jsonify({
             'success': False,
-            'error': str(e),
             'total': 0,
             'passed': 0,
             'failed': 1,
-            'results': []
+            'duration': 0,
+            'results': [{'name': 'Тестирование', 'status': False, 'message': str(e)}]
         }), 500
 
+
+@web_bp.route('/api/tests/list')
+def get_test_list():
+    """Возвращает список всех тестов по категориям"""
+    from modules.tester import SystemTester
+    tester = SystemTester()
+    categories = tester.get_test_categories()
+    return jsonify({'success': True, 'categories': categories})
+
+
+@web_bp.route('/api/tests/run', methods=['POST'])
+def run_tests_api():
+    """Запуск тестов: всех, категории или одного"""
+    try:
+        data = request.get_json() or {}
+        category_id = data.get('category')
+        test_name = data.get('test_name')
+        
+        from modules.tester import SystemTester
+        tester = SystemTester()
+        result = tester.run_selected_tests(category_id=category_id, test_name=test_name)
+        return jsonify(result)
+    except Exception as e:
+        logger.error(f"Ошибка запуска тестов API: {e}", exc_info=True)
+        return jsonify({
+            'success': False,
+            'total': 0,
+            'passed': 0,
+            'failed': 1,
+            'duration': 0,
+            'results': [{'name': 'Тест', 'status': False, 'message': str(e)}]
+        }), 500
+        
 # ========== API ДЛЯ ESN МАППИНГА (ТЕСТИРОВАНИЕ) ==========
 
 @web_bp.route('/api/esn_mapping', methods=['GET'])
@@ -1200,11 +1239,11 @@ def api_get_license_hierarchy(license_id):
     if is_xml:
         return get_xml_hierarchy(license_id, mode, domain, show_all_sparts=show_all)
     else:
-        return get_dat_hierarchy(license_id, mode, domain)
+        return get_dat_hierarchy(license_id, mode, domain, show_all=show_all)
            
 # ========== API ДЛЯ ПРОВЕРКИ ФАЙЛОВ ==========
 
-def get_dat_hierarchy(license_id, mode, domain):
+def get_dat_hierarchy(license_id, mode, domain, show_all=False):
     from modules.database import get_connection
     from modules.capacity_mapper import load_full_capacity_list
     from flask import current_app
@@ -1236,7 +1275,8 @@ def get_dat_hierarchy(license_id, mode, domain):
                 'children': [],
                 'main_bpart': None,
                 'spart_coeff': item.get('spart_coeff'),
-                'formula': item.get('formula')
+                'formula': item.get('formula'),
+                'is_empty': False
             }
     
     for item in full_list:
@@ -1260,6 +1300,31 @@ def get_dat_hierarchy(license_id, mode, domain):
         elif item['type'] != 'spart' and not item.get('parent'):
             orphans.append(item)
     
+    # ========== ДОБАВЛЯЕМ НЕДОСТАЮЩИЕ SPart ИЗ ЦЕЛЕЙ ==========
+    if show_all:
+        conn_targets = get_connection()
+        cursor_targets = conn_targets.cursor()
+        cursor_targets.execute('SELECT DISTINCT capacity_key FROM license_targets WHERE ne_type = ?', (ne_type,))
+        target_sparts = {r[0] for r in cursor_targets.fetchall()}
+        conn_targets.close()
+        
+        for spart_name in target_sparts:
+            if spart_name not in sparts_dict:
+                sparts_dict[spart_name] = {
+                    'name': spart_name,
+                    'value': 0,
+                    'valid_date': '',
+                    'part_number': '',
+                    'dimension': '',
+                    'description': '',
+                    'children': [],
+                    'main_bpart': None,
+                    'spart_coeff': None,
+                    'formula': None,
+                    'is_empty': True
+                }
+    # =====================================================
+    
     conn = get_connection()
     cursor = conn.cursor()
     
@@ -1278,25 +1343,26 @@ def get_dat_hierarchy(license_id, mode, domain):
     conn.close()
     
     for spart in sparts_dict.values():
-        if spart['name'] in values_map:
-            spart['value'] = values_map[spart['name']]
-            spart['valid_date'] = date_map.get(spart['name'], '')
-        else:
-            main_bpart = spart.get('main_bpart')
-            if main_bpart and main_bpart in values_map:
-                spart['value'] = values_map[main_bpart]
-                spart['valid_date'] = date_map.get(main_bpart, '')
+        if not spart.get('is_empty'):
+            if spart['name'] in values_map:
+                spart['value'] = values_map[spart['name']]
+                spart['valid_date'] = date_map.get(spart['name'], '')
             else:
-                spart['value'] = 0
-                spart['valid_date'] = ''
-        
-        spart_coeff = spart.get('spart_coeff')
-        if spart_coeff:
-            try:
-                coeff = float(spart_coeff)
-                spart['value'] = round(spart['value'] * coeff, 2)
-            except (ValueError, TypeError):
-                pass
+                main_bpart = spart.get('main_bpart')
+                if main_bpart and main_bpart in values_map:
+                    spart['value'] = values_map[main_bpart]
+                    spart['valid_date'] = date_map.get(main_bpart, '')
+                else:
+                    spart['value'] = 0
+                    spart['valid_date'] = ''
+            
+            spart_coeff = spart.get('spart_coeff')
+            if spart_coeff:
+                try:
+                    coeff = float(spart_coeff)
+                    spart['value'] = round(spart['value'] * coeff, 2)
+                except (ValueError, TypeError):
+                    pass
         
         for bpart in spart['children']:
             if bpart['name'] in values_map:
@@ -1321,22 +1387,18 @@ def get_dat_hierarchy(license_id, mode, domain):
         ''', (ne_type, city))
         targets_map = {r[0]: r[1] for r in cursor_targets.fetchall()}
         
-        # Сначала вычисляем цели для всех SPart
         spart_targets = {}
         
-        for spart in sparts_dict.values():  # или result_sparts для XML
+        for spart in sparts_dict.values():
             formula = spart.get('formula')
             if formula:
                 formula_str = str(formula).strip()
                 
-                # Если формула = "0" — цель 0
                 if formula_str == '0':
                     spart_targets[spart['name']] = 0
                 
-                # Если формула содержит другой SPart и %
                 elif '*' in formula_str and '%' in formula_str:
                     try:
-                        # Разбираем "SF4SMBVOISW02 * 25%"
                         parts = formula_str.split('*')
                         ref_spart = parts[0].strip()
                         pct_str = parts[1].strip().replace('%', '')
@@ -1349,19 +1411,16 @@ def get_dat_hierarchy(license_id, mode, domain):
                     except:
                         spart_targets[spart['name']] = ''
                 
-                # Если формула — просто имя другого SPart (100%)
                 elif formula_str in spart_targets:
                     spart_targets[spart['name']] = spart_targets[formula_str]
                 elif formula_str in targets_map:
                     spart_targets[spart['name']] = targets_map[formula_str]
             else:
-                # Нет формулы — цель из targets_map
                 spart_targets[spart['name']] = targets_map.get(spart['name'], '')
             
             spart['target_value'] = spart_targets.get(spart['name'], '')
         
-        # Цели для BPart
-        for spart in sparts_dict.values():  # или result_sparts для XML
+        for spart in sparts_dict.values():
             spart_target = spart_targets.get(spart['name'])
             
             for child in spart.get('children', []):
@@ -1369,14 +1428,12 @@ def get_dat_hierarchy(license_id, mode, domain):
                 if child_formula and spart_target:
                     formula_str = str(child_formula).strip()
                     
-                    # Фиксированное число
                     if formula_str.startswith('fix:'):
                         try:
                             child['target_value'] = float(formula_str[4:])
                         except (ValueError, TypeError):
                             child['target_value'] = ''
                     else:
-                        # Множитель
                         try:
                             formula_val = float(formula_str)
                             if formula_val == 1:
@@ -1388,17 +1445,22 @@ def get_dat_hierarchy(license_id, mode, domain):
                 else:
                     child['target_value'] = ''
         
-        for orphan in orphans:  # или all_orphan_bparts для XML
+        for orphan in orphans:
             orphan['target_value'] = targets_map.get(orphan['name'], '')
     
     conn_targets.close()
+    
+    if not show_all:
+        sparts_dict = {
+            name: spart for name, spart in sparts_dict.items() 
+            if spart.get('value', 0) > 0 or (spart.get('target_value') != '' and spart.get('target_value') is not None)
+        }
     
     return jsonify({
         'sparts': list(sparts_dict.values()),
         'orphans': orphans
     })
-
-
+    
 def get_xml_hierarchy(license_id, mode, domain, show_all_sparts=False):
     from modules.database import get_connection
     from modules.capacity_mapper import get_capacity_description, load_full_capacity_list
@@ -1473,8 +1535,18 @@ def get_xml_hierarchy(license_id, mode, domain, show_all_sparts=False):
         }
 
     if show_all_sparts:
+        # Получаем список SPart с целями
+        conn_targets = get_connection()
+        cursor_targets = conn_targets.cursor()
+        cursor_targets.execute('''
+            SELECT DISTINCT capacity_key FROM license_targets
+            WHERE ne_type = ?
+        ''', (ne_type,))
+        target_sparts = {r[0] for r in cursor_targets.fetchall()}
+        conn_targets.close()
+        
         for spart_name in excel_sparts:
-            if spart_name not in existing_sparts:
+            if spart_name not in existing_sparts and spart_name in target_sparts:
                 existing_sparts[spart_name] = {
                     'spart_id': None, 'spart_name': spart_name,
                     'spart_value': 0, 'spart_valid_date': '',
@@ -1699,6 +1771,15 @@ def get_xml_hierarchy(license_id, mode, domain, show_all_sparts=False):
     # ================================================
     
     conn.close()
+    
+    if not show_all_sparts:
+        result_sparts = [
+            spart for spart in result_sparts 
+            if spart.get('is_section') or 
+               (spart.get('value', 0) > 0) or 
+               (spart.get('target_value') != '' and spart.get('target_value') is not None)
+        ]
+        
     return jsonify({'sparts': result_sparts, 'orphans': all_orphan_bparts})
        
 @web_bp.route('/api/check_esn_mapping_files', methods=['GET'])
@@ -1729,7 +1810,6 @@ def api_check_esn_mapping_files():
         'missing_count': missing_count,
         'total_count': len(files)
     })
-
 
 @web_bp.route('/api/check_license_details_files', methods=['GET'])
 def api_check_license_details_files():
@@ -2464,6 +2544,115 @@ def dynamic_fields_page(operator):
                           current_operator_title=op_config.get('title', operator),
                           columns=columns,
                           rules=rules.get('rules', {}))
+    
+    
+@web_bp.route('/<operator>/excel_mapping', methods=['GET', 'POST'])
+def excel_mapping(operator):
+    op_config = get_operator_config(operator)
+    if not op_config:
+        abort(404)
+    
+    from modules.capacity_mapper import load_targets_from_excel, compute_license_targets
+    from modules.database import get_connection
+    
+    targets_file = current_app.config.get('targets_file', '')
+    message = ''
+    domain_targets = []
+    ne_formulas = []
+    computed_targets = []
+    
+    if request.method == 'POST':
+        action = request.form.get('action')
+        
+        if action == 'load':
+            domain_targets, ne_formulas = load_targets_from_excel(targets_file)
+            conn = get_connection()
+            cursor = conn.cursor()
+            cursor.execute('DELETE FROM domain_targets')
+            cursor.execute('DELETE FROM ne_formulas')
+            for t in domain_targets:
+                cursor.execute('INSERT OR REPLACE INTO domain_targets (operator, domain, type, city, value, unit) VALUES (?,?,?,?,?,?)',
+                             (t['operator'], t['domain'], t['type'], t['city'], t['value'], t['unit']))
+            for f in ne_formulas:
+                cursor.execute('INSERT OR REPLACE INTO ne_formulas (domain, type, ne_type, capacity_key, formula, sharing, main_key) VALUES (?,?,?,?,?,?,?)',
+                             (f['domain'], f['type'], f['ne_type'], f['capacity_key'], f['formula'], f['sharing'], f['main_key']))
+            conn.commit()
+            conn.close()
+            message = f'✅ Загружено: {len(domain_targets)} целей, {len(ne_formulas)} формул'
+        
+        elif action == 'compute':
+            conn = get_connection()
+            cursor = conn.cursor()
+            cursor.execute('SELECT operator, domain, type, city, value, unit FROM domain_targets')
+            targets = [dict(zip(['operator','domain','type','city','value','unit'], r)) for r in cursor.fetchall()]
+            cursor.execute('SELECT domain, type, ne_type, capacity_key, formula, sharing, main_key FROM ne_formulas')
+            formulas = [dict(zip(['domain','type','ne_type','capacity_key','formula','sharing','main_key'], r)) for r in cursor.fetchall()]
+            conn.close()
+            computed = compute_license_targets(targets, formulas)
+            conn = get_connection()
+            cursor = conn.cursor()
+            cursor.execute('DELETE FROM license_targets')
+            for c in computed:
+                cursor.execute('INSERT OR REPLACE INTO license_targets (operator, domain, type, city, ne_type, capacity_key, target_value) VALUES (?,?,?,?,?,?,?)',
+                             (c['operator'], c['domain'], c['type'], c['city'], c['ne_type'], c['capacity_key'], c['target_value']))
+            conn.commit()
+            conn.close()
+            computed_targets = computed
+            message = f'✅ Вычислено {len(computed)} целевых значений'
+    
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute('SELECT * FROM domain_targets ORDER BY operator, domain, type, city')
+    domain_targets = [dict(zip(['id','operator','domain','type','city','value','unit'], r)) for r in cursor.fetchall()]
+    cursor.execute('SELECT * FROM ne_formulas ORDER BY domain, type, ne_type')
+    ne_formulas = [dict(zip(['id','domain','type','ne_type','capacity_key','formula','sharing','main_key'], r)) for r in cursor.fetchall()]
+    cursor.execute('SELECT * FROM license_targets ORDER BY operator, domain, city, ne_type')
+    computed_targets = [dict(zip(['id','operator','domain','type','city','ne_type','capacity_key','target_value'], r)) for r in cursor.fetchall()]
+    
+    cursor.execute('SELECT esn, lsn, operator, domain, ne_type, city, site FROM esn_mapping')
+    mappings = cursor.fetchall()
+    conn.close()
+    
+    return render_template('excel_mapping.html',
+                          operators=current_app.config['OPERATORS'],
+                          current_operator=operator,
+                          current_operator_title=op_config.get('title', operator),
+                          domain_targets=domain_targets,
+                          ne_formulas=ne_formulas,
+                          computed_targets=computed_targets,
+                          mappings=mappings,
+                          targets_file=targets_file,
+                          message=message)
+
+
+@web_bp.route('/api/license_details_status')
+def api_license_details_status():
+    from modules.capacity_mapper import load_ne_type_mapping
+    import openpyxl
+    mapping = load_ne_type_mapping()
+    network_storage = current_app.config.get('network_storage_path', '')
+    
+    items = []
+    for ne_type, info in mapping.items():
+        file_path = os.path.join(network_storage, 'license_details', info.get('details_file', ''))
+        exists = os.path.exists(file_path)
+        count = 0
+        if exists:
+            try:
+                wb = openpyxl.load_workbook(file_path, data_only=True)
+                sheet_name = info.get('sheet_name')
+                sheet = wb[sheet_name] if sheet_name and sheet_name in wb.sheetnames else wb.active
+                count = sheet.max_row - 1
+            except:
+                pass
+        items.append({
+            'ne_type': ne_type,
+            'file': info.get('details_file', ''),
+            'exists': exists,
+            'count': count
+        })
+    
+    return jsonify({'success': True, 'items': items})
     
 
 

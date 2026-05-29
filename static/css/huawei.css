@@ -232,8 +232,6 @@ tbody tr:hover td { background: var(--bg-tertiary); }
 .licenses-table.hover-effect tbody tr:hover { background-color: var(--bg-hover) !important; }
 .licenses-table { table-layout: fixed; width: 100%; }
 .licenses-table th, .licenses-table td { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.licenses-table th:last-child,
-.licenses-table td:last-child {width: 40px;text-align: center;}
 
 /* ========== СТРУКТУРА ФИЛЬТРОВ ========== */
 .filters-container {

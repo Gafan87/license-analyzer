@@ -7,7 +7,7 @@
 /* ========== ДВУХКОЛОНОЧНЫЙ МАКЕТ ========== */
 .license-detail-container { display: flex; gap: 1.5rem; align-items: stretch; }
 .left-column { flex: 1; min-width: 0; }
-.right-column { width: 600px; flex-shrink: 0; display: flex; flex-direction: column; gap: 1.5rem; }
+.right-column { width: 750px; flex-shrink: 0; display: flex; flex-direction: column; gap: 1.5rem; }
 
 /* ========== ИНФОРМАЦИОННЫЕ БЛОКИ ========== */
 .info-block { background: var(--bg-primary); border-radius: var(--radius-lg); border: 1px solid var(--border-light); overflow: hidden; }
@@ -139,20 +139,21 @@
                 <table class="resources-table" style="min-width: 600px;">
                     <thead>
                         <tr>
-                            <th>
-                                <span class="toggle-all-sparts" style="cursor: pointer; display: inline-block; width: 20px; user-select: none;" title="Свернуть/развернуть все">▼</span>
+                            <th data-col="capacity_key">
+                                <span class="toggle-all-sparts" ...>▼</span>
                                 CapacityKey
                             </th>
-                            <th>🎯 Цель</th>
-                            <th>Value</th>
-                            <th>Valid till</th>
-                            <th>Bpart</th>
-                            <th>Unit</th>
-                            <th>Description</th>
+                            <th data-col="target">🎯 Цель</th>
+                            <th data-col="delta">Δ Дельта</th>
+                            <th data-col="value">Value</th>
+                            <th data-col="valid_date">Valid till</th>
+                            <th data-col="part_number">Bpart</th>
+                            <th data-col="dimension">Unit</th>
+                            <th data-col="description">Description</th>
                         </tr>
                     </thead>
                     <tbody id="resourcesTableBody">
-                        <tr><td colspan="6" class="text-center">Загрузка...</td></tr>
+                        <tr><td colspan="8" class="text-center">Загрузка...</td></tr>
                     </tbody>
                 </table>
             </div>
@@ -345,10 +346,10 @@
         <div style="margin-top: 1rem; padding-top: 1rem; border-top: 1px solid var(--border-light);">
             <label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer;">
                 <input type="checkbox" id="showAllSpartsToggle" style="width: 18px; height: 18px;">
-                <span>📋 Показывать все SPart из Excel</span>
+                <span>📋 Показывать все SPart</span>
             </label>
             <small class="text-muted" style="display: block; margin-top: 0.25rem; margin-left: 26px;">
-                Отсутствующие в лицензии SPart будут показаны с нулевыми значениями
+                Если выключено — только SPart с заданными целями
             </small>
         </div>
         
@@ -369,6 +370,7 @@
             <div id="visibleColumnsCheckboxes">
                 <label style="display: block; margin-bottom: 0.3rem;"><input type="checkbox" value="capacity_key" checked> CapacityKey</label>
                 <label style="display: block; margin-bottom: 0.3rem;"><input type="checkbox" value="target" checked> 🎯 Цель</label>
+                <label style="display: block; margin-bottom: 0.3rem;"><input type="checkbox" value="delta" checked> Δ Дельта</label>
                 <label style="display: block; margin-bottom: 0.3rem;"><input type="checkbox" value="value" checked> Значение</label>
                 <label style="display: block; margin-bottom: 0.3rem;"><input type="checkbox" value="valid_date" checked> Действителен до</label>
                 <label style="display: block; margin-bottom: 0.3rem;"><input type="checkbox" value="part_number" checked> Part-number</label>
@@ -430,18 +432,17 @@ async function loadHierarchy(licenseId, mode) {
 function renderHierarchyTable(sparts, orphans) {
     const tbody = document.getElementById('resourcesTableBody');
     if ((!sparts || sparts.length === 0) && (!orphans || orphans.length === 0)) {
-        tbody.innerHTML = '<tr><td colspan="7" class="text-center">Нет данных ("license_details" файл не загружен)</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="8" class="text-center">Нет данных ("license_details" файл не загружен)</td></tr>';
         return;
     }
 
     let html = '';
 
     sparts.forEach((spart) => {
-        // === ОБРАБОТКА ЗАГОЛОВКА РАЗДЕЛА ===
         if (spart.is_section) {
             html += `
                 <tr class="section-header-row">
-                    <td colspan="7">
+                    <td colspan="8">
                         <div class="section-header">
                             <span class="section-title">${escapeHtml(spart.name)}</span>
                         </div>
@@ -451,7 +452,6 @@ function renderHierarchyTable(sparts, orphans) {
             return;
         }
 
-        // Обычная обработка SPart...
         const isCollapsed = collapsedSparts.has(spart.name);
         const toggleIcon = isCollapsed ? '▶' : '▼';
         const validDate = spart.valid_date || '-';
@@ -460,6 +460,17 @@ function renderHierarchyTable(sparts, orphans) {
         const valueDisplay = isEmpty ? '<span class="empty-value">—</span>' : spart.value;
         const dateDisplay = isEmpty ? '<span class="empty-value">—</span>' : escapeHtml(validDate);
         const targetDisplay = spart.target_value ? spart.target_value : '';
+        
+        // Дельта
+        const targetVal = parseFloat(spart.target_value) || 0;
+        const actualVal = parseFloat(spart.value) || 0;
+        let delta = '';
+        let deltaColor = '';
+        if (targetVal && actualVal) {
+            const diff = actualVal - targetVal;
+            deltaColor = diff > 0 ? 'green' : diff < 0 ? 'red' : '';
+            delta = `<span style="color: ${deltaColor}; font-weight: 600;">${diff > 0 ? '+' : ''}${diff}</span>`;
+        }
 
         html += `
             <tr class="${rowClass}" data-spart="${spart.name}" ${isEmpty ? 'data-empty="true"' : ''}>
@@ -469,6 +480,7 @@ function renderHierarchyTable(sparts, orphans) {
                     ${isEmpty ? '<span class="empty-badge">нет в лицензии</span>' : ''}
                 </td>
                 <td>${targetDisplay}</td>
+                <td>${delta}</td>
                 <td>${valueDisplay}</td>
                 <td class="valid-date-cell">${dateDisplay}</td>
                 <td>${escapeHtml(spart.part_number || '-')}</td>
@@ -481,6 +493,18 @@ function renderHierarchyTable(sparts, orphans) {
             spart.children.forEach(bpart => {
                 const bpartValidDate = bpart.valid_date || '-';
                 const bpartTarget = bpart.target_value || '';
+                
+                // Дельта для BPart
+                const bpTargetVal = parseFloat(bpart.target_value) || 0;
+                const bpActualVal = parseFloat(bpart.value) || 0;
+                let bpDelta = '';
+                let bpDeltaColor = '';
+                if (bpTargetVal && bpActualVal) {
+                    const diff = bpActualVal - bpTargetVal;
+                    bpDeltaColor = diff > 0 ? 'green' : diff < 0 ? 'red' : '';
+                    bpDelta = `<span style="color: ${bpDeltaColor}; font-weight: 600;">${diff > 0 ? '+' : ''}${diff}</span>`;
+                }
+                
                 html += `
                     <tr class="bpart-row" data-parent="${spart.name}">
                         <td style="padding-left: 2rem;">
@@ -488,6 +512,7 @@ function renderHierarchyTable(sparts, orphans) {
                             ${bpart.is_main ? '<span class="main-badge">(main)</span>' : ''}
                         </td>
                         <td>${bpartTarget}</td>
+                        <td>${bpDelta}</td>
                         <td>${bpart.value}</td>
                         <td class="valid-date-cell">${bpartValidDate}</td>
                         <td>${escapeHtml(bpart.part_number || '-')}</td>
@@ -499,7 +524,7 @@ function renderHierarchyTable(sparts, orphans) {
         } else if (!isCollapsed && isEmpty) {
             html += `
                 <tr class="bpart-row spart-empty-child" data-parent="${spart.name}">
-                    <td colspan="7" style="padding-left: 2rem; color: var(--text-muted); font-style: italic;">
+                    <td colspan="8" style="padding-left: 2rem; color: var(--text-muted); font-style: italic;">
                         ⚠️ Этот SPart отсутствует в файле лицензии. Значения не заданы.
                     </td>
                 </tr>
@@ -508,14 +533,27 @@ function renderHierarchyTable(sparts, orphans) {
     });
 
     if (orphans && orphans.length > 0) {
-        html += `<tr class="separator"><td colspan="7" style="background: var(--bg-secondary); padding: 0.5rem;"><strong>📌 Прочие CapacityKey</strong></td></tr>`;
+        html += `<tr class="separator"><td colspan="8" style="background: var(--bg-secondary); padding: 0.5rem;"><strong>📌 Прочие CapacityKey</strong></td></tr>`;
         orphans.forEach(orphan => {
             const orphanValidDate = orphan.valid_date || '-';
             const orphanTarget = orphan.target_value || '';
+            
+            // Дельта для orphan
+            const orTargetVal = parseFloat(orphan.target_value) || 0;
+            const orActualVal = parseFloat(orphan.value) || 0;
+            let orDelta = '';
+            let orDeltaColor = '';
+            if (orTargetVal && orActualVal) {
+                const diff = orActualVal - orTargetVal;
+                orDeltaColor = diff > 0 ? 'green' : diff < 0 ? 'red' : '';
+                orDelta = `<span style="color: ${orDeltaColor}; font-weight: 600;">${diff > 0 ? '+' : ''}${diff}</span>`;
+            }
+            
             html += `
                 <tr class="orphan-row">
                     <td style="padding-left: 2rem;">${escapeHtml(orphan.name)}</td>
                     <td>${orphanTarget}</td>
+                    <td>${orDelta}</td>
                     <td>${orphan.value}</td>
                     <td class="valid-date-cell">${orphanValidDate}</td>
                     <td>${escapeHtml(orphan.part_number || '-')}</td>
@@ -579,26 +617,38 @@ function renderHierarchyTable(sparts, orphans) {
     // ========== ПЕРЕКЛЮЧЕНИЕ РЕЖИМОВ ==========
 function initResourceFilters() {
     const chips = document.querySelectorAll('.filter-chip');
-    
-    // Восстанавливаем сохранённый режим
-    const savedMode = localStorage.getItem('resourceMode') || 'total';
-    currentResourceMode = savedMode;
+    if (chips.length === 0) return;
+
+    // Восстанавливаем режим из localStorage
+    const savedMode = localStorage.getItem('resourceMode');
+    if (savedMode && savedMode !== 'undefined') {
+        currentResourceMode = savedMode;
+    }
+    if (!currentResourceMode || currentResourceMode === 'undefined') {
+        currentResourceMode = 'total';
+    }
+
+    // Подсвечиваем активную кнопку (только у которых есть data-mode)
     chips.forEach(c => c.classList.remove('active'));
-    const activeChip = document.querySelector(`.filter-chip[data-mode="${savedMode}"]`);
-    if (activeChip) activeChip.classList.add('active');
-    
+    const activeChip = document.querySelector(`.filter-chip[data-mode="${currentResourceMode}"]`);
+    if (activeChip) {
+        activeChip.classList.add('active');
+    }
+
+    // Обработчики клика
     chips.forEach(chip => {
         chip.addEventListener('click', function() {
             const mode = this.dataset.mode;
+            if (!mode) return; // Пропускаем кнопки без data-mode (например ⚙️)
+            
             chips.forEach(c => c.classList.remove('active'));
             this.classList.add('active');
             currentResourceMode = mode;
-            localStorage.setItem('resourceMode', mode);  // ← сохраняем
+            localStorage.setItem('resourceMode', mode);
             loadHierarchy(currentLicenseId, mode);
         });
     });
 }
-
     // ========== ТЕГИ ==========
     document.getElementById('addTagBtn')?.addEventListener('click', async () => {
         const tagName = prompt('Введите название тега:');
@@ -987,12 +1037,13 @@ const modalClose = document.querySelector('#tableSettingsModal .modal-close');
 let savedFontSize = localStorage.getItem('license_detail_font_size') || '12';
 let savedRowHeight = localStorage.getItem('license_detail_row_height') || '32';
 let savedColumns = JSON.parse(localStorage.getItem('license_detail_visible_columns') || 
-    '["capacity_key", "value", "valid_date", "part_number", "dimension", "description"]');
+    '["capacity_key", "target", "delta", "value", "valid_date", "part_number", "dimension", "description"]');
 
 // Колонки и их порядок
 const columnConfig = [
     { key: 'capacity_key', label: 'CapacityKey', defaultWidth: 200 },
     { key: 'target', label: '🎯 Цель', defaultWidth: 80 },
+    { key: 'delta', label: 'Δ Дельта', defaultWidth: 80 },
     { key: 'value', label: 'Value', defaultWidth: 80 },
     { key: 'valid_date', label: 'Valid till', defaultWidth: 100 },
     { key: 'part_number', label: 'Part-number', defaultWidth: 100 },
@@ -1008,32 +1059,30 @@ function applyFontAndRow() {
 
 // Обновление видимости колонок (работает для всей таблицы)
 function updateColumnsVisibility() {
-    const columnIndices = {};
-    columnConfig.forEach((col, idx) => {
-        columnIndices[col.key] = idx;
-    });
-    
     // Скрываем/показываем заголовки
     const ths = document.querySelectorAll('.resources-table thead th');
-    ths.forEach((th, idx) => {
-        const colKey = columnConfig[idx]?.key;
+    ths.forEach(th => {
+        const colKey = th.getAttribute('data-col');
         if (colKey && !savedColumns.includes(colKey)) {
             th.style.display = 'none';
         } else if (colKey) {
             th.style.display = '';
         }
     });
-    
-    // Скрываем/показываем ячейки во всех строках
+
+    // Скрываем/показываем ячейки
     const rows = document.querySelectorAll('#resourcesTableBody tr');
     rows.forEach(row => {
         const cells = row.querySelectorAll('td');
         cells.forEach((cell, idx) => {
-            const colKey = columnConfig[idx]?.key;
-            if (colKey && !savedColumns.includes(colKey)) {
-                cell.style.display = 'none';
-            } else if (colKey) {
-                cell.style.display = '';
+            const th = ths[idx];
+            if (th) {
+                const colKey = th.getAttribute('data-col');
+                if (colKey && !savedColumns.includes(colKey)) {
+                    cell.style.display = 'none';
+                } else {
+                    cell.style.display = '';
+                }
             }
         });
     });
@@ -1062,8 +1111,10 @@ openBtn?.addEventListener('click', () => {
     modal.style.display = 'flex';
 });
 
+// В функции closeModal()
 function closeModal() {
     modal.style.display = 'none';
+    loadHierarchy(currentLicenseId, currentResourceMode);
 }
 
 closeBtn?.addEventListener('click', closeModal);
@@ -1083,10 +1134,7 @@ if (showAllSpartsToggle) {
     // При изменении — сохраняем и перезагружаем иерархию
     showAllSpartsToggle.addEventListener('change', function() {
         localStorage.setItem('showAllSparts', this.checked);
-        
-        // Перезагружаем иерархию с новым параметром
-        const currentMode = document.querySelector('.mode-btn.active')?.dataset?.mode || 'total';
-        loadHierarchy(currentMode);
+        loadHierarchy(currentLicenseId, currentResourceMode);
     });
 }
 

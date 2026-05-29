@@ -33,6 +33,14 @@
             <span class="card-desc">Тестирование и информация</span>
         </div>
     </div>
+    <div class="settings-nav-card" data-tab="testing">
+        <i class="fas fa-vial"></i>
+        <div class="card-info">
+            <span class="card-title">🧪 Тестирование</span>
+            <span class="card-desc">Запуск и результаты тестов</span>
+        </div>
+    </div>
+
 </div>
 
 <!-- Вкладка: Общие (включая бэкапы) -->
@@ -200,15 +208,7 @@
 <div id="tab-system" class="tab-content">
     <div class="card">
         <h1>Системная информация</h1>
-        
-        <h3>🧪 Тестирование системы</h3>
-        <div style="display: flex; gap: 1rem; align-items: center; margin-bottom: 1rem; flex-wrap: wrap;">
-            <button id="runTestsBtn" class="btn-primary">▶️ Запустить тестирование</button>
-            <span id="testStatus" class="text-muted"></span>
-        </div>
-        
-        <div id="testResults" class="hidden"></div>
-        
+
         <h3>ℹ️ Информация о системе</h3>
         <div class="info-card">
             <div class="info-row">
@@ -232,7 +232,7 @@
                 <code>logs/app.log</code>
             </div>
         </div>
-        
+
         <div class="stats-grid">
             <div class="stat-card-mini">
                 <div class="value">{{ stats.licenses_count or 0 }}</div>
@@ -247,11 +247,50 @@
                 <div class="label">Размер БД (MB)</div>
             </div>
         </div>
-        
+
         <h3>🔄 Действия</h3>
         <div style="display: flex; gap: 1rem; flex-wrap: wrap;">
             <button id="clearLogsBtn" class="btn-warning">🗑️ Очистить логи</button>
             <button id="resetDbBtn" class="btn-secondary">⚠️ Сбросить локальную БД</button>
+        </div>
+    </div>
+</div>
+
+<!-- Вкладка: Тестирование -->
+<div id="tab-testing" class="tab-content">
+    <div class="card">
+        <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 1rem; margin-bottom: 1.5rem;">
+            <h1 style="margin: 0;">🧪 Тестирование системы</h1>
+            <div style="display: flex; gap: 0.5rem;">
+                <button id="toggleAllBtn" class="secondary-btn">📂 Раскрыть всё</button>
+                <button id="runAllTestsBtn" class="btn-primary">▶️ Запустить все тесты</button>
+                <button id="refreshTestListBtn" class="secondary-btn">🔄 Обновить список</button>
+            </div>
+        </div>
+
+        <!-- Прогресс-бар -->
+        <div id="testProgressContainer" class="hidden" style="margin-bottom: 1rem;">
+            <div style="display: flex; justify-content: space-between; margin-bottom: 0.25rem;">
+                <span id="testProgressLabel" class="text-muted">Прогресс: 0/0</span>
+                <span id="testProgressPercent" class="text-muted">0%</span>
+            </div>
+            <div style="background: var(--bg-secondary); border-radius: 10px; height: 8px; overflow: hidden;">
+                <div id="testProgressBar" style="background: var(--huawei-red); height: 100%; width: 0%; transition: width 0.3s;"></div>
+            </div>
+        </div>
+
+        <!-- Сводка -->
+        <div id="testSummary" class="hidden" style="margin-bottom: 1.5rem;"></div>
+
+        <!-- Категории тестов -->
+        <div id="testCategories">
+            <div class="text-muted" style="text-align: center; padding: 2rem;">⏳ Загрузка списка тестов...</div>
+        </div>
+
+        <!-- Детальные результаты -->
+        <div id="testDetailResults" class="hidden" style="margin-top: 1.5rem;">
+            <h3>📋 Результаты</h3>
+            <div id="testDetailContent"></div>
         </div>
     </div>
 </div>
@@ -283,68 +322,7 @@
         document.body.classList.add('dark');
         document.getElementById('currentTheme').innerText = 'тёмная';
     }
-    
-    // Тестирование
-    document.getElementById('runTestsBtn')?.addEventListener('click', async function() {
-        const btn = this;
-        const testResults = document.getElementById('testResults');
-        const testStatus = document.getElementById('testStatus');
         
-        btn.disabled = true;
-        btn.innerHTML = '⏳ Тестирование...';
-        testStatus.innerHTML = 'Запуск тестов...';
-        testResults.classList.add('hidden');
-        
-        try {
-            const resp = await fetch('/run_tests', { 
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' }
-            });
-            const data = await resp.json();
-            
-            testResults.classList.remove('hidden');
-            
-            const summaryDiv = document.createElement('div');
-            const listDiv = document.createElement('div');
-            
-            if (data.success) {
-                summaryDiv.className = 'test-summary success';
-                summaryDiv.innerHTML = `✅ Все тесты пройдены! (${data.passed}/${data.total}) за ${data.duration} сек.`;
-                testStatus.innerHTML = '✅ Все тесты пройдены';
-            } else {
-                summaryDiv.className = 'test-summary failed';
-                summaryDiv.innerHTML = `❌ Пройдено ${data.passed}/${data.total} тестов. ${data.failed} ошибок за ${data.duration} сек.`;
-                testStatus.innerHTML = '❌ Есть ошибки';
-            }
-            
-            listDiv.className = 'test-list';
-            listDiv.innerHTML = data.results.map(r => `
-                <div class="test-item ${r.status ? 'passed' : 'failed'}">
-                    <div>
-                        <div class="test-name">${r.name}</div>
-                        ${!r.status ? `<div class="test-message">❌ ${r.message}</div>` : ''}
-                    </div>
-                    <span class="test-status ${r.status ? 'passed' : 'failed'}">
-                        ${r.status ? '✅' : '❌'}
-                    </span>
-                </div>
-            `).join('');
-            
-            testResults.innerHTML = '';
-            testResults.appendChild(summaryDiv);
-            testResults.appendChild(listDiv);
-            
-        } catch(e) {
-            testStatus.innerHTML = '❌ Ошибка запуска тестов';
-            testResults.classList.remove('hidden');
-            testResults.innerHTML = `<div class="test-summary failed">❌ Ошибка: ${e.message}</div>`;
-        } finally {
-            btn.disabled = false;
-            btn.innerHTML = '▶️ Запустить тестирование';
-            setTimeout(() => { testStatus.innerHTML = ''; }, 3000);
-        }
-    });
-    
     // Проверка хранилища
     fetch('/settings/check_storage')
         .then(r => r.json())
@@ -667,6 +645,420 @@ document.getElementById('configureEsnMappingBtn')?.addEventListener('click', () 
 
 document.getElementById('configureLicenseDetailsBtn')?.addEventListener('click', () => {
     window.location.href = '/capacity_keys_mapping';
+});
+
+
+// ========== НОВАЯ СИСТЕМА ТЕСТИРОВАНИЯ ==========
+
+let allCategories = [];
+let currentResults = {}; // { testId: { status: true/false, message: '...' } }
+
+// Загрузка списка тестов
+async function loadTestList() {
+    const container = document.getElementById('testCategories');
+    container.innerHTML = '<div class="text-muted" style="text-align: center; padding: 2rem;">⏳ Загрузка списка тестов...</div>';
+    
+    try {
+        const resp = await fetch('/api/tests/list');
+        const data = await resp.json();
+        
+        if (data.success && data.categories) {
+            allCategories = data.categories;
+            currentResults = {};
+            renderTestCategories(data.categories);
+        } else {
+            container.innerHTML = '<div class="test-summary failed">❌ Ошибка загрузки списка тестов</div>';
+        }
+    } catch (e) {
+        container.innerHTML = `<div class="test-summary failed">❌ Ошибка: ${e.message}</div>`;
+    }
+}
+
+// Отрисовка категорий тестов
+function renderTestCategories(categories) {
+    const container = document.getElementById('testCategories');
+    
+    let html = '';
+    categories.forEach(cat => {
+        const testCount = cat.tests.length;
+        const catId = cat.id;
+        
+        html += `
+            <div class="test-category-card" style="margin-bottom: 0.75rem; border: 1px solid var(--border-light); border-radius: var(--radius-md); overflow: hidden;">
+                <!-- Заголовок категории -->
+                <div class="test-category-header" style="display: flex; justify-content: space-between; align-items: center; padding: 0.6rem 1rem; background: var(--bg-secondary); cursor: pointer;" onclick="toggleCategory('${catId}')">
+                    <div style="display: flex; align-items: center; gap: 0.5rem;">
+                        <span>${cat.icon}</span>
+                        <strong>${cat.name}</strong>
+                        <span class="badge" style="background: var(--bg-tertiary);">${testCount}</span>
+                        <span id="cat-result-${catId}" style="font-size: 0.75rem; display: none;"></span>
+                    </div>
+                    <div style="display: flex; gap: 0.5rem; align-items: center;">
+                        <button class="secondary-btn" style="font-size: 0.7rem; padding: 0.25rem 0.5rem;" onclick="event.stopPropagation(); runCategoryTests('${catId}')">▶️ Запустить</button>
+                        <span id="cat-arrow-${catId}" style="transition: transform 0.2s;">▶</span>
+                    </div>
+                </div>
+                
+                <!-- Тело категории (скрыто по умолчанию) -->
+                <div id="cat-body-${catId}" class="test-category-body" style="display: none;">
+                    ${cat.tests.map(test => `
+                        <div class="test-row" id="test-row-${test.id}" style="display: flex; justify-content: space-between; align-items: center; padding: 0.4rem 1rem; border-bottom: 1px solid var(--border-light); transition: background 0.2s;">
+                            <div style="flex: 1; display: flex; align-items: center; gap: 0.5rem;">
+                                <span id="test-icon-${test.id}" style="font-size: 0.9rem; width: 20px; text-align: center;">⬜</span>
+                                <span style="font-size: 0.8rem;">${test.name}</span>
+                                <span id="test-msg-${test.id}" style="font-size: 0.7rem; color: var(--text-muted); display: none;"></span>
+                            </div>
+                            <div style="display: flex; gap: 0.5rem; align-items: center;">
+                                <span id="test-time-${test.id}" style="font-size: 0.65rem; color: var(--text-muted); min-width: 40px; text-align: right;"></span>
+                                <button class="secondary-btn" style="font-size: 0.65rem; padding: 0.2rem 0.5rem;" onclick="event.stopPropagation(); runSingleTest('${test.id}')">▶️</button>
+                            </div>
+                        </div>
+                    `).join('')}
+                </div>
+            </div>
+        `;
+    });
+    
+    container.innerHTML = html;
+}
+
+// Сворачивание/разворачивание категории
+function toggleCategory(catId) {
+    const body = document.getElementById(`cat-body-${catId}`);
+    const arrow = document.getElementById(`cat-arrow-${catId}`);
+    
+    if (!body || !arrow) return;
+    
+    if (body.style.display === 'none') {
+        body.style.display = 'block';
+        arrow.textContent = '▼';
+    } else {
+        body.style.display = 'none';
+        arrow.textContent = '▶';
+    }
+}
+
+// Обновление статуса одного теста в строке
+function updateTestRow(testId, status, message, time) {
+    const row = document.getElementById(`test-row-${testId}`);
+    const icon = document.getElementById(`test-icon-${testId}`);
+    const msg = document.getElementById(`test-msg-${testId}`);
+    const timeEl = document.getElementById(`test-time-${testId}`);
+    
+    if (!row || !icon) return;
+    
+    currentResults[testId] = { status, message, time };
+    
+    if (status) {
+        icon.textContent = '✅';
+        row.style.background = '#f0fff4';
+    } else {
+        icon.textContent = '❌';
+        row.style.background = '#fff5f5';
+    }
+    
+    // Показываем сообщение всегда (и для успеха, и для ошибки)
+    if (msg && message) {
+        const shortMsg = message.length > 100 ? message.substring(0, 100) + '...' : message;
+        msg.textContent = shortMsg;
+        msg.style.display = 'inline';
+        msg.style.color = status ? 'var(--text-muted)' : 'var(--huawei-red)';
+    }
+    
+    if (timeEl && time !== undefined) {
+        timeEl.textContent = time.toFixed(2) + 'с';
+    }
+}
+
+// Обновление сводки категории
+function updateCategorySummary(catId) {
+    const cat = allCategories.find(c => c.id === catId);
+    if (!cat) return;
+    
+    const resultEl = document.getElementById(`cat-result-${catId}`);
+    if (!resultEl) return;
+    
+    let passed = 0;
+    let failed = 0;
+    let total = 0;
+    
+    cat.tests.forEach(test => {
+        const r = currentResults[test.id];
+        if (r) {
+            total++;
+            if (r.status) passed++;
+            else failed++;
+        }
+    });
+    
+    if (total > 0) {
+        resultEl.style.display = 'inline';
+        if (failed === 0) {
+            resultEl.innerHTML = `<span style="color: #10B981;">✅ ${passed}/${cat.tests.length}</span>`;
+        } else {
+            resultEl.innerHTML = `<span style="color: var(--huawei-red);">❌ ${passed}/${cat.tests.length} (${failed} ошибок)</span>`;
+        }
+    } else {
+        resultEl.style.display = 'none';
+    }
+}
+
+// Сброс всех статусов
+function resetAllStatuses() {
+    currentResults = {};
+    
+    document.querySelectorAll('[id^="test-icon-"]').forEach(el => {
+        el.textContent = '⬜';
+    });
+    document.querySelectorAll('[id^="test-msg-"]').forEach(el => {
+        el.style.display = 'none';
+    });
+    document.querySelectorAll('[id^="test-time-"]').forEach(el => {
+        el.textContent = '';
+    });
+    document.querySelectorAll('[id^="test-row-"]').forEach(el => {
+        el.style.background = '';
+    });
+    document.querySelectorAll('[id^="cat-result-"]').forEach(el => {
+        el.style.display = 'none';
+    });
+    
+    document.getElementById('testSummary')?.classList.add('hidden');
+}
+
+// Прогресс-бар
+function showProgress(current, total) {
+    const container = document.getElementById('testProgressContainer');
+    if (!container) return;
+    container.classList.remove('hidden');
+    const pct = total > 0 ? Math.round((current / total) * 100) : 0;
+    document.getElementById('testProgressBar').style.width = pct + '%';
+    document.getElementById('testProgressLabel').textContent = `Прогресс: ${current}/${total}`;
+    document.getElementById('testProgressPercent').textContent = pct + '%';
+}
+
+function hideProgress() {
+    const container = document.getElementById('testProgressContainer');
+    if (container) container.classList.add('hidden');
+}
+
+// Сводка вверху
+function showSummary(passed, total, failed, duration) {
+    const container = document.getElementById('testSummary');
+    if (!container) return;
+    container.classList.remove('hidden');
+    container.className = failed === 0 ? 'test-summary success' : 'test-summary failed';
+    container.innerHTML = failed === 0 
+        ? `✅ Все тесты пройдены! (${passed}/${total}) за ${duration} сек.`
+        : `❌ Пройдено ${passed}/${total}. Ошибок: ${failed} за ${duration} сек.`;
+}
+
+// Запуск одного теста
+async function runSingleTest(testId) {
+    const btn = event?.target;
+    if (btn) { btn.disabled = true; btn.textContent = '⏳'; }
+    
+    const startTime = performance.now();
+    
+    // Показываем что тест выполняется
+    const icon = document.getElementById(`test-icon-${testId}`);
+    if (icon) icon.textContent = '⏳';
+    
+    try {
+        const resp = await fetch('/api/tests/run', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ test_name: testId })
+        });
+        const data = await resp.json();
+        const elapsed = (performance.now() - startTime) / 1000;
+        
+        if (data.results && data.results.length > 0) {
+            const r = data.results[0];
+            updateTestRow(testId, r.status, r.message, elapsed);
+        } else {
+            updateTestRow(testId, false, 'Нет результата', elapsed);
+        }
+        
+        // Обновляем сводку категории
+        for (const cat of allCategories) {
+            if (cat.tests.some(t => t.id === testId)) {
+                updateCategorySummary(cat.id);
+                // Автоматически раскрываем категорию
+                const body = document.getElementById(`cat-body-${cat.id}`);
+                if (body) body.style.display = 'block';
+                const arrow = document.getElementById(`cat-arrow-${cat.id}`);
+                if (arrow) arrow.textContent = '▼';
+                break;
+            }
+        }
+        
+    } catch (e) {
+        const elapsed = (performance.now() - startTime) / 1000;
+        updateTestRow(testId, false, e.message, elapsed);
+    } finally {
+        if (btn) { btn.disabled = false; btn.textContent = '▶️'; }
+    }
+}
+
+// Запуск категории тестов
+async function runCategoryTests(catId) {
+    const category = allCategories.find(c => c.id === catId);
+    if (!category) return;
+    
+    // Раскрываем категорию
+    const body = document.getElementById(`cat-body-${catId}`);
+    if (body) body.style.display = 'block';
+    const arrow = document.getElementById(`cat-arrow-${catId}`);
+    if (arrow) arrow.textContent = '▼';
+    
+    // Сбрасываем статусы в категории
+    category.tests.forEach(test => {
+        const icon = document.getElementById(`test-icon-${test.id}`);
+        if (icon) icon.textContent = '⏳';
+        const msg = document.getElementById(`test-msg-${test.id}`);
+        if (msg) msg.style.display = 'none';
+        const row = document.getElementById(`test-row-${test.id}`);
+        if (row) row.style.background = '';
+    });
+    const catResult = document.getElementById(`cat-result-${catId}`);
+    if (catResult) catResult.style.display = 'none';
+    
+    // Очищаем старые результаты
+    category.tests.forEach(t => delete currentResults[t.id]);
+    
+    const total = category.tests.length;
+    let passed = 0;
+    let failed = 0;
+    showProgress(0, total);
+    
+    for (let i = 0; i < category.tests.length; i++) {
+        const test = category.tests[i];
+        const startTime = performance.now();
+        
+        try {
+            const resp = await fetch('/api/tests/run', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ test_name: test.id })
+            });
+            const data = await resp.json();
+            const elapsed = (performance.now() - startTime) / 1000;
+            
+            if (data.results && data.results.length > 0) {
+                const r = data.results[0];
+                updateTestRow(test.id, r.status, r.message, elapsed);
+                r.status ? passed++ : failed++;
+            } else {
+                updateTestRow(test.id, false, 'Нет результата', elapsed);
+                failed++;
+            }
+        } catch (e) {
+            const elapsed = (performance.now() - startTime) / 1000;
+            updateTestRow(test.id, false, e.message, elapsed);
+            failed++;
+        }
+        
+        showProgress(i + 1, total);
+    }
+    
+    updateCategorySummary(catId);
+    hideProgress();
+    showSummary(passed, total, failed, 0);
+}
+
+// Запуск всех тестов
+document.getElementById('runAllTestsBtn')?.addEventListener('click', async function() {
+    const btn = this;
+    btn.disabled = true;
+    btn.textContent = '⏳ Выполнение всех тестов...';
+    
+    resetAllStatuses();
+    
+    // Раскрываем все категории
+    allCategories.forEach(cat => {
+        const body = document.getElementById(`cat-body-${cat.id}`);
+        if (body) body.style.display = 'block';
+        const arrow = document.getElementById(`cat-arrow-${cat.id}`);
+        if (arrow) arrow.textContent = '▼';
+        // Ставим ⏳ всем тестам
+        cat.tests.forEach(test => {
+            const icon = document.getElementById(`test-icon-${test.id}`);
+            if (icon) icon.textContent = '⏳';
+        });
+    });
+    
+    hideProgress();
+    
+    try {
+        const resp = await fetch('/run_tests', { 
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' }
+        });
+        const data = await resp.json();
+        
+        showSummary(data.passed, data.total, data.failed, data.duration);
+        
+        if (data.results) {
+            data.results.forEach(r => {
+                // Ищем testId по имени
+                for (const cat of allCategories) {
+                    const test = cat.tests.find(t => t.name === r.name);
+                    if (test) {
+                        updateTestRow(test.id, r.status, r.message, data.duration);
+                        break;
+                    }
+                }
+            });
+            
+            // Обновляем сводки всех категорий
+            allCategories.forEach(cat => updateCategorySummary(cat.id));
+        }
+        
+    } catch(e) {
+        showSummary(0, 0, 1, 0);
+        document.getElementById('testSummary').innerHTML = `<div class="test-summary failed">❌ ${e.message}</div>`;
+    } finally {
+        btn.disabled = false;
+        btn.textContent = '▶️ Запустить все тесты';
+    }
+});
+
+// Обновление списка
+document.getElementById('refreshTestListBtn')?.addEventListener('click', () => {
+    resetAllStatuses();
+    hideProgress();
+    loadTestList();
+});
+
+// Загрузка списка при открытии вкладки
+document.querySelector('[data-tab="testing"]')?.addEventListener('click', () => {
+    if (allCategories.length === 0) loadTestList();
+});
+
+// Автозагрузка если вкладка активна по умолчанию
+if (document.getElementById('tab-testing')?.classList.contains('active')) {
+    loadTestList();
+}
+
+// Кнопка раскрытия/скрытия всех категорий
+let allExpanded = false;
+
+document.getElementById('toggleAllBtn')?.addEventListener('click', function() {
+    allExpanded = !allExpanded;
+    this.textContent = allExpanded ? '📁 Скрыть всё' : '📂 Раскрыть всё';
+    
+    allCategories.forEach(cat => {
+        const body = document.getElementById(`cat-body-${cat.id}`);
+        const arrow = document.getElementById(`cat-arrow-${cat.id}`);
+        
+        if (body) {
+            body.style.display = allExpanded ? 'block' : 'none';
+        }
+        if (arrow) {
+            arrow.textContent = allExpanded ? '▼' : '▶';
+        }
+    });
 });
 
 </script>
