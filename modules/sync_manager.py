@@ -122,7 +122,6 @@ def sync_license_to_remote(license_info, remote_base, modified_by='system'):
         # Если local_path пустой — пропускаем копирование
         if not local_path or not os.path.exists(local_path):
             logger.warning(f"local_path пуст для {filename}, пропускаем копирование файла")
-            save_license(license_info, modified_by)
             return True
 
         # Проверяем хеш
@@ -136,7 +135,6 @@ def sync_license_to_remote(license_info, remote_base, modified_by='system'):
             
             if remote_hash == file_hash:
                 logger.debug(f"Файл не изменился: {filename}")
-                save_license(license_info, modified_by)
                 return True
 
         # Копируем файл
@@ -154,7 +152,6 @@ def sync_license_to_remote(license_info, remote_base, modified_by='system'):
         else:
             logger.warning(f"Локальный файл не найден: {local_path}")
 
-        save_license(license_info, modified_by)
         return True
 
     except Exception as e:

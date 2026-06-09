@@ -179,10 +179,12 @@ def init_local_db(db_path=None):
             operator TEXT,
             domain TEXT,
             type TEXT,
+            unit TEXT,
+            target_key TEXT,
             city TEXT,
             value REAL,
-            unit TEXT,
-            UNIQUE(operator, domain, type, city)
+            sharing INTEGER DEFAULT 1,
+            UNIQUE(operator, target_key, city)
         )
     ''')
 
@@ -190,6 +192,7 @@ def init_local_db(db_path=None):
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS ne_formulas (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
+            operator TEXT,
             domain TEXT,
             type TEXT,
             ne_type TEXT,
@@ -197,7 +200,7 @@ def init_local_db(db_path=None):
             formula TEXT,
             sharing INTEGER DEFAULT 1,
             main_key BOOLEAN DEFAULT 0,
-            UNIQUE(domain, type, ne_type, capacity_key)
+            UNIQUE(operator, domain, type, ne_type, capacity_key)
         )
     ''')
 
@@ -206,13 +209,12 @@ def init_local_db(db_path=None):
         CREATE TABLE IF NOT EXISTS license_targets (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             operator TEXT,
-            domain TEXT,
-            type TEXT,
+            target_key TEXT,
             city TEXT,
             ne_type TEXT,
             capacity_key TEXT,
             target_value REAL,
-            UNIQUE(operator, domain, type, city, ne_type, capacity_key)
+            UNIQUE(operator, target_key, city, ne_type, capacity_key)
         )
     ''')
         
@@ -842,10 +844,12 @@ def get_all_licenses(operator=None, ne_type=None, city=None):
     """Получает список лицензий с фильтрацией"""
     conn = get_connection()
     cursor = conn.cursor()
-    
-    query = 'SELECT id, operator, ne_type, city, site, year, lsn, product, version, create_time, valid_date FROM licenses WHERE 1=1'
+
+    query = '''SELECT id, operator, ne_type, city, site, year, lsn, product, version, 
+               create_time, valid_date, filename, file_hash, domain, local_path, esn, node
+               FROM licenses WHERE 1=1'''
     params = []
-    
+
     if operator and operator != 'all':
         query += ' AND operator = ?'
         params.append(operator)
@@ -855,17 +859,21 @@ def get_all_licenses(operator=None, ne_type=None, city=None):
     if city and city != 'all':
         query += ' AND city = ?'
         params.append(city)
-    
+
     query += ' ORDER BY operator, ne_type, city, year DESC'
-    
+
     cursor.execute(query, params)
     rows = cursor.fetchall()
     conn.close()
-    
-    return [{'id': r[0], 'operator': r[1], 'ne_type': r[2], 'city': r[3], 
-             'site': r[4], 'year': r[5] or 'бессрочная', 'lsn': r[6], 
-             'product': r[7], 'version': r[8], 'create_time': r[9], 'valid_date': r[10]} for r in rows]
 
+    return [{
+        'id': r[0], 'operator': r[1], 'ne_type': r[2], 'city': r[3], 
+        'site': r[4], 'year': r[5] or 'бессрочная', 'lsn': r[6], 
+        'product': r[7], 'version': r[8], 'create_time': r[9], 'valid_date': r[10],
+        'filename': r[11], 'file_hash': r[12], 'domain': r[13], 'local_path': r[14],
+        'esn': r[15], 'node': r[16]
+    } for r in rows]
+    
 def get_license_by_id(license_id):
     """Получает лицензию по ID"""
     conn = get_connection()

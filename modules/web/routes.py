@@ -204,6 +204,9 @@ def sync_operator_route(operator):
     if not op_config:
         return jsonify({'success': False, 'message': 'Оператор не найден'}), 404
 
+    from modules.database import force_release_all_connections
+    import time
+
     licenses = get_all_licenses(operator=operator)
 
     if not licenses:
@@ -214,8 +217,29 @@ def sync_operator_route(operator):
         return jsonify({'success': False, 'message': 'Не указан путь к сетевому хранилищу'}), 400
 
     try:
+        # Освобождаем БД перед синхронизацией
+        import gc
+        gc.collect()
+        
+        # Закрываем соединение от get_all_licenses
+        # (оно уже закрыто, но нужно очистить WAL)
+        import sqlite3
+        wal_conn = sqlite3.connect('local_licenses.db', timeout=5.0)
+        wal_conn.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+        wal_conn.close()
+        
+        time.sleep(0.5)
+        
+        force_release_all_connections()
+        time.sleep(0.5)
+
         licenses_to_sync = []
         for lic in licenses:
+            # Пропускаем лицензии без local_path
+            local_path = lic.get('local_path', '')
+            if not local_path:
+                continue
+                
             licenses_to_sync.append({
                 'filename': lic.get('filename', 'unknown.dat'),
                 'operator': operator,
@@ -225,11 +249,14 @@ def sync_operator_route(operator):
                 'site': lic.get('site', 'Unknown'),
                 'year': lic.get('year', 'permanent'),
                 'lsn': lic.get('lsn', ''),
-                'local_path': lic.get('local_path', ''),
+                'local_path': local_path,
                 'file_hash': lic.get('file_hash', ''),
                 'version': lic.get('version', ''),
                 'valid_date': lic.get('valid_date', '')
             })
+
+        if not licenses_to_sync:
+            return jsonify({'success': False, 'message': 'Нет лицензий с local_path для синхронизации'}), 400
 
         success, fail = sync_all_licenses(licenses_to_sync, remote_base, modified_by=operator)
 
@@ -240,7 +267,7 @@ def sync_operator_route(operator):
     except Exception as e:
         logger.error(f"Ошибка синхронизации: {e}")
         return jsonify({'success': False, 'message': str(e)}), 500
-
+    
 @web_bp.route('/<operator>/download_db', methods=['POST'])
 def download_db_route(operator):
     remote_base = current_app.config.get('network_storage_path')
@@ -310,113 +337,6 @@ def compare_target(operator):
                           selected_city=city,
                           selected_site=site,
                           selected_year=year)
-
-
-# ========== БАЗОВЫЕ ЦЕЛИ ==========
-
-@web_bp.route('/<operator>/base_targets', methods=['GET', 'POST'])
-def base_targets(operator):
-    op_config = get_operator_config(operator)
-    if not op_config:
-        abort(404)
-
-    from modules.capacity_mapper import load_targets_from_excel, compute_license_targets
-    from modules.database import get_connection
-
-    targets_file = current_app.config.get('targets_file', '')
-
-    message = ''
-    domain_targets = []
-    ne_formulas = []
-    computed_targets = []
-
-    if request.method == 'POST':
-        action = request.form.get('action')
-        
-        if action == 'load':
-            # Загружаем из Excel
-            domain_targets, ne_formulas = load_targets_from_excel(targets_file)
-            
-            # Сохраняем в БД
-            conn = get_connection()
-            cursor = conn.cursor()
-            
-            # Очищаем старые данные
-            cursor.execute('DELETE FROM domain_targets')
-            cursor.execute('DELETE FROM ne_formulas')
-            
-            for t in domain_targets:
-                cursor.execute('''
-                    INSERT OR REPLACE INTO domain_targets (operator, domain, type, city, value, unit)
-                    VALUES (?, ?, ?, ?, ?, ?)
-                ''', (t['operator'], t['domain'], t['type'], t['city'], t['value'], t['unit']))
-            
-            for f in ne_formulas:
-                cursor.execute('''
-                    INSERT OR REPLACE INTO ne_formulas (domain, type, ne_type, capacity_key, formula, sharing, main_key)
-                    VALUES (?, ?, ?, ?, ?, ?, ?)
-                ''', (f['domain'], f['type'], f['ne_type'], f['capacity_key'], f['formula'], f['sharing'], f['main_key']))
-            
-            conn.commit()
-            conn.close()
-            message = f'✅ Загружено: {len(domain_targets)} целей, {len(ne_formulas)} формул'
-        
-        elif action == 'compute':
-            # Вычисляем цели
-            conn = get_connection()
-            cursor = conn.cursor()
-            
-            cursor.execute('SELECT operator, domain, type, city, value, unit FROM domain_targets')
-            targets = [dict(zip(['operator','domain','type','city','value','unit'], r)) for r in cursor.fetchall()]
-            
-            cursor.execute('SELECT domain, type, ne_type, capacity_key, formula, sharing, main_key FROM ne_formulas')
-            formulas = [dict(zip(['domain','type','ne_type','capacity_key','formula','sharing','main_key'], r)) for r in cursor.fetchall()]
-            
-            conn.close()
-            
-            computed = compute_license_targets(targets, formulas)
-            
-            # Сохраняем вычисленные цели
-            conn = get_connection()
-            cursor = conn.cursor()
-            cursor.execute('DELETE FROM license_targets')
-            
-            for c in computed:
-                cursor.execute('''
-                    INSERT OR REPLACE INTO license_targets (operator, domain, type, city, ne_type, capacity_key, target_value)
-                    VALUES (?, ?, ?, ?, ?, ?, ?)
-                ''', (c['operator'], c['domain'], c['type'], c['city'], c['ne_type'], c['capacity_key'], c['target_value']))
-            
-            conn.commit()
-            conn.close()
-            
-            computed_targets = computed
-            message = f'✅ Вычислено {len(computed)} целевых значений'
-
-    # Загружаем текущие данные из БД для отображения
-    conn = get_connection()
-    cursor = conn.cursor()
-    
-    cursor.execute('SELECT * FROM domain_targets ORDER BY operator, domain, type, city')
-    domain_targets = [dict(zip(['id','operator','domain','type','city','value','unit'], r)) for r in cursor.fetchall()]
-    
-    cursor.execute('SELECT * FROM ne_formulas ORDER BY domain, type, ne_type')
-    ne_formulas = [dict(zip(['id','domain','type','ne_type','capacity_key','formula','sharing','main_key'], r)) for r in cursor.fetchall()]
-    
-    cursor.execute('SELECT * FROM license_targets ORDER BY operator, domain, city, ne_type')
-    computed_targets = [dict(zip(['id','operator','domain','type','city','ne_type','capacity_key','target_value'], r)) for r in cursor.fetchall()]
-    
-    conn.close()
-
-    return render_template('base_targets.html',
-                          operators=current_app.config['OPERATORS'],
-                          current_operator=operator,
-                          current_operator_title=op_config.get('title', operator),
-                          domain_targets=domain_targets,
-                          ne_formulas=ne_formulas,
-                          computed_targets=computed_targets,
-                          message=message,
-                          targets_file=targets_file)
 
 # ========== ESN МАППИНГ ==========
 
@@ -1225,25 +1145,25 @@ def api_get_license_hierarchy(license_id):
     mode = request.args.get('mode', 'total')
     domain = request.args.get('domain', '')
     show_all = request.args.get('show_all', 'false').lower() == 'true'
-    network_storage_path = current_app.config.get('network_storage_path', '')
+    operator = request.args.get('operator', 'beeline')  # ← ДОБАВИТЬ
 
-    # Получаем NE тип лицензии
     conn = get_connection()
     cursor = conn.cursor()
-    cursor.execute('SELECT filename FROM licenses WHERE id = ?', (license_id,))
+    cursor.execute('SELECT filename, operator FROM licenses WHERE id = ?', (license_id,))  # ← добавить operator
     row = cursor.fetchone()
     filename = row[0] if row else ''
+    license_operator = row[1] if row and len(row) > 1 else operator  # ← получить оператора
     is_xml = filename.lower().endswith('.xml')
     conn.close()
 
     if is_xml:
-        return get_xml_hierarchy(license_id, mode, domain, show_all_sparts=show_all)
+        return get_xml_hierarchy(license_id, mode, domain, show_all_sparts=show_all, operator_name=license_operator)  # ← добавить
     else:
-        return get_dat_hierarchy(license_id, mode, domain, show_all=show_all)
+        return get_dat_hierarchy(license_id, mode, domain, show_all=show_all, operator_name=license_operator)  # ← добавить
            
 # ========== API ДЛЯ ПРОВЕРКИ ФАЙЛОВ ==========
 
-def get_dat_hierarchy(license_id, mode, domain, show_all=False):
+def get_dat_hierarchy(license_id, mode, domain, show_all=False, operator_name=None):
     from modules.database import get_connection
     from modules.capacity_mapper import load_full_capacity_list
     from flask import current_app
@@ -1258,7 +1178,7 @@ def get_dat_hierarchy(license_id, mode, domain, show_all=False):
     ne_type = row[0] if row else None
     conn.close()
     
-    full_list = load_full_capacity_list(domain, network_storage_path, ne_type)
+    full_list = load_full_capacity_list(domain, network_storage_path, ne_type, operator_name)
     
     sparts_dict = {}
     orphans = []
@@ -1437,7 +1357,8 @@ def get_dat_hierarchy(license_id, mode, domain, show_all=False):
                         try:
                             formula_val = float(formula_str)
                             if formula_val == 1:
-                                child['target_value'] = 1 if spart.get('value', 0) > 0 else 0
+                                # 1 = цель равна цели родительского SPart
+                                child['target_value'] = spart_target
                             else:
                                 child['target_value'] = round(spart_target * formula_val, 2)
                         except (ValueError, TypeError):
@@ -1461,7 +1382,7 @@ def get_dat_hierarchy(license_id, mode, domain, show_all=False):
         'orphans': orphans
     })
     
-def get_xml_hierarchy(license_id, mode, domain, show_all_sparts=False):
+def get_xml_hierarchy(license_id, mode, domain, show_all_sparts=False, operator_name=None):
     from modules.database import get_connection
     from modules.capacity_mapper import get_capacity_description, load_full_capacity_list
     from flask import current_app
@@ -1475,7 +1396,7 @@ def get_xml_hierarchy(license_id, mode, domain, show_all_sparts=False):
     row = cursor.fetchone()
     ne_type = row[0] if row else None
 
-    full_list = load_full_capacity_list(domain, network_storage_path, ne_type)
+    full_list = load_full_capacity_list(domain, network_storage_path, ne_type, operator_name) 
 
     spart_order = {}
     excel_sparts = {}
@@ -1687,35 +1608,69 @@ def get_xml_hierarchy(license_id, mode, domain, show_all_sparts=False):
     cursor_targets = conn_targets.cursor()
     cursor_targets.execute('SELECT ne_type, city FROM licenses WHERE id = ?', (license_id,))
     lic_info = cursor_targets.fetchone()
+    
     if lic_info:
         ne_type, city = lic_info
+
         cursor_targets.execute('''
-            SELECT capacity_key, target_value FROM license_targets
+            SELECT capacity_key, target_value, target_key FROM license_targets
             WHERE ne_type = ? AND city = ?
         ''', (ne_type, city))
-        targets_map = {r[0]: r[1] for r in cursor_targets.fetchall()}
-        
-        # Сначала вычисляем цели для всех SPart
+        rows = cursor_targets.fetchall()
+        print(f"DEBUG: rows count = {len(rows)}")
+        for r in rows:
+            print(f"  {r}")
+        targets_map = {r[0]: r[1] for r in rows}
+        # Добавляем target_key как ключ
+        for r in rows:
+            if r[2]:
+                targets_map[r[2]] = r[1]
+       
         spart_targets = {}
+
+        # Вычисляем переменные (type = 'variable' в license_details)
+        variables = {}
+        for item in full_list:
+            if item['type'] == 'variable':
+                print(f"DEBUG variable: {item['name']} = {item.get('formula')}")
+                formula_str = str(item.get('formula', '')).strip()
+                var_name = item['name']
+                if formula_str and var_name:
+                    ref_sparts = [s.strip() for s in formula_str.split('+')]
+                    total = 0
+                    for ref in ref_sparts:
+                        if ref in targets_map:
+                            total += targets_map[ref]
+                        elif ref in spart_targets:
+                            total += spart_targets[ref]
+                    if total > 0:
+                        variables[var_name] = total
+        
+        # Добавляем переменные в targets_map
+        targets_map.update(variables)
+        print(f"DEBUG: targets_map keys: {list(targets_map.keys())}")
+        print(f"DEBUG: KVCS035VBS00 in map: {'KVCS035VBS00' in targets_map}")
         
         for spart in result_sparts:
+            if spart.get('formula') and 'Session' in str(spart.get('formula')):
+                print(f"DEBUG: {spart['name']} formula={spart['formula']}")
             if spart.get('is_section'):
                 continue
-            
+
             formula = spart.get('formula')
             if formula:
                 formula_str = str(formula).strip()
-                
+
                 if formula_str == '0':
                     spart_targets[spart['name']] = 0
-                
+
                 elif '*' in formula_str and '%' in formula_str:
                     try:
                         parts = formula_str.split('*')
                         ref_spart = parts[0].strip()
                         pct_str = parts[1].strip().replace('%', '')
                         pct = float(pct_str) / 100
-                        
+
                         if ref_spart in spart_targets:
                             spart_targets[spart['name']] = round(spart_targets[ref_spart] * pct, 2)
                         elif ref_spart in targets_map:
@@ -1723,50 +1678,85 @@ def get_xml_hierarchy(license_id, mode, domain, show_all_sparts=False):
                     except:
                         spart_targets[spart['name']] = ''
                 
+                elif '*' in formula_str:
+                    try:
+                        parts = formula_str.split('*')
+                        ref = parts[0].strip()
+                        multiplier = float(parts[1].strip())
+                        
+                        if ref in spart_targets:
+                            spart_name = item['name']
+                            if spart_name not in spart_targets:
+                                spart_targets[spart_name] = {}
+                            for city in city_set:
+                                if city in spart_targets[ref]:
+                                    spart_targets[spart_name][city] = round(spart_targets[ref][city] * multiplier, 2)
+                                    results.append({
+                                        'operator': operator_name or '',
+                                        'target_key': formula_str,
+                                        'city': city,
+                                        'ne_type': item.get('ne_type', ''),
+                                        'capacity_key': spart_name,
+                                        'target_value': spart_targets[spart_name][city]
+                                    })
+                        elif ref in targets_map:
+                            for city in city_set:
+                                if city in targets_map[ref]:
+                                    spart_targets[spart_name][city] = round(targets_map[ref][city]['value'] * multiplier, 2)
+                                    results.append({
+                                        'operator': targets_map[ref][city]['operator'],
+                                        'target_key': formula_str,
+                                        'city': city,
+                                        'ne_type': item.get('ne_type', ''),
+                                        'capacity_key': spart_name,
+                                        'target_value': spart_targets[spart_name][city]
+                                    })
+                    except:
+                        pass
+
                 elif formula_str in spart_targets:
                     spart_targets[spart['name']] = spart_targets[formula_str]
                 elif formula_str in targets_map:
                     spart_targets[spart['name']] = targets_map[formula_str]
+                else:
+                    # Формула = TargetKey, ищем в targets_map по имени SPart
+                    spart_targets[spart['name']] = targets_map.get(spart['name'], '')
             else:
                 spart_targets[spart['name']] = targets_map.get(spart['name'], '')
-            
+
             spart['target_value'] = spart_targets.get(spart['name'], '')
-        
-        # Цели для BPart
+
         for spart in result_sparts:
             if spart.get('is_section'):
                 continue
-            
+
             spart_target = spart_targets.get(spart['name'])
-            
+
             for child in spart.get('children', []):
                 child_formula = child.get('formula')
                 if child_formula and spart_target:
                     formula_str = str(child_formula).strip()
-                    
-                    # Фиксированное число
+
                     if formula_str.startswith('fix:'):
                         try:
                             child['target_value'] = float(formula_str[4:])
                         except (ValueError, TypeError):
                             child['target_value'] = ''
                     else:
-                        # Множитель
                         try:
                             formula_val = float(formula_str)
                             if formula_val == 1:
-                                child['target_value'] = 1 if spart.get('value', 0) > 0 else 0
+                                child['target_value'] = spart_target
                             else:
                                 child['target_value'] = round(spart_target * formula_val, 2)
                         except (ValueError, TypeError):
                             child['target_value'] = ''
                 else:
                     child['target_value'] = ''
-        
-        # Сироты
+
         for orphan in all_orphan_bparts:
             orphan['target_value'] = targets_map.get(orphan['name'], '')
-    
+
     conn_targets.close()
     # ================================================
     
@@ -2552,63 +2542,75 @@ def excel_mapping(operator):
     if not op_config:
         abort(404)
     
-    from modules.capacity_mapper import load_targets_from_excel, compute_license_targets
+    from modules.capacity_mapper import load_targets_from_excel, compute_license_targets, load_full_capacity_list, get_description_file_and_sheet
     from modules.database import get_connection
     
     targets_file = current_app.config.get('targets_file', '')
     message = ''
     domain_targets = []
-    ne_formulas = []
     computed_targets = []
+    mappings = []
     
     if request.method == 'POST':
         action = request.form.get('action')
         
         if action == 'load':
-            domain_targets, ne_formulas = load_targets_from_excel(targets_file)
+            targets = load_targets_from_excel(targets_file)
             conn = get_connection()
             cursor = conn.cursor()
             cursor.execute('DELETE FROM domain_targets')
-            cursor.execute('DELETE FROM ne_formulas')
-            for t in domain_targets:
-                cursor.execute('INSERT OR REPLACE INTO domain_targets (operator, domain, type, city, value, unit) VALUES (?,?,?,?,?,?)',
-                             (t['operator'], t['domain'], t['type'], t['city'], t['value'], t['unit']))
-            for f in ne_formulas:
-                cursor.execute('INSERT OR REPLACE INTO ne_formulas (domain, type, ne_type, capacity_key, formula, sharing, main_key) VALUES (?,?,?,?,?,?,?)',
-                             (f['domain'], f['type'], f['ne_type'], f['capacity_key'], f['formula'], f['sharing'], f['main_key']))
+            for t in targets:
+                cursor.execute('''
+                    INSERT OR REPLACE INTO domain_targets (operator, domain, type, unit, target_key, city, value, sharing)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                ''', (t['operator'], t['domain'], t['type'], t['unit'], t['target_key'], t['city'], t['value'], t['sharing']))
             conn.commit()
             conn.close()
-            message = f'✅ Загружено: {len(domain_targets)} целей, {len(ne_formulas)} формул'
+            message = f'✅ Загружено: {len(targets)} целей'
         
         elif action == 'compute':
+            targets = load_targets_from_excel(targets_file)
+            
+            all_capacity = []
             conn = get_connection()
             cursor = conn.cursor()
-            cursor.execute('SELECT operator, domain, type, city, value, unit FROM domain_targets')
-            targets = [dict(zip(['operator','domain','type','city','value','unit'], r)) for r in cursor.fetchall()]
-            cursor.execute('SELECT domain, type, ne_type, capacity_key, formula, sharing, main_key FROM ne_formulas')
-            formulas = [dict(zip(['domain','type','ne_type','capacity_key','formula','sharing','main_key'], r)) for r in cursor.fetchall()]
+            cursor.execute('SELECT DISTINCT ne_type FROM licenses WHERE operator = ?', (operator,))
+            ne_types = [r[0] for r in cursor.fetchall()]
             conn.close()
-            computed = compute_license_targets(targets, formulas)
+            
+            network_storage = current_app.config.get('network_storage_path', '')
+            for ne_type in ne_types:
+                mapping_info = get_description_file_and_sheet(ne_type)
+                domain = mapping_info.get('domain', '') if mapping_info else ''
+                if domain:
+                    items = load_full_capacity_list(domain, network_storage, ne_type, operator)
+                    for item in items:
+                        item['ne_type'] = ne_type
+                        item['domain'] = domain
+                    all_capacity.extend(items)
+            
+            computed = compute_license_targets(targets, all_capacity, operator)
+            
             conn = get_connection()
             cursor = conn.cursor()
             cursor.execute('DELETE FROM license_targets')
             for c in computed:
-                cursor.execute('INSERT OR REPLACE INTO license_targets (operator, domain, type, city, ne_type, capacity_key, target_value) VALUES (?,?,?,?,?,?,?)',
-                             (c['operator'], c['domain'], c['type'], c['city'], c['ne_type'], c['capacity_key'], c['target_value']))
+                cursor.execute('''
+                    INSERT OR REPLACE INTO license_targets (operator, target_key, city, ne_type, capacity_key, target_value)
+                    VALUES (?, ?, ?, ?, ?, ?)
+                ''', (c['operator'], c['target_key'], c['city'], c['ne_type'], c['capacity_key'], c['target_value']))
             conn.commit()
             conn.close()
+            
             computed_targets = computed
             message = f'✅ Вычислено {len(computed)} целевых значений'
     
     conn = get_connection()
     cursor = conn.cursor()
-    cursor.execute('SELECT * FROM domain_targets ORDER BY operator, domain, type, city')
-    domain_targets = [dict(zip(['id','operator','domain','type','city','value','unit'], r)) for r in cursor.fetchall()]
-    cursor.execute('SELECT * FROM ne_formulas ORDER BY domain, type, ne_type')
-    ne_formulas = [dict(zip(['id','domain','type','ne_type','capacity_key','formula','sharing','main_key'], r)) for r in cursor.fetchall()]
-    cursor.execute('SELECT * FROM license_targets ORDER BY operator, domain, city, ne_type')
-    computed_targets = [dict(zip(['id','operator','domain','type','city','ne_type','capacity_key','target_value'], r)) for r in cursor.fetchall()]
-    
+    cursor.execute('SELECT * FROM domain_targets ORDER BY operator, target_key, city')
+    domain_targets = [dict(zip(['id','operator','domain','type','unit','target_key','city','value','sharing'], r)) for r in cursor.fetchall()]
+    cursor.execute('SELECT * FROM license_targets ORDER BY operator, target_key, city, ne_type')
+    computed_targets = [dict(zip(['id','operator','target_key','city','ne_type','capacity_key','target_value'], r)) for r in cursor.fetchall()]
     cursor.execute('SELECT esn, lsn, operator, domain, ne_type, city, site FROM esn_mapping')
     mappings = cursor.fetchall()
     conn.close()
@@ -2618,12 +2620,16 @@ def excel_mapping(operator):
                           current_operator=operator,
                           current_operator_title=op_config.get('title', operator),
                           domain_targets=domain_targets,
-                          ne_formulas=ne_formulas,
                           computed_targets=computed_targets,
                           mappings=mappings,
                           targets_file=targets_file,
                           message=message)
 
+
+@web_bp.route('/<operator>/base_targets', methods=['GET', 'POST'])
+def base_targets(operator):
+    # Редирект на excel_mapping
+    return redirect(url_for('web.excel_mapping', operator=operator))
 
 @web_bp.route('/api/license_details_status')
 def api_license_details_status():
