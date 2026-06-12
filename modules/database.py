@@ -2038,3 +2038,63 @@ def init_test_database():
     _DB_PATH = original_path
     
     return _TEST_DB_PATH
+
+def refresh_all_targets(operator_name, network_storage_path):
+    """Пересчитать цели для всех NE типов оператора"""
+    from modules.capacity_mapper import load_targets_from_excel, load_full_capacity_list, compute_license_targets
+    import os
+    
+    targets_file = os.path.join(network_storage_path, 'targets.xlsx')
+    if not os.path.exists(targets_file):
+        logger.warning(f"Файл целей не найден: {targets_file}")
+        return 0
+    
+    targets = load_targets_from_excel(targets_file, operator_name)
+    if not targets:
+        logger.warning(f"Нет целей в файле: {targets_file}")
+        return 0
+    
+    # Получаем список уникальных NE типов и доменов
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("""
+        SELECT DISTINCT l.ne_type, l.domain 
+        FROM licenses l 
+        WHERE l.operator = ? AND l.ne_type IS NOT NULL AND l.ne_type != ''
+    """, (operator_name,))
+    ne_types = cursor.fetchall()
+    conn.close()
+    
+    total_results = 0
+    
+    for ne_type, domain in ne_types:
+        logger.info(f"Пересчёт целей для {operator_name}/{ne_type} (domain: {domain})")
+        
+        capacity_list = load_full_capacity_list(domain, network_storage_path, ne_type, operator_name)
+        if not capacity_list:
+            logger.warning(f"Нет capacity_list для {ne_type}")
+            continue
+        
+        results = compute_license_targets(targets, capacity_list, operator_name)
+        
+        if results:
+            # Сохраняем в БД
+            with get_connection() as conn:
+                cursor = conn.cursor()
+                # Удаляем старые данные для этого ne_type
+                cursor.execute("DELETE FROM license_targets WHERE ne_type = ?", (ne_type,))
+                
+                # Вставляем новые
+                for r in results:
+                    cursor.execute("""
+                        INSERT INTO license_targets 
+                        (operator, target_key, city, ne_type, capacity_key, target_value, updated_at)
+                        VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+                    """, (r['operator'], r['target_key'], r['city'], r['ne_type'], 
+                          r['capacity_key'], r['target_value']))
+                
+                conn.commit()
+                total_results += len(results)
+                logger.info(f"Сохранено {len(results)} целей для {ne_type}")
+    
+    return total_results

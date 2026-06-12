@@ -1164,6 +1164,7 @@ def api_get_license_hierarchy(license_id):
 # ========== API ДЛЯ ПРОВЕРКИ ФАЙЛОВ ==========
 
 def get_dat_hierarchy(license_id, mode, domain, show_all=False, operator_name=None):
+    """Получает иерархию DAT лицензии с целями из БД"""
     from modules.database import get_connection
     from modules.capacity_mapper import load_full_capacity_list
     from flask import current_app
@@ -1173,16 +1174,25 @@ def get_dat_hierarchy(license_id, mode, domain, show_all=False, operator_name=No
     conn = get_connection()
     cursor = conn.cursor()
     
-    cursor.execute('SELECT ne_type FROM licenses WHERE id = ?', (license_id,))
+    cursor.execute('SELECT ne_type, city FROM licenses WHERE id = ?', (license_id,))
     row = cursor.fetchone()
     ne_type = row[0] if row else None
+    city = row[1] if row and len(row) > 1 else None
     conn.close()
     
+    # Загружаем структуру из Excel
     full_list = load_full_capacity_list(domain, network_storage_path, ne_type, operator_name)
     
+    # Строим словарь для быстрого доступа к sort_order
+    sort_order_map = {}
+    for item in full_list:
+        sort_order_map[item['name']] = item.get('sort_order', 9999)
+    
+    # ========== 1. СТРОИМ СЛОВАРЬ SPart ИЗ EXCEL ==========
     sparts_dict = {}
     orphans = []
     
+    # Добавляем ВСЕ SPart из Excel
     for item in full_list:
         if item['type'] == 'spart':
             sparts_dict[item['name']] = {
@@ -1196,9 +1206,12 @@ def get_dat_hierarchy(license_id, mode, domain, show_all=False, operator_name=No
                 'main_bpart': None,
                 'spart_coeff': item.get('spart_coeff'),
                 'formula': item.get('formula'),
-                'is_empty': False
+                'is_empty': True,
+                'target_value': '',
+                'sort_order': item.get('sort_order', 9999)  # Сохраняем порядок
             }
     
+    # Добавляем BPart
     for item in full_list:
         if item['type'] == 'bpart':
             parent = item.get('parent')
@@ -1211,7 +1224,9 @@ def get_dat_hierarchy(license_id, mode, domain, show_all=False, operator_name=No
                     'dimension': item.get('dimension', ''),
                     'description': item.get('description', ''),
                     'is_main': item.get('is_main', False),
-                    'formula': item.get('formula')
+                    'formula': item.get('formula'),
+                    'target_value': '',
+                    'sort_order': item.get('sort_order', 9999)  # Сохраняем порядок
                 })
                 if item.get('is_main_for_spart'):
                     sparts_dict[parent]['main_bpart'] = item['name']
@@ -1220,31 +1235,11 @@ def get_dat_hierarchy(license_id, mode, domain, show_all=False, operator_name=No
         elif item['type'] != 'spart' and not item.get('parent'):
             orphans.append(item)
     
-    # ========== ДОБАВЛЯЕМ НЕДОСТАЮЩИЕ SPart ИЗ ЦЕЛЕЙ ==========
-    if show_all:
-        conn_targets = get_connection()
-        cursor_targets = conn_targets.cursor()
-        cursor_targets.execute('SELECT DISTINCT capacity_key FROM license_targets WHERE ne_type = ?', (ne_type,))
-        target_sparts = {r[0] for r in cursor_targets.fetchall()}
-        conn_targets.close()
-        
-        for spart_name in target_sparts:
-            if spart_name not in sparts_dict:
-                sparts_dict[spart_name] = {
-                    'name': spart_name,
-                    'value': 0,
-                    'valid_date': '',
-                    'part_number': '',
-                    'dimension': '',
-                    'description': '',
-                    'children': [],
-                    'main_bpart': None,
-                    'spart_coeff': None,
-                    'formula': None,
-                    'is_empty': True
-                }
-    # =====================================================
+    # Сортируем детей внутри каждого SPart
+    for spart in sparts_dict.values():
+        spart['children'].sort(key=lambda x: x.get('sort_order', 9999))
     
+    # ========== 2. ПОЛУЧАЕМ ФАКТИЧЕСКИЕ ЗНАЧЕНИЯ ИЗ БД ==========
     conn = get_connection()
     cursor = conn.cursor()
     
@@ -1262,27 +1257,26 @@ def get_dat_hierarchy(license_id, mode, domain, show_all=False, operator_name=No
         date_map[row[0]] = row[2] if len(row) > 2 and row[2] else ''
     conn.close()
     
+    # Заполняем значения
     for spart in sparts_dict.values():
-        if not spart.get('is_empty'):
-            if spart['name'] in values_map:
-                spart['value'] = values_map[spart['name']]
-                spart['valid_date'] = date_map.get(spart['name'], '')
-            else:
-                main_bpart = spart.get('main_bpart')
-                if main_bpart and main_bpart in values_map:
-                    spart['value'] = values_map[main_bpart]
-                    spart['valid_date'] = date_map.get(main_bpart, '')
-                else:
-                    spart['value'] = 0
-                    spart['valid_date'] = ''
-            
-            spart_coeff = spart.get('spart_coeff')
-            if spart_coeff:
-                try:
-                    coeff = float(spart_coeff)
-                    spart['value'] = round(spart['value'] * coeff, 2)
-                except (ValueError, TypeError):
-                    pass
+        if spart['name'] in values_map:
+            spart['value'] = values_map[spart['name']]
+            spart['valid_date'] = date_map.get(spart['name'], '')
+            spart['is_empty'] = False
+        else:
+            main_bpart = spart.get('main_bpart')
+            if main_bpart and main_bpart in values_map:
+                spart['value'] = values_map[main_bpart]
+                spart['valid_date'] = date_map.get(main_bpart, '')
+                spart['is_empty'] = False
+        
+        spart_coeff = spart.get('spart_coeff')
+        if spart_coeff:
+            try:
+                coeff = float(spart_coeff)
+                spart['value'] = round(spart['value'] * coeff, 2)
+            except (ValueError, TypeError):
+                pass
         
         for bpart in spart['children']:
             if bpart['name'] in values_map:
@@ -1294,110 +1288,66 @@ def get_dat_hierarchy(license_id, mode, domain, show_all=False, operator_name=No
             orphan['value'] = values_map[orphan['name']]
             orphan['valid_date'] = date_map.get(orphan['name'], '')
     
-    # ========== ДОБАВЛЯЕМ ЦЕЛЕВЫЕ ЗНАЧЕНИЯ ==========
-    conn_targets = get_connection()
-    cursor_targets = conn_targets.cursor()
-    cursor_targets.execute('SELECT ne_type, city FROM licenses WHERE id = ?', (license_id,))
-    lic_info = cursor_targets.fetchone()
-    if lic_info:
-        ne_type, city = lic_info
+    # ========== 3. ПОЛУЧАЕМ ЦЕЛЕВЫЕ ЗНАЧЕНИЯ ==========
+    if city and ne_type:
+        conn_targets = get_connection()
+        cursor_targets = conn_targets.cursor()
         cursor_targets.execute('''
-            SELECT capacity_key, target_value FROM license_targets
+            SELECT capacity_key, target_value 
+            FROM license_targets
             WHERE ne_type = ? AND city = ?
         ''', (ne_type, city))
-        targets_map = {r[0]: r[1] for r in cursor_targets.fetchall()}
         
-        spart_targets = {}
-        
-        for spart in sparts_dict.values():
-            formula = spart.get('formula')
-            if formula:
-                formula_str = str(formula).strip()
-                
-                if formula_str == '0':
-                    spart_targets[spart['name']] = 0
-                
-                elif '*' in formula_str and '%' in formula_str:
-                    try:
-                        parts = formula_str.split('*')
-                        ref_spart = parts[0].strip()
-                        pct_str = parts[1].strip().replace('%', '')
-                        pct = float(pct_str) / 100
-                        
-                        if ref_spart in spart_targets:
-                            spart_targets[spart['name']] = round(spart_targets[ref_spart] * pct, 2)
-                        elif ref_spart in targets_map:
-                            spart_targets[spart['name']] = round(targets_map[ref_spart] * pct, 2)
-                    except:
-                        spart_targets[spart['name']] = ''
-                
-                elif formula_str in spart_targets:
-                    spart_targets[spart['name']] = spart_targets[formula_str]
-                elif formula_str in targets_map:
-                    spart_targets[spart['name']] = targets_map[formula_str]
-            else:
-                spart_targets[spart['name']] = targets_map.get(spart['name'], '')
-            
-            spart['target_value'] = spart_targets.get(spart['name'], '')
+        targets_map = {row[0]: row[1] for row in cursor_targets.fetchall()}
+        conn_targets.close()
         
         for spart in sparts_dict.values():
-            spart_target = spart_targets.get(spart['name'])
-            
-            for child in spart.get('children', []):
-                child_formula = child.get('formula')
-                if child_formula and spart_target:
-                    formula_str = str(child_formula).strip()
-                    
-                    if formula_str.startswith('fix:'):
-                        try:
-                            child['target_value'] = float(formula_str[4:])
-                        except (ValueError, TypeError):
-                            child['target_value'] = ''
-                    else:
-                        try:
-                            formula_val = float(formula_str)
-                            if formula_val == 1:
-                                # 1 = цель равна цели родительского SPart
-                                child['target_value'] = spart_target
-                            else:
-                                child['target_value'] = round(spart_target * formula_val, 2)
-                        except (ValueError, TypeError):
-                            child['target_value'] = ''
-                else:
-                    child['target_value'] = ''
-        
+            spart['target_value'] = targets_map.get(spart['name'], '')
+        for spart in sparts_dict.values():
+            for bpart in spart['children']:
+                bpart['target_value'] = targets_map.get(bpart['name'], '')
         for orphan in orphans:
             orphan['target_value'] = targets_map.get(orphan['name'], '')
     
-    conn_targets.close()
-    
+    # ========== 4. ФИЛЬТРАЦИЯ ==========
     if not show_all:
-        sparts_dict = {
-            name: spart for name, spart in sparts_dict.items() 
-            if spart.get('value', 0) > 0 or (spart.get('target_value') != '' and spart.get('target_value') is not None)
-        }
+        filtered_sparts = {}
+        for name, spart in sparts_dict.items():
+            has_value = spart.get('value', 0) > 0
+            has_target = (spart.get('target_value') is not None and 
+                         spart.get('target_value') != '' and 
+                         spart.get('target_value') != 0)
+            if has_value or has_target:
+                filtered_sparts[name] = spart
+        sparts_dict = filtered_sparts
+    
+    # ========== 5. СОРТИРОВКА ПО ПОРЯДКУ ИЗ EXCEL ==========
+    sorted_sparts = sorted(sparts_dict.values(), key=lambda x: x.get('sort_order', 9999))
     
     return jsonify({
-        'sparts': list(sparts_dict.values()),
+        'sparts': sorted_sparts,
         'orphans': orphans
     })
     
 def get_xml_hierarchy(license_id, mode, domain, show_all_sparts=False, operator_name=None):
+    """Получает иерархию XML лицензии с целями из БД"""
     from modules.database import get_connection
     from modules.capacity_mapper import get_capacity_description, load_full_capacity_list
     from flask import current_app
-
+    
     network_storage_path = current_app.config.get('network_storage_path', '')
-
+    
     conn = get_connection()
     cursor = conn.cursor()
-
+    
     cursor.execute('SELECT ne_type FROM licenses WHERE id = ?', (license_id,))
     row = cursor.fetchone()
     ne_type = row[0] if row else None
-
-    full_list = load_full_capacity_list(domain, network_storage_path, ne_type, operator_name) 
-
+    
+    # Загружаем структуру из Excel
+    full_list = load_full_capacity_list(domain, network_storage_path, ne_type, operator_name)
+    
+    # Строим словарь SPart из Excel
     spart_order = {}
     excel_sparts = {}
     sections = []
@@ -1423,7 +1373,8 @@ def get_xml_hierarchy(license_id, mode, domain, show_all_sparts=False, operator_
             parent = item.get('parent')
             if parent and parent in excel_sparts:
                 excel_sparts[parent]['main_bpart'] = item['name']
-
+    
+    # Определяем секции для SPart
     if sections:
         for spart_name, spart_info in excel_sparts.items():
             spart_position = None
@@ -1437,7 +1388,8 @@ def get_xml_hierarchy(license_id, mode, domain, show_all_sparts=False, operator_
                     if section['position'] < spart_position:
                         prev_section = section['name']
                 spart_info['section'] = prev_section
-
+    
+    # Получаем данные SPart из БД
     cursor.execute('''
         SELECT id, spart_name, spart_value, spart_valid_date,
                permanent_value, dated_value, dated_date
@@ -1445,7 +1397,7 @@ def get_xml_hierarchy(license_id, mode, domain, show_all_sparts=False, operator_
         ORDER BY sort_order
     ''', (license_id,))
     sparts = cursor.fetchall()
-
+    
     existing_sparts = {}
     for spart_id, spart_name, spart_value, spart_valid_date, permanent_value, dated_value, dated_date in sparts:
         existing_sparts[spart_name] = {
@@ -1455,34 +1407,60 @@ def get_xml_hierarchy(license_id, mode, domain, show_all_sparts=False, operator_
             'dated_date': dated_date
         }
 
-    if show_all_sparts:
-        # Получаем список SPart с целями
-        conn_targets = get_connection()
-        cursor_targets = conn_targets.cursor()
-        cursor_targets.execute('''
-            SELECT DISTINCT capacity_key FROM license_targets
-            WHERE ne_type = ?
-        ''', (ne_type,))
-        target_sparts = {r[0] for r in cursor_targets.fetchall()}
-        conn_targets.close()
-        
-        for spart_name in excel_sparts:
-            if spart_name not in existing_sparts and spart_name in target_sparts:
-                existing_sparts[spart_name] = {
-                    'spart_id': None, 'spart_name': spart_name,
-                    'spart_value': 0, 'spart_valid_date': '',
-                    'permanent_value': 0, 'dated_value': 0, 'dated_date': None
-                }
+    # ========== ДОБАВЛЯЕМ SPart ИЗ РАЗНЫХ ИСТОЧНИКОВ ==========
 
+    # 1. SPart из БД (с фактическими значениями)
+    existing_sparts = {}
+    for spart_id, spart_name, spart_value, spart_valid_date, permanent_value, dated_value, dated_date in sparts:
+        existing_sparts[spart_name] = {
+            'spart_id': spart_id, 'spart_name': spart_name,
+            'spart_value': spart_value, 'spart_valid_date': spart_valid_date,
+            'permanent_value': permanent_value, 'dated_value': dated_value,
+            'dated_date': dated_date
+        }
+
+    # 2. SPart из целей (license_targets)
+    conn_targets = get_connection()
+    cursor_targets = conn_targets.cursor()
+    cursor_targets.execute('SELECT DISTINCT capacity_key FROM license_targets WHERE ne_type = ?', (ne_type,))
+    target_sparts = {r[0] for r in cursor_targets.fetchall()}
+    conn_targets.close()
+
+    for spart_name in target_sparts:
+        if spart_name not in existing_sparts:
+            existing_sparts[spart_name] = {
+                'spart_id': None, 'spart_name': spart_name,
+                'spart_value': 0, 'spart_valid_date': '',
+                'permanent_value': 0, 'dated_value': 0, 'dated_date': None
+            }
+
+    # 3. Если show_all_sparts=True - добавляем ВСЕ SPart из Excel
+    if show_all_sparts:
+        for spart_name, excel_info in excel_sparts.items():
+            if spart_name not in existing_sparts:
+                existing_sparts[spart_name] = {
+                    'spart_id': None,
+                    'spart_name': spart_name,
+                    'spart_value': 0,
+                    'spart_valid_date': '',
+                    'permanent_value': 0,
+                    'dated_value': 0,
+                    'dated_date': None
+                }
+                logger.debug(f"Добавлен SPart из Excel (без данных): {spart_name}")
+    
+    # Сортируем SPart по порядку из Excel
     sorted_spart_names = sorted(existing_sparts.keys(), key=lambda n: spart_order.get(n, 9999))
     result_sparts = []
     all_orphan_bparts = []
     current_section = None
-
+    
+    # Получаем BPart для каждого SPart
     for spart_name in sorted_spart_names:
         spart_data = existing_sparts[spart_name]
         excel_info = excel_sparts.get(spart_name, {})
         
+        # Добавляем секцию если нужно
         spart_section = excel_info.get('section')
         if spart_section and spart_section != current_section:
             current_section = spart_section
@@ -1490,9 +1468,10 @@ def get_xml_hierarchy(license_id, mode, domain, show_all_sparts=False, operator_
                 'name': current_section, 'is_section': True,
                 'value': '', 'valid_date': '', 'children': [], 'is_empty': False
             })
-
+        
         spart_id = spart_data['spart_id']
         
+        # Получаем BPart
         if spart_id is not None:
             cursor.execute('''
                 SELECT bpart_name, bpart_value, bpart_valid_date, is_main,
@@ -1504,7 +1483,8 @@ def get_xml_hierarchy(license_id, mode, domain, show_all_sparts=False, operator_
             bparts = cursor.fetchall()
         else:
             bparts = []
-
+        
+        # Вычисляем значение SPart в зависимости от режима
         if mode == 'permanent':
             spart_val = spart_data['permanent_value'] if spart_data['permanent_value'] else 0
             spart_date = 'PERMANENT' if spart_data['permanent_value'] and spart_data['permanent_value'] > 0 else ''
@@ -1514,7 +1494,8 @@ def get_xml_hierarchy(license_id, mode, domain, show_all_sparts=False, operator_
         else:
             spart_val = spart_data['spart_value'] if spart_data['spart_value'] else 0
             spart_date = spart_data['spart_valid_date'] if spart_data['spart_valid_date'] else ''
-
+        
+        # Применяем коэффициент SPart
         spart_coeff = excel_info.get('spart_coeff')
         if spart_coeff:
             try:
@@ -1522,17 +1503,19 @@ def get_xml_hierarchy(license_id, mode, domain, show_all_sparts=False, operator_
                 spart_val = round(spart_val * coeff, 2)
             except (ValueError, TypeError):
                 pass
-
+        
         spart_desc = get_capacity_description(spart_name, domain, network_storage_path)
-
+        
+        # Сортируем BPart по порядку из Excel
         bpart_order = {}
         for item in full_list:
             if item['type'] == 'bpart' and item.get('parent') == spart_name:
                 bpart_order[item['name']] = len(bpart_order)
-
+        
         bparts_list = list(bparts)
         bparts_list.sort(key=lambda b: bpart_order.get(b[0], 9999))
-
+        
+        # Формируем список BPart
         children = []
         for bp_name, bp_value, bp_valid_date, is_main, bp_permanent, bp_dated, bp_dated_date in bparts_list:
             if mode == 'permanent':
@@ -1544,10 +1527,10 @@ def get_xml_hierarchy(license_id, mode, domain, show_all_sparts=False, operator_
             else:
                 bp_val = bp_value if bp_value else 0
                 bp_date = bp_valid_date if bp_valid_date else ''
-
+            
             bp_desc = get_capacity_description(bp_name, domain, network_storage_path)
             
-            # Ищем formula для BPart
+            # Ищем формулу для BPart
             bp_formula = None
             for item in full_list:
                 if item['name'] == bp_name and item['type'] == 'bpart':
@@ -1562,7 +1545,7 @@ def get_xml_hierarchy(license_id, mode, domain, show_all_sparts=False, operator_
                 'description': bp_desc.get('description', '') if bp_desc else '',
                 'formula': bp_formula
             })
-
+        
         result_sparts.append({
             'name': spart_name, 'value': spart_val, 'valid_date': spart_date,
             'part_number': spart_desc.get('part_number', '') if spart_desc else excel_info.get('part_number', ''),
@@ -1573,7 +1556,8 @@ def get_xml_hierarchy(license_id, mode, domain, show_all_sparts=False, operator_
             'is_empty': spart_id is None, 'is_section': False,
             'formula': excel_info.get('formula')
         })
-
+    
+    # Получаем BPart без SPart (orphans)
     cursor.execute('''
         SELECT bpart_name, bpart_value, bpart_valid_date, is_main,
                permanent_value, dated_value, dated_date
@@ -1582,7 +1566,7 @@ def get_xml_hierarchy(license_id, mode, domain, show_all_sparts=False, operator_
         ORDER BY sort_order
     ''', (license_id,))
     orphans = cursor.fetchall()
-
+    
     for bp_name, bp_value, bp_valid_date, is_main, bp_permanent, bp_dated, bp_dated_date in orphans:
         if mode == 'permanent':
             bp_val = bp_permanent if bp_permanent else 0
@@ -1593,7 +1577,7 @@ def get_xml_hierarchy(license_id, mode, domain, show_all_sparts=False, operator_
         else:
             bp_val = bp_value if bp_value else 0
             bp_date = bp_valid_date if bp_valid_date else ''
-
+        
         bp_desc = get_capacity_description(bp_name, domain, network_storage_path)
         all_orphan_bparts.append({
             'name': bp_name, 'value': bp_val, 'valid_date': bp_date,
@@ -1602,8 +1586,10 @@ def get_xml_hierarchy(license_id, mode, domain, show_all_sparts=False, operator_
             'dimension': bp_desc.get('dimension', '') if bp_desc else '',
             'description': bp_desc.get('description', '') if bp_desc else ''
         })
-
-    # ========== ДОБАВЛЯЕМ ЦЕЛЕВЫЕ ЗНАЧЕНИЯ ==========
+    
+    conn.close()
+    
+    # ========== ПРОСТО ЧИТАЕМ ЦЕЛИ ИЗ БЕЗ ПЕРЕСЧЁТА ==========
     conn_targets = get_connection()
     cursor_targets = conn_targets.cursor()
     cursor_targets.execute('SELECT ne_type, city FROM licenses WHERE id = ?', (license_id,))
@@ -1611,167 +1597,82 @@ def get_xml_hierarchy(license_id, mode, domain, show_all_sparts=False, operator_
     
     if lic_info:
         ne_type, city = lic_info
-
+        
+        # Читаем готовые целевые значения из license_targets
         cursor_targets.execute('''
-            SELECT capacity_key, target_value, target_key FROM license_targets
+            SELECT capacity_key, target_value 
+            FROM license_targets
             WHERE ne_type = ? AND city = ?
         ''', (ne_type, city))
-        rows = cursor_targets.fetchall()
-        print(f"DEBUG: rows count = {len(rows)}")
-        for r in rows:
-            print(f"  {r}")
-        targets_map = {r[0]: r[1] for r in rows}
-        # Добавляем target_key как ключ
-        for r in rows:
-            if r[2]:
-                targets_map[r[2]] = r[1]
-       
-        spart_targets = {}
-
-        # Вычисляем переменные (type = 'variable' в license_details)
-        variables = {}
-        for item in full_list:
-            if item['type'] == 'variable':
-                print(f"DEBUG variable: {item['name']} = {item.get('formula')}")
-                formula_str = str(item.get('formula', '')).strip()
-                var_name = item['name']
-                if formula_str and var_name:
-                    ref_sparts = [s.strip() for s in formula_str.split('+')]
-                    total = 0
-                    for ref in ref_sparts:
-                        if ref in targets_map:
-                            total += targets_map[ref]
-                        elif ref in spart_targets:
-                            total += spart_targets[ref]
-                    if total > 0:
-                        variables[var_name] = total
         
-        # Добавляем переменные в targets_map
-        targets_map.update(variables)
-        print(f"DEBUG: targets_map keys: {list(targets_map.keys())}")
-        print(f"DEBUG: KVCS035VBS00 in map: {'KVCS035VBS00' in targets_map}")
+        targets_map = {row[0]: row[1] for row in cursor_targets.fetchall()}
         
-        for spart in result_sparts:
-            if spart.get('formula') and 'Session' in str(spart.get('formula')):
-                print(f"DEBUG: {spart['name']} formula={spart['formula']}")
-            if spart.get('is_section'):
-                continue
-
-            formula = spart.get('formula')
-            if formula:
-                formula_str = str(formula).strip()
-
-                if formula_str == '0':
-                    spart_targets[spart['name']] = 0
-
-                elif '*' in formula_str and '%' in formula_str:
-                    try:
-                        parts = formula_str.split('*')
-                        ref_spart = parts[0].strip()
-                        pct_str = parts[1].strip().replace('%', '')
-                        pct = float(pct_str) / 100
-
-                        if ref_spart in spart_targets:
-                            spart_targets[spart['name']] = round(spart_targets[ref_spart] * pct, 2)
-                        elif ref_spart in targets_map:
-                            spart_targets[spart['name']] = round(targets_map[ref_spart] * pct, 2)
-                    except:
-                        spart_targets[spart['name']] = ''
-                
-                elif '*' in formula_str:
-                    try:
-                        parts = formula_str.split('*')
-                        ref = parts[0].strip()
-                        multiplier = float(parts[1].strip())
-                        
-                        if ref in spart_targets:
-                            spart_name = item['name']
-                            if spart_name not in spart_targets:
-                                spart_targets[spart_name] = {}
-                            for city in city_set:
-                                if city in spart_targets[ref]:
-                                    spart_targets[spart_name][city] = round(spart_targets[ref][city] * multiplier, 2)
-                                    results.append({
-                                        'operator': operator_name or '',
-                                        'target_key': formula_str,
-                                        'city': city,
-                                        'ne_type': item.get('ne_type', ''),
-                                        'capacity_key': spart_name,
-                                        'target_value': spart_targets[spart_name][city]
-                                    })
-                        elif ref in targets_map:
-                            for city in city_set:
-                                if city in targets_map[ref]:
-                                    spart_targets[spart_name][city] = round(targets_map[ref][city]['value'] * multiplier, 2)
-                                    results.append({
-                                        'operator': targets_map[ref][city]['operator'],
-                                        'target_key': formula_str,
-                                        'city': city,
-                                        'ne_type': item.get('ne_type', ''),
-                                        'capacity_key': spart_name,
-                                        'target_value': spart_targets[spart_name][city]
-                                    })
-                    except:
-                        pass
-
-                elif formula_str in spart_targets:
-                    spart_targets[spart['name']] = spart_targets[formula_str]
-                elif formula_str in targets_map:
-                    spart_targets[spart['name']] = targets_map[formula_str]
-                else:
-                    # Формула = TargetKey, ищем в targets_map по имени SPart
-                    spart_targets[spart['name']] = targets_map.get(spart['name'], '')
-            else:
-                spart_targets[spart['name']] = targets_map.get(spart['name'], '')
-
-            spart['target_value'] = spart_targets.get(spart['name'], '')
-
+        # Присваиваем target_value каждому SPart
         for spart in result_sparts:
             if spart.get('is_section'):
                 continue
-
-            spart_target = spart_targets.get(spart['name'])
-
+            spart['target_value'] = targets_map.get(spart['name'], '')
+        
+        # Для BPart (если нужно)
+        for spart in result_sparts:
+            if spart.get('is_section'):
+                continue
             for child in spart.get('children', []):
-                child_formula = child.get('formula')
-                if child_formula and spart_target:
-                    formula_str = str(child_formula).strip()
-
-                    if formula_str.startswith('fix:'):
-                        try:
-                            child['target_value'] = float(formula_str[4:])
-                        except (ValueError, TypeError):
-                            child['target_value'] = ''
-                    else:
-                        try:
-                            formula_val = float(formula_str)
-                            if formula_val == 1:
-                                child['target_value'] = spart_target
-                            else:
-                                child['target_value'] = round(spart_target * formula_val, 2)
-                        except (ValueError, TypeError):
-                            child['target_value'] = ''
-                else:
-                    child['target_value'] = ''
-
-        for orphan in all_orphan_bparts:
-            orphan['target_value'] = targets_map.get(orphan['name'], '')
-
+                child['target_value'] = targets_map.get(child['name'], '')
+    
     conn_targets.close()
-    # ================================================
     
-    conn.close()
-    
+    # Фильтруем в зависимости от режима
     if not show_all_sparts:
-        result_sparts = [
-            spart for spart in result_sparts 
-            if spart.get('is_section') or 
-               (spart.get('value', 0) > 0) or 
-               (spart.get('target_value') != '' and spart.get('target_value') is not None)
-        ]
+        # Режим: только SPart с данными или целями
+        filtered_sparts = []
+        for spart in result_sparts:
+            if spart.get('is_section'):
+                filtered_sparts.append(spart)
+                continue
+            
+            # Показываем если:
+            # - есть значение в лицензии (value > 0)
+            # - ИЛИ есть цель (target_value не пустой, даже 0)
+            has_value = spart.get('value', 0) > 0
+            has_target = (spart.get('target_value') is not None and 
+                        spart.get('target_value') != '' and 
+                        spart.get('target_value') != 0)
+            
+            if has_value or has_target:
+                filtered_sparts.append(spart)
         
-    return jsonify({'sparts': result_sparts, 'orphans': all_orphan_bparts})
-       
+        result_sparts = filtered_sparts
+    # else: show_all_sparts=True - оставляем все SPart (уже добавлены все из Excel)
+
+    return jsonify({
+        'sparts': result_sparts,
+        'orphans': all_orphan_bparts
+    })
+    
+@web_bp.route('/<operator>/refresh_targets', methods=['POST'])
+def refresh_targets(operator):
+    """Пересчитать цели для оператора"""
+    op_config = get_operator_config(operator)
+    if not op_config:
+        return jsonify({'success': False, 'message': 'Оператор не найден'}), 404
+    
+    network_storage_path = current_app.config.get('network_storage_path', '')
+    if not network_storage_path:
+        return jsonify({'success': False, 'message': 'Не указан путь к сетевому хранилищу'}), 400
+    
+    try:
+        from modules.database import refresh_all_targets
+        count = refresh_all_targets(operator, network_storage_path)
+        return jsonify({
+            'success': True, 
+            'message': f'Пересчитано {count} целевых значений',
+            'count': count
+        })
+    except Exception as e:
+        logger.error(f"Ошибка пересчёта целей: {e}")
+        return jsonify({'success': False, 'message': str(e)}), 500
+          
 @web_bp.route('/api/check_esn_mapping_files', methods=['GET'])
 def api_check_esn_mapping_files():
     """Проверяет наличие файлов ESN маппинга для всех операторов"""
