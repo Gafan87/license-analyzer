@@ -1164,7 +1164,7 @@ def api_get_license_hierarchy(license_id):
 # ========== API ДЛЯ ПРОВЕРКИ ФАЙЛОВ ==========
 
 def get_dat_hierarchy(license_id, mode, domain, show_all=False, operator_name=None):
-    """Получает иерархию DAT лицензии с целями из БД"""
+    """Получает иерархию DAT лицензии с поддержкой двух сценариев"""
     from modules.database import get_connection
     from modules.capacity_mapper import load_full_capacity_list
     from flask import current_app
@@ -1183,152 +1183,369 @@ def get_dat_hierarchy(license_id, mode, domain, show_all=False, operator_name=No
     # Загружаем структуру из Excel
     full_list = load_full_capacity_list(domain, network_storage_path, ne_type, operator_name)
     
-    # Строим словарь для быстрого доступа к sort_order
-    sort_order_map = {}
+    # ========== ОПРЕДЕЛЯЕМ СЦЕНАРИЙ ==========
+    # Сценарий 1: заполнены колонки Parent, SpartCoeff, IsMainForSPart
+    has_hierarchy = False
     for item in full_list:
-        sort_order_map[item['name']] = item.get('sort_order', 9999)
+        if item.get('parent') or item.get('spart_coeff') or item.get('is_main_for_spart'):
+            has_hierarchy = True
+            break
     
-    # ========== 1. СТРОИМ СЛОВАРЬ SPart ИЗ EXCEL ==========
-    sparts_dict = {}
-    orphans = []
-    
-    # Добавляем ВСЕ SPart из Excel
-    for item in full_list:
-        if item['type'] == 'spart':
-            sparts_dict[item['name']] = {
-                'name': item['name'],
-                'value': 0,
-                'valid_date': '',
-                'part_number': item.get('part_number', ''),
-                'dimension': item.get('dimension', ''),
-                'description': item.get('description', ''),
-                'children': [],
-                'main_bpart': None,
-                'spart_coeff': item.get('spart_coeff'),
-                'formula': item.get('formula'),
-                'is_empty': True,
-                'target_value': '',
-                'sort_order': item.get('sort_order', 9999)  # Сохраняем порядок
-            }
-    
-    # Добавляем BPart
-    for item in full_list:
-        if item['type'] == 'bpart':
-            parent = item.get('parent')
-            if parent and parent in sparts_dict:
-                sparts_dict[parent]['children'].append({
+    if has_hierarchy:
+        # ========== СЦЕНАРИЙ 1: ИЕРАРХИЧЕСКИЙ (IMS, vEPC, UDG) ==========
+        # SPart есть в Excel, их нужно вычислить из BPart лицензии
+        
+        # Собираем SPart из Excel
+        sparts_dict = {}
+        bparts_list = []
+        
+        for item in full_list:
+            if item['type'] == 'spart':
+                sparts_dict[item['name']] = {
                     'name': item['name'],
                     'value': 0,
                     'valid_date': '',
                     'part_number': item.get('part_number', ''),
                     'dimension': item.get('dimension', ''),
                     'description': item.get('description', ''),
-                    'is_main': item.get('is_main', False),
+                    'children': [],
+                    'main_bpart': None,
+                    'spart_coeff': item.get('spart_coeff'),
                     'formula': item.get('formula'),
+                    'is_empty': True,
                     'target_value': '',
-                    'sort_order': item.get('sort_order', 9999)  # Сохраняем порядок
+                    'sort_order': item.get('sort_order', 9999),
+                    'is_section': False
+                }
+            elif item['type'] == 'bpart':
+                bparts_list.append({
+                    'name': item['name'],
+                    'value': 0,
+                    'valid_date': '',
+                    'part_number': item.get('part_number', ''),
+                    'dimension': item.get('dimension', ''),
+                    'description': item.get('description', ''),
+                    'formula': item.get('formula'),
+                    'is_main': item.get('is_main', False),
+                    'is_main_for_spart': item.get('is_main_for_spart', False),
+                    'parent': item.get('parent'),
+                    'sort_order': item.get('sort_order', 9999),
+                    'is_bpart': True
                 })
-                if item.get('is_main_for_spart'):
-                    sparts_dict[parent]['main_bpart'] = item['name']
-            else:
-                orphans.append(item)
-        elif item['type'] != 'spart' and not item.get('parent'):
-            orphans.append(item)
-    
-    # Сортируем детей внутри каждого SPart
-    for spart in sparts_dict.values():
-        spart['children'].sort(key=lambda x: x.get('sort_order', 9999))
-    
-    # ========== 2. ПОЛУЧАЕМ ФАКТИЧЕСКИЕ ЗНАЧЕНИЯ ИЗ БД ==========
-    conn = get_connection()
-    cursor = conn.cursor()
-    
-    if mode == 'total':
-        cursor.execute('SELECT capacity_key, total_value, latest_date FROM capacity_aggregated WHERE license_id = ?', (license_id,))
-    elif mode == 'permanent':
-        cursor.execute('SELECT capacity_key, permanent_value, ? FROM capacity_aggregated WHERE license_id = ? AND permanent_value > 0', ('PERMANENT', license_id))
-    else:
-        cursor.execute('SELECT capacity_key, latest_value, latest_date FROM capacity_aggregated WHERE license_id = ? AND latest_date IS NOT NULL', (license_id,))
-    
-    values_map = {}
-    date_map = {}
-    for row in cursor.fetchall():
-        values_map[row[0]] = row[1] if row[1] else 0
-        date_map[row[0]] = row[2] if len(row) > 2 and row[2] else ''
-    conn.close()
-    
-    # Заполняем значения
-    for spart in sparts_dict.values():
-        if spart['name'] in values_map:
-            spart['value'] = values_map[spart['name']]
-            spart['valid_date'] = date_map.get(spart['name'], '')
-            spart['is_empty'] = False
+        
+        # Привязываем BPart к SPart
+        for bpart in bparts_list:
+            parent_name = bpart.get('parent')
+            if parent_name and parent_name in sparts_dict:
+                sparts_dict[parent_name]['children'].append(bpart)
+                if bpart.get('is_main_for_spart'):
+                    sparts_dict[parent_name]['main_bpart'] = bpart['name']
+        
+        # Сортируем детей
+        for spart in sparts_dict.values():
+            spart['children'].sort(key=lambda x: x.get('sort_order', 9999))
+        
+        # Получаем значения BPart из лицензии
+        conn = get_connection()
+        cursor = conn.cursor()
+        
+        if mode == 'total':
+            cursor.execute('SELECT capacity_key, total_value, latest_date FROM capacity_aggregated WHERE license_id = ?', (license_id,))
+        elif mode == 'permanent':
+            cursor.execute('SELECT capacity_key, permanent_value, ? FROM capacity_aggregated WHERE license_id = ? AND permanent_value > 0', ('PERMANENT', license_id))
         else:
+            cursor.execute('SELECT capacity_key, latest_value, latest_date FROM capacity_aggregated WHERE license_id = ? AND latest_date IS NOT NULL', (license_id,))
+        
+        values_map = {}
+        date_map = {}
+        for row in cursor.fetchall():
+            values_map[row[0]] = row[1] if row[1] else 0
+            date_map[row[0]] = row[2] if len(row) > 2 and row[2] else ''
+        conn.close()
+        
+        # Вычисляем SPart на основе BPart
+        for spart in sparts_dict.values():
+            # Сначала заполняем детей значениями
+            for child in spart['children']:
+                if child['name'] in values_map:
+                    child['value'] = values_map[child['name']]
+                    child['valid_date'] = date_map.get(child['name'], '')
+                    child['is_empty'] = False
+            
+            # Вычисляем SPart через main_bpart или сумму детей
             main_bpart = spart.get('main_bpart')
             if main_bpart and main_bpart in values_map:
                 spart['value'] = values_map[main_bpart]
                 spart['valid_date'] = date_map.get(main_bpart, '')
                 spart['is_empty'] = False
+            elif spart['children']:
+                # Суммируем всех детей
+                total = 0
+                for child in spart['children']:
+                    total += child.get('value', 0)
+                if total > 0:
+                    spart['value'] = total
+                    spart['is_empty'] = False
+            
+            # Применяем коэффициент SPart
+            if spart.get('spart_coeff') and spart['value'] > 0:
+                try:
+                    coeff = float(spart['spart_coeff'])
+                    spart['value'] = round(spart['value'] * coeff, 2)
+                except (ValueError, TypeError):
+                    pass
         
-        spart_coeff = spart.get('spart_coeff')
-        if spart_coeff:
-            try:
-                coeff = float(spart_coeff)
-                spart['value'] = round(spart['value'] * coeff, 2)
-            except (ValueError, TypeError):
-                pass
+        # Получаем цели
+        if city and ne_type:
+            conn_targets = get_connection()
+            cursor_targets = conn_targets.cursor()
+            cursor_targets.execute('''
+                SELECT capacity_key, target_value 
+                FROM license_targets
+                WHERE ne_type = ? AND city = ?
+            ''', (ne_type, city))
+            
+            targets_map = {row[0]: row[1] for row in cursor_targets.fetchall()}
+            conn_targets.close()
+            
+            for spart in sparts_dict.values():
+                spart['target_value'] = targets_map.get(spart['name'], '')
+                for child in spart['children']:
+                    child['target_value'] = targets_map.get(child['name'], '')
         
-        for bpart in spart['children']:
-            if bpart['name'] in values_map:
-                bpart['value'] = values_map[bpart['name']]
-                bpart['valid_date'] = date_map.get(bpart['name'], '')
-    
-    for orphan in orphans:
-        if orphan['name'] in values_map:
-            orphan['value'] = values_map[orphan['name']]
-            orphan['valid_date'] = date_map.get(orphan['name'], '')
-    
-    # ========== 3. ПОЛУЧАЕМ ЦЕЛЕВЫЕ ЗНАЧЕНИЯ ==========
-    if city and ne_type:
-        conn_targets = get_connection()
-        cursor_targets = conn_targets.cursor()
-        cursor_targets.execute('''
-            SELECT capacity_key, target_value 
-            FROM license_targets
-            WHERE ne_type = ? AND city = ?
-        ''', (ne_type, city))
+        # Фильтрация
+        if not show_all:
+            filtered_sparts = {}
+            for name, spart in sparts_dict.items():
+                has_value = spart.get('value', 0) > 0
+                has_target = (spart.get('target_value') is not None and 
+                             spart.get('target_value') != '' and 
+                             spart.get('target_value') != 0)
+                if has_value or has_target:
+                    filtered_sparts[name] = spart
+            sparts_dict = filtered_sparts
         
-        targets_map = {row[0]: row[1] for row in cursor_targets.fetchall()}
-        conn_targets.close()
+        # Сортировка
+        sorted_sparts = sorted(sparts_dict.values(), key=lambda x: x.get('sort_order', 9999))
         
-        for spart in sparts_dict.values():
-            spart['target_value'] = targets_map.get(spart['name'], '')
-        for spart in sparts_dict.values():
-            for bpart in spart['children']:
-                bpart['target_value'] = targets_map.get(bpart['name'], '')
-        for orphan in orphans:
-            orphan['target_value'] = targets_map.get(orphan['name'], '')
+        return jsonify({
+            'sparts': sorted_sparts,
+            'orphans': []
+        })
     
-    # ========== 4. ФИЛЬТРАЦИЯ ==========
-    if not show_all:
-        filtered_sparts = {}
-        for name, spart in sparts_dict.items():
-            has_value = spart.get('value', 0) > 0
-            has_target = (spart.get('target_value') is not None and 
-                         spart.get('target_value') != '' and 
-                         spart.get('target_value') != 0)
-            if has_value or has_target:
-                filtered_sparts[name] = spart
-        sparts_dict = filtered_sparts
-    
-    # ========== 5. СОРТИРОВКА ПО ПОРЯДКУ ИЗ EXCEL ==========
-    sorted_sparts = sorted(sparts_dict.values(), key=lambda x: x.get('sort_order', 9999))
-    
-    return jsonify({
-        'sparts': sorted_sparts,
-        'orphans': orphans
-    })
-    
+    else:
+        # ========== СЦЕНАРИЙ 2: ПЛОСКИЙ (PS) ==========
+        # BPart и переменные отображаются как элементы с типом, но в sparts
+        
+        sections = []
+        items = []  # BPart и переменные
+        
+        for item in full_list:
+            item_type = item.get('type', '')
+            sort_order = item.get('sort_order', 9999)
+            
+            if item_type == 'section':
+                sections.append({
+                    'name': item['name'],
+                    'position': sort_order
+                })
+            elif item_type == 'bpart':
+                items.append({
+                    'name': item['name'],
+                    'value': 0,
+                    'valid_date': '',
+                    'part_number': item.get('part_number', ''),
+                    'dimension': item.get('dimension', ''),
+                    'description': item.get('description', ''),
+                    'formula': item.get('formula'),
+                    'is_empty': True,
+                    'target_value': '',
+                    'sort_order': sort_order,
+                    'type': 'bpart',           # ← для идентификации
+                    'is_bpart': True,          # ← для отображения
+                    'children': []             # ← пустой массив для совместимости
+                })
+            elif item_type == 'variable':
+                items.append({
+                    'name': item['name'],
+                    'value': 0,
+                    'valid_date': '',
+                    'part_number': '',
+                    'dimension': item.get('dimension', ''),
+                    'description': item.get('description', ''),
+                    'formula': item.get('formula'),
+                    'is_empty': True,
+                    'target_value': '',
+                    'sort_order': sort_order,
+                    'type': 'variable',        # ← для идентификации
+                    'is_variable': True,       # ← для отображения
+                    'children': []
+                })
+            # SPart в этом сценарии игнорируем (они только разделители, уже в sections)
+        
+        # Получаем значения из БД
+        conn = get_connection()
+        cursor = conn.cursor()
+        
+        if mode == 'total':
+            cursor.execute('SELECT capacity_key, total_value, latest_date FROM capacity_aggregated WHERE license_id = ?', (license_id,))
+        elif mode == 'permanent':
+            cursor.execute('SELECT capacity_key, permanent_value, ? FROM capacity_aggregated WHERE license_id = ? AND permanent_value > 0', ('PERMANENT', license_id))
+        else:
+            cursor.execute('SELECT capacity_key, latest_value, latest_date FROM capacity_aggregated WHERE license_id = ? AND latest_date IS NOT NULL', (license_id,))
+        
+        values_map = {}
+        date_map = {}
+        for row in cursor.fetchall():
+            values_map[row[0]] = row[1] if row[1] else 0
+            date_map[row[0]] = row[2] if len(row) > 2 and row[2] else ''
+        conn.close()
+        
+        # Заполняем значения BPart
+        for item in items:
+            if item['name'] in values_map:
+                item['value'] = values_map[item['name']]
+                item['valid_date'] = date_map.get(item['name'], '')
+                item['is_empty'] = False
+        
+        # Вычисляем переменные (для сценария 2)
+        max_iterations = 5
+        for _ in range(max_iterations):
+            changed = False
+            for item in items:
+                if item.get('type') != 'variable':
+                    continue
+                if item.get('value', 0) > 0:
+                    continue
+                
+                formula = item.get('formula', '')
+                if not formula:
+                    continue
+                
+                # Поддерживаем суммы
+                if '+' in formula:
+                    refs = [ref.strip() for ref in formula.split('+')]
+                    total = 0
+                    all_resolved = True
+                    for ref in refs:
+                        # Ищем среди items
+                        found = False
+                        for it in items:
+                            if it['name'] == ref and it.get('value', 0) > 0:
+                                total += it['value']
+                                found = True
+                                break
+                        if not found and ref in values_map:
+                            total += values_map[ref]
+                            found = True
+                        if not found:
+                            all_resolved = False
+                            break
+                    
+                    if all_resolved:
+                        item['value'] = round(total, 2)
+                        item['is_empty'] = False
+                        changed = True
+                else:
+                    ref = formula.strip()
+                    for it in items:
+                        if it['name'] == ref and it.get('value', 0) > 0:
+                            item['value'] = it['value']
+                            item['is_empty'] = False
+                            changed = True
+                            break
+                    if not changed and ref in values_map:
+                        item['value'] = values_map[ref]
+                        item['is_empty'] = False
+                        changed = True
+            
+            if not changed:
+                break
+        
+        # Получаем цели
+        if city and ne_type:
+            conn_targets = get_connection()
+            cursor_targets = conn_targets.cursor()
+            cursor_targets.execute('''
+                SELECT capacity_key, target_value 
+                FROM license_targets
+                WHERE ne_type = ? AND city = ?
+            ''', (ne_type, city))
+            
+            targets_map = {row[0]: row[1] for row in cursor_targets.fetchall()}
+            conn_targets.close()
+            
+            for item in items:
+                item['target_value'] = targets_map.get(item['name'], '')
+        
+        # Формируем результат с секциями
+        result_items = []
+        
+        # Сортируем секции
+        sections.sort(key=lambda x: x['position'])
+        items.sort(key=lambda x: x.get('sort_order', 9999))
+        
+        # Группируем по секциям
+        for section in sections:
+            result_items.append({
+                'name': section['name'],
+                'is_section': True,
+                'value': '',
+                'valid_date': '',
+                'children': [],
+                'target_value': '',
+                'sort_order': section['position']
+            })
+            
+            # Находим элементы секции
+            next_section_pos = None
+            for s in sections:
+                if s['position'] > section['position']:
+                    next_section_pos = s['position']
+                    break
+            
+            section_items = []
+            for item in items[:]:
+                if next_section_pos is None:
+                    if item.get('sort_order', 9999) > section['position']:
+                        section_items.append(item)
+                        items.remove(item)
+                else:
+                    if section['position'] < item.get('sort_order', 9999) < next_section_pos:
+                        section_items.append(item)
+                        items.remove(item)
+            
+            section_items.sort(key=lambda x: x.get('sort_order', 9999))
+            result_items.extend(section_items)
+        
+        # Добавляем оставшиеся элементы
+        items.sort(key=lambda x: x.get('sort_order', 9999))
+        result_items.extend(items)
+        
+        # Фильтрация
+        if not show_all:
+            filtered_items = []
+            for item in result_items:
+                if item.get('is_section'):
+                    filtered_items.append(item)
+                    continue
+                
+                has_value = item.get('value', 0) > 0
+                has_target = (item.get('target_value') is not None and 
+                            item.get('target_value') != '' and 
+                            item.get('target_value') != 0)
+                
+                if has_value or has_target:
+                    filtered_items.append(item)
+            
+            result_items = filtered_items
+        
+        # Возвращаем ВСЕ элементы в sparts (не в orphans!)
+        return jsonify({
+            'sparts': result_items,
+            'orphans': []
+        })
+      
 def get_xml_hierarchy(license_id, mode, domain, show_all_sparts=False, operator_name=None):
     """Получает иерархию XML лицензии с целями из БД"""
     from modules.database import get_connection

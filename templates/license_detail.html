@@ -431,107 +431,110 @@ async function loadHierarchy(licenseId, mode) {
 // ========== ОТРИСОВКА ТАБЛИЦЫ ==========
 function renderHierarchyTable(sparts, orphans) {
     const tbody = document.getElementById('resourcesTableBody');
-    if ((!sparts || sparts.length === 0) && (!orphans || orphans.length === 0)) {
-        tbody.innerHTML = '<tr><td colspan="8" class="text-center">Нет данных ("license_details" файл не загружен)</td></tr>';
-        return;
-    }
-
+    
     let html = '';
-
-    sparts.forEach((spart) => {
-        if (spart.is_section) {
-            html += `
-                <tr class="section-header-row">
-                    <td colspan="8">
-                        <div class="section-header">
-                            <span class="section-title">${escapeHtml(spart.name)}</span>
-                        </div>
-                    </td>
-                </tr>
-            `;
+    
+    // Обрабатываем sparts (теперь там и SPart, и BPart, и переменные)
+    sparts.forEach((item) => {
+        // Секция
+        if (item.is_section) {
+            html += `<tr class="section-header-row">
+                        <td colspan="8">
+                            <div class="section-header">
+                                <span class="section-title">${escapeHtml(item.name)}</span>
+                            </div>
+                         </td>
+                     </tr>`;
             return;
         }
-
-        const isCollapsed = collapsedSparts.has(spart.name);
-        const toggleIcon = isCollapsed ? '▶' : '▼';
-        const validDate = spart.valid_date || '-';
-        const isEmpty = spart.is_empty === true;
-        const rowClass = isEmpty ? 'spart-row spart-empty' : 'spart-row';
-        const valueDisplay = isEmpty ? '<span class="empty-value">—</span>' : spart.value;
-        const dateDisplay = isEmpty ? '<span class="empty-value">—</span>' : escapeHtml(validDate);
-        const targetDisplay = spart.target_value ? spart.target_value : '';
+        
+        // Определяем тип строки
+        const isBpart = (item.type === 'bpart') || (item.is_bpart === true);
+        const isVariable = (item.type === 'variable') || (item.is_variable === true);
+        const isSpart = !isBpart && !isVariable && !item.is_section;
+        
+        const isEmpty = item.is_empty === true;
+        
+        // Выбираем класс строки и отступ
+        let rowClass = '';
+        let paddingLeft = '0.5rem';
+        let toggleIcon = '';
+        
+        if (isSpart) {
+            rowClass = isEmpty ? 'spart-row spart-empty' : 'spart-row';
+            paddingLeft = '0.5rem';
+            if (item.children && item.children.length > 0 && !collapsedSparts.has(item.name)) {
+                toggleIcon = '▼';
+            } else if (item.children && item.children.length > 0) {
+                toggleIcon = '▶';
+            }
+        } else {
+            // BPart или Variable - обычная строка
+            rowClass = 'bpart-row';
+            paddingLeft = '2rem';
+        }
+        
+        const valueDisplay = isEmpty ? '<span class="empty-value">—</span>' : (item.value || 0);
+        const targetDisplay = (item.target_value && item.target_value !== '') ? item.target_value : '';
         
         // Дельта
-        const targetVal = parseFloat(spart.target_value) || 0;
-        const actualVal = parseFloat(spart.value) || 0;
+        const targetVal = parseFloat(item.target_value) || 0;
+        const actualVal = parseFloat(item.value) || 0;
         let delta = '';
         let deltaColor = '';
         if (targetVal && actualVal) {
             const diff = actualVal - targetVal;
             deltaColor = diff > 0 ? 'green' : diff < 0 ? 'red' : '';
-            delta = `<span style="color: ${deltaColor}; font-weight: 600;">${diff > 0 ? '+' : ''}${diff}</span>`;
+            delta = `<span style="color: ${deltaColor};">${diff > 0 ? '+' : ''}${diff.toFixed(2)}</span>`;
         }
-
+        
         html += `
-            <tr class="${rowClass}" data-spart="${spart.name}" ${isEmpty ? 'data-empty="true"' : ''}>
-                <td style="padding-left: 0.5rem;">
-                    <span class="toggle-icon" data-spart="${spart.name}">${toggleIcon}</span>
-                    ${escapeHtml(spart.name)}
+            <tr class="${rowClass}" data-item="${item.name}" data-type="${item.type || 'spart'}">
+                <td style="padding-left: ${paddingLeft};">
+                    ${toggleIcon ? `<span class="toggle-icon" data-spart="${item.name}">${toggleIcon}</span>` : ''}
+                    ${escapeHtml(item.name)}
+                    ${isBpart && item.is_main ? '<span class="main-badge">(main)</span>' : ''}
                     ${isEmpty ? '<span class="empty-badge">нет в лицензии</span>' : ''}
-                </td>
-                <td>${targetDisplay}</td>
-                <td>${delta}</td>
-                <td>${valueDisplay}</td>
-                <td class="valid-date-cell">${dateDisplay}</td>
-                <td>${escapeHtml(spart.part_number || '-')}</td>
-                <td>${escapeHtml(spart.dimension || '-')}</td>
-                <td><small>${escapeHtml(spart.description || '—')}</small></td>
-            </tr>
+                    ${isVariable ? '<span class="variable-badge">var</span>' : ''}
+                 </td>
+                 <td>${targetDisplay}</td>
+                 <td>${delta}</td>
+                 <td>${valueDisplay}</td>
+                <td class="valid-date-cell">${escapeHtml(item.valid_date || '-')}</td>
+                 <td>${escapeHtml(item.part_number || '-')}</td>
+                 <td>${escapeHtml(item.dimension || '-')}</td>
+                 <td><small>${escapeHtml(item.description || '—')}</small></td>
+             </tr>
         `;
-
-        if (!isCollapsed && spart.children && spart.children.length > 0) {
-            spart.children.forEach(bpart => {
-                const bpartValidDate = bpart.valid_date || '-';
-                const bpartTarget = bpart.target_value || '';
-                
-                // Дельта для BPart
-                const bpTargetVal = parseFloat(bpart.target_value) || 0;
-                const bpActualVal = parseFloat(bpart.value) || 0;
-                let bpDelta = '';
-                let bpDeltaColor = '';
-                if (bpTargetVal && bpActualVal) {
-                    const diff = bpActualVal - bpTargetVal;
-                    bpDeltaColor = diff > 0 ? 'green' : diff < 0 ? 'red' : '';
-                    bpDelta = `<span style="color: ${bpDeltaColor}; font-weight: 600;">${diff > 0 ? '+' : ''}${diff}</span>`;
-                }
+        
+        // Дети для SPart (только для иерархического сценария)
+        if (isSpart && item.children && item.children.length > 0 && !collapsedSparts.has(item.name)) {
+            item.children.forEach(child => {
+                const childValue = child.value || 0;
+                const childTarget = child.target_value || '';
+                const childDelta = (childTarget && childValue) ? (childValue - childTarget) : '';
+                const childDeltaColor = childDelta > 0 ? 'green' : (childDelta < 0 ? 'red' : '');
                 
                 html += `
-                    <tr class="bpart-row" data-parent="${spart.name}">
+                    <tr class="bpart-row" data-parent="${item.name}">
                         <td style="padding-left: 2rem;">
-                            ${escapeHtml(bpart.name)}
-                            ${bpart.is_main ? '<span class="main-badge">(main)</span>' : ''}
-                        </td>
-                        <td>${bpartTarget}</td>
-                        <td>${bpDelta}</td>
-                        <td>${bpart.value}</td>
-                        <td class="valid-date-cell">${bpartValidDate}</td>
-                        <td>${escapeHtml(bpart.part_number || '-')}</td>
-                        <td>${escapeHtml(bpart.dimension || '-')}</td>
-                        <td><small>${escapeHtml(bpart.description || '—')}</small></td>
-                    </tr>
+                            ${escapeHtml(child.name)}
+                            ${child.is_main ? '<span class="main-badge">(main)</span>' : ''}
+                         </td>
+                         <td>${childTarget}</td>
+                         <td>${childDelta ? `<span style="color: ${childDeltaColor};">${childDelta > 0 ? '+' : ''}${childDelta.toFixed(2)}</span>` : ''}</td>
+                         <td>${childValue}</td>
+                        <td class="valid-date-cell">${escapeHtml(child.valid_date || '-')}</td>
+                         <td>${escapeHtml(child.part_number || '-')}</td>
+                         <td>${escapeHtml(child.dimension || '-')}</td>
+                         <td><small>${escapeHtml(child.description || '—')}</small></td>
+                     </tr>
                 `;
             });
-        } else if (!isCollapsed && isEmpty) {
-            html += `
-                <tr class="bpart-row spart-empty-child" data-parent="${spart.name}">
-                    <td colspan="8" style="padding-left: 2rem; color: var(--text-muted); font-style: italic;">
-                        ⚠️ Этот SPart отсутствует в файле лицензии. Значения не заданы.
-                    </td>
-                </tr>
-            `;
         }
     });
-
+    
+    // Обрабатываем orphans (только если они есть и не пустые)
     if (orphans && orphans.length > 0) {
         html += `<tr class="separator"><td colspan="8" style="background: var(--bg-secondary); padding: 0.5rem;"><strong>📌 Прочие CapacityKey</strong></td></tr>`;
         orphans.forEach(orphan => {
@@ -546,73 +549,77 @@ function renderHierarchyTable(sparts, orphans) {
             if (orTargetVal && orActualVal) {
                 const diff = orActualVal - orTargetVal;
                 orDeltaColor = diff > 0 ? 'green' : diff < 0 ? 'red' : '';
-                orDelta = `<span style="color: ${orDeltaColor}; font-weight: 600;">${diff > 0 ? '+' : ''}${diff}</span>`;
+                orDelta = `<span style="color: ${orDeltaColor};">${diff > 0 ? '+' : ''}${diff.toFixed(2)}</span>`;
             }
+            
+            // Определяем тип orphan
+            const isBpartOrphan = orphan.type === 'bpart' || orphan.is_bpart === true;
+            const isVariableOrphan = orphan.type === 'variable' || orphan.is_variable === true;
             
             html += `
                 <tr class="orphan-row">
-                    <td style="padding-left: 2rem;">${escapeHtml(orphan.name)}</td>
-                    <td>${orphanTarget}</td>
-                    <td>${orDelta}</td>
-                    <td>${orphan.value}</td>
+                    <td style="padding-left: 2rem;">
+                        ${escapeHtml(orphan.name)}
+                        ${isBpartOrphan && orphan.is_main ? '<span class="main-badge">(main)</span>' : ''}
+                        ${isVariableOrphan ? '<span class="variable-badge">var</span>' : ''}
+                     </td>
+                     <td>${orphanTarget}</td>
+                     <td>${orDelta}</td>
+                     <td>${orphan.value || 0}</td>
                     <td class="valid-date-cell">${orphanValidDate}</td>
-                    <td>${escapeHtml(orphan.part_number || '-')}</td>
-                    <td>${escapeHtml(orphan.dimension || '-')}</td>
-                    <td><small>${escapeHtml(orphan.description || '—')}</small></td>
-                </tr>
+                     <td>${escapeHtml(orphan.part_number || '-')}</td>
+                     <td>${escapeHtml(orphan.dimension || '-')}</td>
+                     <td><small>${escapeHtml(orphan.description || '—')}</small></td>
+                 </tr>
             `;
         });
     }
-
+    
     tbody.innerHTML = html;
-
-    const allSparts = currentHierarchy?.sparts?.map(s => s.name) || [];
-    const allCollapsed = allSparts.length > 0 && allSparts.every(name => collapsedSparts.has(name));
-    const globalIcon = document.querySelector('.toggle-all-sparts');
-    if (globalIcon) {
-        globalIcon.textContent = allCollapsed ? '▶' : '▼';
-    }
-
+    
+    // Привязываем обработчики для иконок раскрытия
     document.querySelectorAll('.toggle-icon').forEach(icon => {
         icon.removeEventListener('click', handleToggleClick);
         icon.addEventListener('click', handleToggleClick);
     });
-
+    
+    // Привязываем обработчики двойного клика для SPart
     document.querySelectorAll('.spart-row').forEach(row => {
         row.removeEventListener('dblclick', handleSpartDoubleClick);
         row.addEventListener('dblclick', handleSpartDoubleClick);
     });
 }
 
-    function handleToggleClick(e) {
-        e.stopPropagation();
-        const spartName = this.dataset.spart;
-        if (!spartName) return;
-        
-        if (collapsedSparts.has(spartName)) {
-            collapsedSparts.delete(spartName);
-        } else {
-            collapsedSparts.add(spartName);
-        }
-        if (currentHierarchy) {
-            renderHierarchyTable(currentHierarchy.sparts, currentHierarchy.orphans);
-        }
+// Вспомогательные функции
+function handleToggleClick(e) {
+    e.stopPropagation();
+    const spartName = this.dataset.spart;
+    if (!spartName) return;
+    
+    if (collapsedSparts.has(spartName)) {
+        collapsedSparts.delete(spartName);
+    } else {
+        collapsedSparts.add(spartName);
     }
+    if (currentHierarchy) {
+        renderHierarchyTable(currentHierarchy.sparts, currentHierarchy.orphans);
+    }
+}
 
-    function handleSpartDoubleClick(e) {
-        const row = e.currentTarget;
-        const spartName = row.getAttribute('data-spart');
-        if (!spartName) return;
-        
-        if (collapsedSparts.has(spartName)) {
-            collapsedSparts.delete(spartName);
-        } else {
-            collapsedSparts.add(spartName);
-        }
-        if (currentHierarchy) {
-            renderHierarchyTable(currentHierarchy.sparts, currentHierarchy.orphans);
-        }
+function handleSpartDoubleClick(e) {
+    const row = e.currentTarget;
+    const spartName = row.getAttribute('data-spart');
+    if (!spartName) return;
+    
+    if (collapsedSparts.has(spartName)) {
+        collapsedSparts.delete(spartName);
+    } else {
+        collapsedSparts.add(spartName);
     }
+    if (currentHierarchy) {
+        renderHierarchyTable(currentHierarchy.sparts, currentHierarchy.orphans);
+    }
+}
 
     // ========== ПЕРЕКЛЮЧЕНИЕ РЕЖИМОВ ==========
 function initResourceFilters() {
