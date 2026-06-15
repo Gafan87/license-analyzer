@@ -473,24 +473,9 @@ def load_targets_from_excel(file_path, operator_name=None):
       
 def compute_license_targets(targets, capacity_list, operator_name=None):
     """
-    Вычисляет целевые значения для каждой комбинации город/NE_type/CapacityKey
-    
-    Поддерживаемые типы формул (в порядке обработки):
-    1. Фиксированные числа: "1", "100", "0.5"
-    2. Прямые ссылки на TargetKey: "IMS_Core"
-    3. Умножение TargetKey: "PS,vEPC_GGSN_Gbps * 1000"
-    4. Переменные (type='variable'): "SP1+SP2+SP3"
-    5. Проценты от SPart/переменных: "Total_session * 100%"
-    6. Ссылки на другие SPart: "Main_Sessions"
-    7. Функции: MAX(), MIN(), AVG(), SUM(), roundup(), if()
-    
-    Args:
-        targets: список словарей из load_targets_from_excel
-        capacity_list: список словарей из load_full_capacity_list
-        operator_name: str - имя оператора
-    
-    Returns:
-        список словарей [{operator, target_key, city, ne_type, capacity_key, target_value}, ...]
+    Вычисляет целевые значения:
+    - TargetKey сохраняются с ne_type = '' (базовые)
+    - Variables, SPart, BPart сохраняются с конкретным ne_type (вычисленные)
     """
     import re
     import math
@@ -511,7 +496,6 @@ def compute_license_targets(targets, capacity_list, operator_name=None):
             'operator': t['operator']
         }
     
-    # Собираем список всех городов
     city_set = set()
     for t in targets:
         city_set.add(t['city'])
@@ -887,7 +871,40 @@ def compute_license_targets(targets, capacity_list, operator_name=None):
         if var_name in spart_targets:
             continue
         
-        # Обработка суммы (SP1+SP2+SP3)
+        # ========== Обработка умножения (TargetKey * число) ==========
+        if '*' in formula_str and '%' not in formula_str:
+            try:
+                formula_clean = formula_str.replace(' ', '').replace(',', '')
+                parts = formula_clean.split('*')
+                if len(parts) == 2:
+                    ref_name = parts[0]
+                    multiplier = float(parts[1])
+                    
+                    # Восстанавливаем оригинальное имя TargetKey (с запятой)
+                    original_ref = None
+                    if ref_name in targets_map:
+                        original_ref = ref_name
+                    else:
+                        for tk in targets_map.keys():
+                            if tk.replace(',', '').replace(' ', '') == ref_name:
+                                original_ref = tk
+                                break
+                    
+                    for city in city_set:
+                        if original_ref and city in targets_map[original_ref]:
+                            value = targets_map[original_ref][city]['value'] / targets_map[original_ref][city]['sharing']
+                            value = round(value * multiplier, 2)
+                        else:
+                            value = 0
+                        
+                        if var_name not in variables:
+                            variables[var_name] = {}
+                        variables[var_name][city] = value
+                    continue
+            except Exception as e:
+                logger.error(f"Ошибка умножения в переменной {var_name}: {formula_str} - {e}")
+        
+        # ========== Обработка суммы (SP1+SP2+SP3) ==========
         if '+' in formula_str:
             ref_sparts = [s.strip() for s in formula_str.split('+')]
             
@@ -904,30 +921,29 @@ def compute_license_targets(targets, capacity_list, operator_name=None):
                     elif ref in variables and city in variables[ref]:
                         total += variables[ref][city]
                 
-                # ВСЕГДА сохраняем переменную, даже если total = 0
                 if var_name not in variables:
                     variables[var_name] = {}
                 variables[var_name][city] = round(total, 2)
-        else:
-            # Простая ссылка на один SPart/TargetKey
-            ref = formula_str
-            for city in city_set:
-                value = None
-                if ref in spart_targets and city in spart_targets[ref]:
-                    value = spart_targets[ref][city]
-                elif ref in targets_map and city in targets_map[ref]:
-                    value = targets_map[ref][city]['value'] / targets_map[ref][city]['sharing']
-                elif ref in variables and city in variables[ref]:
-                    value = variables[ref][city]
-                else:
-                    # Если ссылка нигде не найдена, значение = 0
-                    value = 0
-                
-                # ВСЕГДА сохраняем переменную, даже если value = 0 или None
-                if var_name not in variables:
-                    variables[var_name] = {}
-                variables[var_name][city] = round(value, 2) if value is not None else 0
-    
+            continue
+        
+        # ========== Обработка простой ссылки ==========
+        # (если нет ни +, ни *)
+        ref = formula_str
+        for city in city_set:
+            value = None
+            if ref in spart_targets and city in spart_targets[ref]:
+                value = spart_targets[ref][city]
+            elif ref in targets_map and city in targets_map[ref]:
+                value = targets_map[ref][city]['value'] / targets_map[ref][city]['sharing']
+            elif ref in variables and city in variables[ref]:
+                value = variables[ref][city]
+            else:
+                value = 0
+            
+            if var_name not in variables:
+                variables[var_name] = {}
+            variables[var_name][city] = round(value, 2) if value is not None else 0
+
     # Добавляем переменные в spart_targets и результаты
     for var_name, city_values in variables.items():
         if var_name not in spart_targets:
@@ -1089,7 +1105,6 @@ def compute_license_targets(targets, capacity_list, operator_name=None):
                     'capacity_key': target_key,
                     'target_value': target_value
                 })
-            logger.info(f"Виртуальный SPart: {target_key}")
     
     # ========== 11. СОРТИРОВКА РЕЗУЛЬТАТОВ ==========
     results.sort(key=lambda r: (r['operator'], r['target_key'], r['city'], r['ne_type']))

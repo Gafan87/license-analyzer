@@ -118,29 +118,134 @@ def style_guide():
                          current_operator='',
                          current_operator_title='Гайдлайн')
 
+# ========== ФУНКЦИЯ ДЛЯ АВТОМАТИЧЕСКОЙ ЗАГРУЗКИ ЦЕЛЕЙ ==========
+def auto_load_and_compute_targets():
+    """Автоматически загружает цели из Excel и вычисляет их при старте (упрощённая версия)"""
+    from modules.capacity_mapper import load_targets_from_excel, compute_license_targets
+    from modules.database import get_connection
+    import os
+    
+    targets_file = app.config.get('targets_file', '')
+    if not targets_file or not os.path.exists(targets_file):
+        return False
+    
+    # Проверяем, есть ли уже цели в БД (чтобы не пересчитывать при каждом запуске)
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT COUNT(*) FROM license_targets")
+    count = cursor.fetchone()[0]
+    conn.close()
+    
+    if count > 0:
+        print(f"✅ Цели уже загружены ({count} записей). Для пересчёта нажмите кнопку.")
+        return True
+    
+    print("🔄 Первичная загрузка целей...")
+    
+    network_storage_path = app.config.get('network_storage_path', '')
+    operators = app.config.get('OPERATORS', [])
+    
+    # Загружаем цели один раз для всех операторов
+    all_targets = []
+    for op in operators:
+        operator_name = op.get('name')
+        targets = load_targets_from_excel(targets_file, operator_name)
+        if targets:
+            all_targets.extend(targets)
+    
+    if not all_targets:
+        return False
+    
+    # Получаем уникальные NE типы
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT DISTINCT ne_type, domain FROM licenses WHERE ne_type IS NOT NULL AND ne_type != ''")
+    ne_types = cursor.fetchall()
+    conn.close()
+    
+    if not ne_types:
+        return False
+    
+    total_results = 0
+    
+    for ne_type, domain in ne_types:
+        # Загружаем структуру один раз для каждого NE типа
+        from modules.capacity_mapper import load_full_capacity_list
+        capacity_list = load_full_capacity_list(domain, network_storage_path, ne_type)
+        if not capacity_list:
+            continue
+        
+        # Вычисляем цели для всех операторов сразу
+        for op in operators:
+            operator_name = op.get('name')
+            results = compute_license_targets(all_targets, capacity_list, operator_name)
+            
+            if results:
+                with get_connection() as conn:
+                    cursor = conn.cursor()
+                    for r in results:
+                        cursor.execute("""
+                            INSERT OR REPLACE INTO license_targets 
+                            (operator, target_key, city, ne_type, capacity_key, target_value)
+                            VALUES (?, ?, ?, ?, ?, ?)
+                        """, (r['operator'], r['target_key'], r['city'], r['ne_type'], 
+                              r['capacity_key'], r['target_value']))
+                    conn.commit()
+                    total_results += len(results)
+    
+    print(f"✅ Загружено {total_results} целей")
+    return True
+# ========== ЗАГРУЗКА МАППИНГА NE TYPE ==========
 
+# ========== ПРОСТАЯ ИНИЦИАЛИЗАЦИЯ ==========
 with app.app_context():
+    # Загружаем маппинг NE Type (тихо)
     from modules.capacity_mapper import load_ne_type_mapping
     load_ne_type_mapping()
-    print("✅ Маппинг NE Type загружен")
+    
+    # Быстрая проверка целей (без подробных логов)
+    try:
+        targets_file = app.config.get('targets_file', '')
+        if targets_file and os.path.exists(targets_file):
+            from modules.database import get_connection
+            conn = get_connection()
+            cursor = conn.cursor()
+            cursor.execute("SELECT COUNT(*) FROM license_targets")
+            count = cursor.fetchone()[0]
+            conn.close()
+            
+            if count == 0:
+                print("🔄 Первичная загрузка целей (тихо)...")
+                auto_load_and_compute_targets()
+            else:
+                print(f"✅ Цели уже загружены ({count} записей)")
+        else:
+            print("⚠️ Файл целей не указан или не найден")
+    except Exception as e:
+        print(f"⚠️ Пропускаем загрузку целей: {e}")
+
+print("✅ Инициализация завершена")
+
+# ========== ЗАПУСК ==========
 
 # ========== ЗАПУСК ==========
 
 if __name__ == '__main__':
-    print("=" * 60)
-    print("Анализатор лицензий Huawei (с динамическими полями)")
-    print("=" * 60)
-    print(f"Путь к БД: {DB_PATH}")
-    print(f"Сетевое хранилище: {app.config.get('network_storage_path', 'не указано')}")
-    print(f"NE Type маппинг: {app.config.get('NE_TYPE_MAPPING_FILE', 'не указан')}")
-    print(f"Уровень логирования: {log_level}")
-    print(f"Правил извлечения: {len(app.config['EXTRACTION_RULES'].get('rules', {}))}")
+    print("=" * 50)
+    print("Анализатор лицензий Huawei")
+    print("=" * 50)
+    print(f"БД: {DB_PATH}")
     print(f"Операторов: {len(app.config['OPERATORS'])}")
-    print("=" * 60)
-    print("ЗАПУСК ВЕБ-ИНТЕРФЕЙСА")
-    print("=" * 60)
-    print("Откройте в браузере: http://127.0.0.1:5000")
-    print("=" * 60)
+    print("=" * 50)
+    
+    # Быстрая инициализация (без долгих операций)
+    with app.app_context():
+        from modules.capacity_mapper import load_ne_type_mapping
+        load_ne_type_mapping()
+    
+    print("🌐 Запуск сервера...")
+    print("Откройте: http://127.0.0.1:5000")
+    print("=" * 50)
     
     host = os.environ.get('HOST', '127.0.0.1')
     port = int(os.environ.get('PORT', 5000))
@@ -149,7 +254,4 @@ if __name__ == '__main__':
     try:
         app.run(host=host, port=port, debug=debug)
     except KeyboardInterrupt:
-        print("\n🛑 Приложение остановлено")
-    except Exception as e:
-        print(f"\n❌ Ошибка: {e}")
-        raise
+        print("\n🛑 Остановлено")

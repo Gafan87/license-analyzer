@@ -1,0 +1,187 @@
+{% extends "base.html" %}
+
+{% block title %}Цели лицензий{% endblock %}
+
+{% block content %}
+<div class="container">
+    <h1>📊 Управление целями</h1>
+    
+    <!-- Базовые цели (TargetKey) -->
+    <div class="targets-section">
+        <h2>🎯 Базовые цели (Targets)</h2>
+        <div class="table-responsive">
+            <table class="targets-table" id="baseTargetsTable">
+                <thead>
+                    <tr>
+                        <th>TargetKey</th>
+                        {% for city in cities %}
+                        <th>{{ city }}</th>
+                        {% endfor %}
+                    </tr>
+                </thead>
+                <tbody id="baseTargetsBody">
+                    <tr><td colspan="99">Загрузка...</td></tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+    
+    <!-- Вычисленные цели (Variables + SPart/BPart) -->
+    <div class="targets-section">
+        <h2>🧮 Вычисленные цели</h2>
+        <div id="calculatedTargetsContainer">
+            <p>Загрузка...</p>
+        </div>
+    </div>
+</div>
+
+<script>
+    // Загрузка базовых целей
+    async function loadBaseTargets() {
+        const response = await fetch(`/api/targets/base?operator={{ current_operator }}`);
+        const data = await response.json();
+        
+        if (!data.success) return;
+        
+        const targets = data.targets;
+        const cities = new Set();
+        
+        // Собираем все города
+        Object.values(targets).forEach(cityValues => {
+            Object.keys(cityValues).forEach(city => cities.add(city));
+        });
+        
+        const citiesList = Array.from(cities).sort();
+        
+        // Обновляем заголовки
+        const thead = document.querySelector('#baseTargetsTable thead tr');
+        thead.innerHTML = '<th>TargetKey</th>' + citiesList.map(c => `<th>${c}</th>`).join('');
+        
+        // Заполняем строки
+        const tbody = document.getElementById('baseTargetsBody');
+        tbody.innerHTML = '';
+        
+        for (const [targetKey, cityValues] of Object.entries(targets).sort()) {
+            const row = tbody.insertRow();
+            row.insertCell(0).innerHTML = `<strong>${targetKey}</strong>`;
+            
+            for (const city of citiesList) {
+                const value = cityValues[city] || '-';
+                row.insertCell().textContent = value;
+            }
+        }
+    }
+    
+    // Загрузка вычисленных целей
+    async function loadCalculatedTargets() {
+        const response = await fetch(`/api/targets/calculated?operator={{ current_operator }}`);
+        const data = await response.json();
+        
+        if (!data.success) return;
+        
+        const container = document.getElementById('calculatedTargetsContainer');
+        container.innerHTML = '';
+        
+        const targetsByNe = data.targets;
+        
+        for (const [neType, targets] of Object.entries(targetsByNe).sort()) {
+            // Собираем города для этого NE
+            const cities = new Set();
+            Object.values(targets).forEach(cityValues => {
+                Object.keys(cityValues).forEach(city => cities.add(city));
+            });
+            const citiesList = Array.from(cities).sort();
+            
+            // Создаём блок для NE типа
+            const neBlock = document.createElement('div');
+            neBlock.className = 'ne-block';
+            neBlock.innerHTML = `
+                <h3>${neType}</h3>
+                <div class="table-responsive">
+                    <table class="targets-table">
+                        <thead>
+                            <tr>
+                                <th>CapacityKey</th>
+                                ${citiesList.map(c => `<th>${c}</th>`).join('')}
+                            </tr>
+                        </thead>
+                        <tbody id="tbody-${neType.replace(/[^a-zA-Z0-9]/g, '_')}"></tbody>
+                    </table>
+                </div>
+            `;
+            container.appendChild(neBlock);
+            
+            // Заполняем строки
+            const tbody = neBlock.querySelector('tbody');
+            for (const [capacityKey, cityValues] of Object.entries(targets).sort()) {
+                const row = tbody.insertRow();
+                row.insertCell(0).innerHTML = `<strong>${capacityKey}</strong>`;
+                
+                for (const city of citiesList) {
+                    const value = cityValues[city] || '-';
+                    row.insertCell().textContent = value;
+                }
+            }
+        }
+    }
+    
+    // Загрузка при старте
+    document.addEventListener('DOMContentLoaded', () => {
+        loadBaseTargets();
+        loadCalculatedTargets();
+    });
+</script>
+
+<style>
+    .targets-section {
+        margin-bottom: 2rem;
+        padding: 1rem;
+        background: var(--bg-primary);
+        border-radius: var(--radius-lg);
+        border: 1px solid var(--border-light);
+    }
+    
+    .targets-section h2 {
+        margin-top: 0;
+        margin-bottom: 1rem;
+        color: var(--huawei-red);
+        font-size: 1.2rem;
+    }
+    
+    .ne-block {
+        margin-bottom: 1.5rem;
+        padding: 0.5rem;
+        background: var(--bg-secondary);
+        border-radius: var(--radius-md);
+    }
+    
+    .ne-block h3 {
+        margin-top: 0;
+        margin-bottom: 0.5rem;
+        color: var(--text-primary);
+        font-size: 1rem;
+    }
+    
+    .targets-table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 0.75rem;
+    }
+    
+    .targets-table th,
+    .targets-table td {
+        padding: 0.3rem 0.5rem;
+        text-align: left;
+        border-bottom: 1px solid var(--border-light);
+    }
+    
+    .targets-table th {
+        background: var(--bg-tertiary);
+        font-weight: 600;
+    }
+    
+    .table-responsive {
+        overflow-x: auto;
+    }
+</style>
+{% endblock %}
