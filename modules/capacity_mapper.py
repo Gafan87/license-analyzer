@@ -473,9 +473,24 @@ def load_targets_from_excel(file_path, operator_name=None):
       
 def compute_license_targets(targets, capacity_list, operator_name=None):
     """
-    Вычисляет целевые значения:
-    - TargetKey сохраняются с ne_type = '' (базовые)
-    - Variables, SPart, BPart сохраняются с конкретным ne_type (вычисленные)
+    Вычисляет целевые значения для каждой комбинации город/NE_type/CapacityKey
+    
+    Поддерживаемые типы формул (в порядке обработки):
+    1. Фиксированные числа: "1", "100", "0.5"
+    2. Прямые ссылки на TargetKey: "IMS_Core"
+    3. Умножение TargetKey: "PS,vEPC_GGSN_Gbps * 1000"
+    4. Переменные (type='variable'): "SP1+SP2+SP3"
+    5. Проценты от SPart/переменных: "Total_session * 100%"
+    6. Ссылки на другие SPart: "Main_Sessions"
+    7. Функции: MAX(), MIN(), AVG(), SUM(), roundup(), if()
+    
+    Args:
+        targets: список словарей из load_targets_from_excel
+        capacity_list: список словарей из load_full_capacity_list
+        operator_name: str - имя оператора
+    
+    Returns:
+        список словарей [{operator, target_key, city, ne_type, capacity_key, target_value}, ...]
     """
     import re
     import math
@@ -496,6 +511,7 @@ def compute_license_targets(targets, capacity_list, operator_name=None):
             'operator': t['operator']
         }
     
+    # Собираем список всех городов
     city_set = set()
     for t in targets:
         city_set.add(t['city'])
@@ -775,7 +791,8 @@ def compute_license_targets(targets, capacity_list, operator_name=None):
                     'city': city,
                     'ne_type': ne_type,
                     'capacity_key': spart_name,
-                    'target_value': target_value
+                    'target_value': target_value,
+                    'item_type': 'target'
                 })
             logger.debug(f"Фиксированное число: {spart_name} = {fixed_value}")
             continue
@@ -794,7 +811,8 @@ def compute_license_targets(targets, capacity_list, operator_name=None):
                     'city': city,
                     'ne_type': ne_type,
                     'capacity_key': spart_name,
-                    'target_value': target_value
+                    'target_value': target_value,
+                    'item_type': 'target'
                 })
             logger.debug(f"Прямая ссылка: {spart_name} = {formula_str}")
             continue
@@ -846,14 +864,15 @@ def compute_license_targets(targets, capacity_list, operator_name=None):
                                 'city': city,
                                 'ne_type': ne_type,
                                 'capacity_key': spart_name,
-                                'target_value': target_value
+                                'target_value': target_value,
+                                'item_type': 'target'
                             })
                         logger.debug(f"Умножение: {spart_name} = {target_key_found} * {multiplier}")
                         continue
             except Exception as e:
                 logger.error(f"Ошибка умножения {formula_str}: {e}")
     
-    # ========== 6. ШАГ 3: ПЕРЕМЕННЫЕ (ВАЖНО! ДО ПРОЦЕНТОВ) ==========
+    # ========== 6. ШАГ 3: ПЕРЕМЕННЫЕ ==========
     variables = {}
 
     for item in capacity_list:
@@ -867,12 +886,55 @@ def compute_license_targets(targets, capacity_list, operator_name=None):
         formula_str = str(formula).strip()
         var_name = item['name']
         
-        # Пропускаем если уже есть
         if var_name in spart_targets:
             continue
         
-        # ========== Обработка умножения (TargetKey * число) ==========
-        if '*' in formula_str and '%' not in formula_str:
+        # ========== 1. Фиксированное число ==========
+        try:
+            fixed_value = float(formula_str)
+            for city in city_set:
+                if var_name not in variables:
+                    variables[var_name] = {}
+                variables[var_name][city] = round(fixed_value, 2)
+            logger.debug(f"Фиксированное число: {var_name} = {fixed_value}")
+            continue
+        except (ValueError, TypeError):
+            pass
+        
+        # ========== 2. IF условия ==========
+        if formula_str.lower().strip().startswith('if('):
+            try:
+                import re
+                # Поддерживаем оба разделителя: ; и ,
+                match = re.match(r'if\(\s*(.+?)\s*[;,]\s*(.+?)\s*[;,]\s*(.+?)\s*\)', formula_str, re.IGNORECASE)
+                if match:
+                    condition = match.group(1).strip()
+                    value_true = match.group(2).strip()
+                    value_false = match.group(3).strip()
+                    
+                    for city in city_set:
+                        cond_result = evaluate_condition(condition, city, targets_map, spart_targets)
+                        
+                        if cond_result:
+                            val = get_numeric_value(value_true, city, targets_map, spart_targets)
+                        else:
+                            val = get_numeric_value(value_false, city, targets_map, spart_targets)
+                        
+                        if val is not None:
+                            if var_name not in variables:
+                                variables[var_name] = {}
+                            variables[var_name][city] = round(val, 2)
+                        else:
+                            if var_name not in variables:
+                                variables[var_name] = {}
+                            variables[var_name][city] = 0
+                    logger.debug(f"IF: {var_name} = if({condition}, {value_true}, {value_false})")
+                    continue
+            except Exception as e:
+                logger.error(f"Ошибка IF в {var_name}: {formula_str} - {e}")
+        
+        # ========== 3. Умножение (TargetKey * число) ==========
+        if '*' in formula_str and '%' not in formula_str and '(' not in formula_str:
             try:
                 formula_clean = formula_str.replace(' ', '').replace(',', '')
                 parts = formula_clean.split('*')
@@ -880,7 +942,6 @@ def compute_license_targets(targets, capacity_list, operator_name=None):
                     ref_name = parts[0]
                     multiplier = float(parts[1])
                     
-                    # Восстанавливаем оригинальное имя TargetKey (с запятой)
                     original_ref = None
                     if ref_name in targets_map:
                         original_ref = ref_name
@@ -900,34 +961,111 @@ def compute_license_targets(targets, capacity_list, operator_name=None):
                         if var_name not in variables:
                             variables[var_name] = {}
                         variables[var_name][city] = value
+                    logger.debug(f"Умножение: {var_name} = {original_ref} * {multiplier}")
                     continue
             except Exception as e:
-                logger.error(f"Ошибка умножения в переменной {var_name}: {formula_str} - {e}")
+                logger.error(f"Ошибка умножения в {var_name}: {formula_str} - {e}")
         
-        # ========== Обработка суммы (SP1+SP2+SP3) ==========
+        # ========== 4. Скобки (A+B)*C ==========
+        if '(' in formula_str and ')' in formula_str:
+            try:
+                import re
+                # Ищем (A+B)*C или (A+B)*C + (D+E)*F
+                parts = re.split(r'(?<=\))\s*\+\s*(?=\()', formula_str)
+                total_result = {}
+                
+                for part in parts:
+                    match = re.match(r'\(([^)]+)\)\s*\*\s*(\d+)', part.strip())
+                    if match:
+                        inner = match.group(1).strip()
+                        multiplier = float(match.group(2))
+                        refs = [r.strip() for r in inner.split('+')]
+                        
+                        for city in city_set:
+                            total = 0
+                            for ref in refs:
+                                if ref in targets_map and city in targets_map[ref]:
+                                    total += targets_map[ref][city]['value'] / targets_map[ref][city]['sharing']
+                                elif ref in spart_targets and city in spart_targets[ref]:
+                                    total += spart_targets[ref][city]
+                                elif ref in variables and city in variables[ref]:
+                                    total += variables[ref][city]
+                            
+                            if var_name not in total_result:
+                                total_result[city] = 0
+                            total_result[city] += round(total * multiplier, 2)
+                
+                if total_result:
+                    for city in city_set:
+                        if city in total_result:
+                            if var_name not in variables:
+                                variables[var_name] = {}
+                            variables[var_name][city] = total_result[city]
+                    logger.debug(f"Скобки: {var_name} = {formula_str}")
+                    continue
+            except Exception as e:
+                logger.error(f"Ошибка скобок в {var_name}: {formula_str} - {e}")
+        
+        # ========== 5. Сумма умножений A*C + B*D ==========
+        if '+' in formula_str and '*' in formula_str and '(' not in formula_str:
+            try:
+                parts = [p.strip() for p in formula_str.split('+')]
+                
+                for city in city_set:
+                    total = 0
+                    all_resolved = True
+                    
+                    for part in parts:
+                        if '*' in part:
+                            sub_parts = [s.strip() for s in part.split('*')]
+                            if len(sub_parts) == 2:
+                                ref_name = sub_parts[0]
+                                multiplier = float(sub_parts[1])
+                                
+                                if ref_name in targets_map and city in targets_map[ref_name]:
+                                    value = targets_map[ref_name][city]['value'] / targets_map[ref_name][city]['sharing']
+                                    total += value * multiplier
+                                else:
+                                    all_resolved = False
+                                    break
+                            else:
+                                all_resolved = False
+                                break
+                        else:
+                            all_resolved = False
+                            break
+                    
+                    if all_resolved:
+                        if var_name not in variables:
+                            variables[var_name] = {}
+                        variables[var_name][city] = round(total, 2)
+                if var_name in variables:
+                    logger.debug(f"Сумма умножений: {var_name} = {formula_str}")
+                continue
+            except Exception as e:
+                logger.error(f"Ошибка суммы умножений в {var_name}: {formula_str} - {e}")
+        
+        # ========== 6. Сумма SP1+SP2+SP3 ==========
         if '+' in formula_str:
             ref_sparts = [s.strip() for s in formula_str.split('+')]
             
             for city in city_set:
                 total = 0
                 for ref in ref_sparts:
-                    # Ищем в spart_targets (уже вычисленные SPart)
                     if ref in spart_targets and city in spart_targets[ref]:
                         total += spart_targets[ref][city]
-                    # Ищем в targets_map
                     elif ref in targets_map and city in targets_map[ref]:
                         total += targets_map[ref][city]['value'] / targets_map[ref][city]['sharing']
-                    # Ищем в других переменных
                     elif ref in variables and city in variables[ref]:
                         total += variables[ref][city]
                 
                 if var_name not in variables:
                     variables[var_name] = {}
                 variables[var_name][city] = round(total, 2)
+            logger.debug(f"Сумма: {var_name} = {formula_str}")
             continue
         
-        # ========== Обработка простой ссылки ==========
-        # (если нет ни +, ни *)
+        # ========== 7. Простая ссылка ==========
         ref = formula_str
         for city in city_set:
             value = None
@@ -943,8 +1081,9 @@ def compute_license_targets(targets, capacity_list, operator_name=None):
             if var_name not in variables:
                 variables[var_name] = {}
             variables[var_name][city] = round(value, 2) if value is not None else 0
+        logger.debug(f"Простая ссылка: {var_name} = {formula_str}")
 
-    # Добавляем переменные в spart_targets и результаты
+    # ========== Добавляем переменные в spart_targets и результаты ==========
     for var_name, city_values in variables.items():
         if var_name not in spart_targets:
             spart_targets[var_name] = {}
@@ -955,11 +1094,12 @@ def compute_license_targets(targets, capacity_list, operator_name=None):
                 'operator': operator_name or '',
                 'target_key': f"variable_{var_name}",
                 'city': city,
-                'ne_type': '',
+                'ne_type': item.get('ne_type', ''),
                 'capacity_key': var_name,
-                'target_value': target_value
+                'target_value': target_value,
+                'item_type': 'variable'
             })
-        logger.debug(f"Переменная: {var_name} = {city_values}")
+        logger.debug(f"Переменная сохранена: {var_name} = {city_values}")
     
     # ========== 7. ШАГ 4: ПРОЦЕНТЫ ОТ SPART/ПЕРЕМЕННЫХ ==========
     for item in capacity_list:
@@ -1003,7 +1143,8 @@ def compute_license_targets(targets, capacity_list, operator_name=None):
                             'city': city,
                             'ne_type': ne_type,
                             'capacity_key': spart_name,
-                            'target_value': target_value
+                            'target_value': target_value,
+                            'item_type': 'target'
                         })
                 if spart_targets[spart_name]:
                     logger.debug(f"Процент: {spart_name} = {ref_spart} * {pct*100}%")
@@ -1045,7 +1186,8 @@ def compute_license_targets(targets, capacity_list, operator_name=None):
                         'city': city,
                         'ne_type': ne_type,
                         'capacity_key': spart_name,
-                        'target_value': target_value
+                        'target_value': target_value,
+                        'item_type': 'target'
                     })
             if spart_targets.get(spart_name):
                 logger.debug(f"Функция: {spart_name} = {formula_str}")
@@ -1079,7 +1221,8 @@ def compute_license_targets(targets, capacity_list, operator_name=None):
                         'city': city,
                         'ne_type': ne_type,
                         'capacity_key': spart_name,
-                        'target_value': target_value
+                        'target_value': target_value,
+                        'item_type': 'target'
                     })
             if spart_targets[spart_name]:
                 logger.debug(f"Ссылка: {spart_name} = {formula_str}")
@@ -1101,9 +1244,10 @@ def compute_license_targets(targets, capacity_list, operator_name=None):
                     'operator': data['operator'],
                     'target_key': target_key,
                     'city': city,
-                    'ne_type': '',
+                    'ne_type': item.get('ne_type', ''),
                     'capacity_key': target_key,
-                    'target_value': target_value
+                    'target_value': target_value,
+                    'item_type': 'target'
                 })
     
     # ========== 11. СОРТИРОВКА РЕЗУЛЬТАТОВ ==========

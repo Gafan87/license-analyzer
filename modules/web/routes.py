@@ -1791,67 +1791,100 @@ def get_dat_hierarchy(license_id, mode, domain, show_all=False, operator_name=No
                 item['valid_date'] = date_map.get(item['name'], '')
                 item['is_empty'] = False
         
-        # Вычисляем переменные
-        max_iterations = 5
-        for _ in range(max_iterations):
-            changed = False
-            for item in items:
-                if item.get('type') != 'variable':
-                    continue
-                if item.get('value', 0) > 0:
+        # ========== ВЫЧИСЛЯЕМ ПЕРЕМЕННЫЕ (используем targets_map) ==========
+        # Сначала присваиваем переменным значения из targets_map
+        for item in items:
+            if item.get('type') == 'variable':
+                # Если переменная есть в targets_map — берём оттуда
+                if item['name'] in targets_map:
+                    item['value'] = targets_map[item['name']]
+                    item['is_empty'] = False
                     continue
                 
+                # Если нет — вычисляем по формуле
                 formula = item.get('formula', '')
                 if not formula:
                     continue
                 
-                if '+' in formula:
+                # Простая ссылка
+                if formula in targets_map:
+                    item['value'] = targets_map[formula]
+                    item['is_empty'] = False
+                # Сумма
+                elif '+' in formula:
                     refs = [ref.strip() for ref in formula.split('+')]
                     total = 0
                     all_resolved = True
                     for ref in refs:
-                        found = False
-                        for it in items:
-                            if it['name'] == ref and it.get('value', 0) > 0:
-                                total += it['value']
-                                found = True
-                                break
-                        if not found and ref in values_map:
-                            total += values_map[ref]
-                            found = True
-                        if not found:
+                        if ref in targets_map:
+                            total += targets_map[ref]
+                        else:
                             all_resolved = False
                             break
-                    
                     if all_resolved:
                         item['value'] = round(total, 2)
                         item['is_empty'] = False
-                        changed = True
-                else:
-                    ref = formula.strip()
-                    for it in items:
-                        if it['name'] == ref and it.get('value', 0) > 0:
-                            item['value'] = it['value']
-                            item['is_empty'] = False
-                            changed = True
-                            break
-                    if not changed and ref in values_map:
-                        item['value'] = values_map[ref]
-                        item['is_empty'] = False
-                        changed = True
-            
-            if not changed:
-                break
+                # Умножение (TargetKey * число)
+                elif '*' in formula:
+                    try:
+                        parts = formula.replace(' ', '').split('*')
+                        if len(parts) == 2:
+                            ref_name = parts[0]
+                            multiplier = float(parts[1])
+                            if ref_name in targets_map:
+                                item['value'] = round(targets_map[ref_name] * multiplier, 2)
+                                item['is_empty'] = False
+                    except:
+                        pass
         
-        # Вычисляем цели для BPart (через evaluate_target)
+        # ========== ВЫЧИСЛЯЕМ ЦЕЛИ ДЛЯ BPART ==========
         for item in items:
             if item.get('type') == 'bpart':
-                formula = item.get('formula')
-                if formula:
-                    item['target_value'] = evaluate_target(formula)
+                formula = item.get('formula', '')
+                if not formula:
+                    item['target_value'] = ''
+                    continue
+                
+                formula = str(formula).strip()
+                
+                # Прямая ссылка на переменную или TargetKey
+                if formula in targets_map:
+                    item['target_value'] = targets_map[formula]
+                # Сумма
+                elif '+' in formula:
+                    parts = [p.strip() for p in formula.split('+')]
+                    total = 0
+                    all_found = True
+                    for part in parts:
+                        if part in targets_map:
+                            total += targets_map[part]
+                        else:
+                            all_found = False
+                            break
+                    if all_found:
+                        item['target_value'] = round(total, 2)
+                # Фиксированное значение (fix:число)
+                elif formula.startswith('fix:'):
+                    try:
+                        item['target_value'] = round(float(formula[4:]), 2)
+                    except:
+                        item['target_value'] = ''
+                # Процент
+                elif formula.endswith('%'):
+                    # Для плоского сценария процент от родительского SPart не используется
+                    item['target_value'] = ''
+                # Число (если просто число)
                 else:
-                    item['target_value'] = targets_map.get(item['name'], '')
-            elif item.get('type') == 'variable':
+                    try:
+                        num = float(formula)
+                        item['target_value'] = round(num, 2)
+                    except ValueError:
+                        item['target_value'] = ''
+        
+        # ========== ЦЕЛИ ДЛЯ ПЕРЕМЕННЫХ ==========
+        for item in items:
+            if item.get('type') == 'variable':
+                # Переменные получают цели из targets_map
                 item['target_value'] = targets_map.get(item['name'], '')
         
         # Формируем результат с секциями
@@ -1916,7 +1949,6 @@ def get_dat_hierarchy(license_id, mode, domain, show_all=False, operator_name=No
             'sparts': result_items,
             'orphans': []
         })
-        
  
 @web_bp.route('/<operator>/refresh_targets', methods=['POST'])
 def refresh_targets(operator):
@@ -2728,11 +2760,16 @@ def excel_mapping(operator):
             conn = get_connection()
             cursor = conn.cursor()
             cursor.execute('DELETE FROM domain_targets')
-            for t in targets:
+            
+            # Сохраняем с сортировкой
+            for idx, t in enumerate(targets):
                 cursor.execute('''
-                    INSERT OR REPLACE INTO domain_targets (operator, domain, type, unit, target_key, city, value, sharing)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-                ''', (t['operator'], t['domain'], t['type'], t['unit'], t['target_key'], t['city'], t['value'], t['sharing']))
+                    INSERT OR REPLACE INTO domain_targets 
+                    (operator, domain, type, unit, target_key, city, value, sharing, sort_order)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ''', (t['operator'], t['domain'], t['type'], t['unit'], 
+                    t['target_key'], t['city'], t['value'], t['sharing'], idx))
+            
             conn.commit()
             conn.close()
             message = f'✅ Загружено: {len(targets)} целей'
@@ -2740,46 +2777,98 @@ def excel_mapping(operator):
         elif action == 'compute':
             targets = load_targets_from_excel(targets_file)
             
-            all_capacity = []
+            network_storage = current_app.config.get('network_storage_path', '')
+            
+            # Получаем все NE типы для оператора
             conn = get_connection()
             cursor = conn.cursor()
             cursor.execute('SELECT DISTINCT ne_type FROM licenses WHERE operator = ?', (operator,))
             ne_types = [r[0] for r in cursor.fetchall()]
             conn.close()
             
-            network_storage = current_app.config.get('network_storage_path', '')
+            all_computed = []
+            
             for ne_type in ne_types:
+                # Получаем домен для NE типа
                 mapping_info = get_description_file_and_sheet(ne_type)
                 domain = mapping_info.get('domain', '') if mapping_info else ''
-                if domain:
-                    items = load_full_capacity_list(domain, network_storage, ne_type, operator)
-                    for item in items:
-                        item['ne_type'] = ne_type
-                        item['domain'] = domain
-                    all_capacity.extend(items)
+                
+                if not domain:
+                    print(f"⚠️ Для NE типа {ne_type} не найден домен")
+                    continue
+                
+                # Загружаем структуру license_details
+                items = load_full_capacity_list(domain, network_storage, ne_type, operator)
+                if not items:
+                    print(f"⚠️ Для {ne_type} (domain={domain}) не загружены элементы")
+                    continue
+                
+                for item in items:
+                    item['ne_type'] = ne_type
+                    item['domain'] = domain
+                
+                # Фильтруем цели для этого домена (частичное совпадение)
+                # Ищем цели, где domain содержит текущий домен или текущий домен содержится в цели
+                filtered_targets = []
+                for t in targets:
+                    target_domain = t.get('domain', '')
+                    # Проверяем: domain цели совпадает с текущим ИЛИ
+                    # текущий домен входит в domain цели (для случаев 'PS,vEPC')
+                    if target_domain == domain or domain in target_domain or target_domain in domain:
+                        filtered_targets.append(t)
+                
+                print(f"DEBUG: {ne_type} (domain={domain}) - целей: {len(filtered_targets)}, элементов: {len(items)}")
+                
+                # Вычисляем цели для этого NE типа
+                computed = compute_license_targets(filtered_targets, items, operator)
+                print(f"DEBUG: Вычислено {len(computed)} целей для {ne_type}")
+                
+                all_computed.extend(computed)
             
-            computed = compute_license_targets(targets, all_capacity, operator)
-            
+            # Сохраняем в БД
             conn = get_connection()
             cursor = conn.cursor()
             cursor.execute('DELETE FROM license_targets')
-            for c in computed:
+            
+            for c in all_computed:
                 cursor.execute('''
-                    INSERT OR REPLACE INTO license_targets (operator, target_key, city, ne_type, capacity_key, target_value)
-                    VALUES (?, ?, ?, ?, ?, ?)
-                ''', (c['operator'], c['target_key'], c['city'], c['ne_type'], c['capacity_key'], c['target_value']))
+                    INSERT OR REPLACE INTO license_targets 
+                    (operator, target_key, city, ne_type, capacity_key, target_value, item_type)
+                    VALUES (?, ?, ?, ?, ?, ?, ?)
+                ''', (c['operator'], c['target_key'], c['city'], 
+                    c.get('ne_type', ''),  # ← используем из результата
+                    c['capacity_key'], c['target_value'], 
+                    c.get('item_type', 'target')))
+                        
             conn.commit()
             conn.close()
             
-            computed_targets = computed
-            message = f'✅ Вычислено {len(computed)} целевых значений'
+            computed_targets = all_computed
+            message = f'✅ Вычислено {len(all_computed)} целевых значений'
     
+    # ========== ЧТЕНИЕ ДАННЫХ ДЛЯ ОТОБРАЖЕНИЯ ==========
     conn = get_connection()
     cursor = conn.cursor()
-    cursor.execute('SELECT * FROM domain_targets ORDER BY operator, target_key, city')
-    domain_targets = [dict(zip(['id','operator','domain','type','unit','target_key','city','value','sharing'], r)) for r in cursor.fetchall()]
-    cursor.execute('SELECT * FROM license_targets ORDER BY operator, target_key, city, ne_type')
-    computed_targets = [dict(zip(['id','operator','target_key','city','ne_type','capacity_key','target_value'], r)) for r in cursor.fetchall()]
+    
+    # 1. Базовые цели (Targets) - сохраняем порядок из Excel
+    cursor.execute('''
+        SELECT * FROM domain_targets 
+        ORDER BY sort_order, target_key, city
+    ''')
+    domain_targets = [dict(zip(['id','operator','domain','type','unit','target_key','city','value','sharing','sort_order'], r)) for r in cursor.fetchall()]
+    
+    # 2. Вычисленные цели - читаем ВСЕ
+    cursor.execute('''
+        SELECT id, operator, target_key, city, ne_type, capacity_key, target_value, item_type 
+        FROM license_targets 
+        ORDER BY ne_type, capacity_key, city
+    ''')
+    all_computed = [dict(zip(['id','operator','target_key','city','ne_type','capacity_key','target_value','item_type'], r)) for r in cursor.fetchall()]
+    
+    # 3. Фильтруем: исключаем TargetKey (оставляем только variable, spart, bpart)
+    computed_targets = [c for c in all_computed if c.get('item_type') != 'target']
+    
+    # 4. ESN маппинг (без изменений)
     cursor.execute('SELECT esn, lsn, operator, domain, ne_type, city, site FROM esn_mapping')
     mappings = cursor.fetchall()
     conn.close()

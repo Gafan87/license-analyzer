@@ -1,176 +1,214 @@
 {% extends "base.html" %}
 
-{% block title %}Excel маппинг{% endblock %}
+{% block title %}Excel маппинг - Цели{% endblock %}
 
 {% block extra_css %}
 <style>
-    .mapping-tabs { display: flex; gap: 0; margin-bottom: 1.5rem; border-bottom: 2px solid var(--border-light); }
-    .mapping-tab { padding: 0.6rem 1.2rem; cursor: pointer; font-size: 0.85rem; color: var(--text-secondary); border-bottom: 2px solid transparent; margin-bottom: -2px; transition: var(--transition); }
-    .mapping-tab:hover { color: var(--huawei-red); }
-    .mapping-tab.active { color: var(--huawei-red); border-bottom-color: var(--huawei-red); font-weight: 600; }
-    .mapping-pane { display: none; }
-    .mapping-pane.active { display: block; }
+.ne-group {
+    margin-bottom: 2rem;
+    border: 1px solid var(--border-light);
+    border-radius: var(--radius-lg);
+    overflow: hidden;
+}
+.ne-header {
+    background: var(--bg-secondary);
+    padding: 0.75rem 1rem;
+    font-weight: 600;
+    border-bottom: 1px solid var(--border-light);
+    color: var(--huawei-red);
+}
+.targets-table-wrapper {
+    overflow-x: auto;
+}
+.targets-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.8rem;
+}
+.targets-table th {
+    background: var(--bg-tertiary);
+    padding: 0.6rem 0.5rem;
+    border-bottom: 1px solid var(--border-light);
+}
+.targets-table td {
+    padding: 0.4rem 0.5rem;
+    border-bottom: 1px solid var(--border-light);
+}
+.targets-table .capacity-key {
+    font-weight: 600;
+    font-family: monospace;
+}
+.city-column {
+    text-align: right;
+    min-width: 80px;
+}
+.value-null {
+    color: var(--text-muted);
+    font-style: italic;
+}
+.value-number {
+    font-family: monospace;
+    font-weight: 500;
+}
+.type-badge {
+    display: inline-block;
+    padding: 0.2rem 0.5rem;
+    border-radius: 4px;
+    font-size: 0.65rem;
+}
+.type-target { background: rgba(0, 123, 255, 0.1); color: #007bff; }
+.type-spart { background: rgba(230, 0, 18, 0.1); color: var(--huawei-red); }
+.type-bpart { background: var(--bg-tertiary); color: var(--text-secondary); }
+.type-variable { background: rgba(40, 167, 69, 0.1); color: #28a745; }
+.action-buttons { display: flex; gap: 1rem; margin-bottom: 1.5rem; }
+.info-card.success { background: #D4EDDA; padding: 0.75rem; margin-bottom: 1rem; border-radius: var(--radius-md); }
 </style>
 {% endblock %}
 
 {% block content %}
 <div class="card">
     <h1>📊 Excel маппинг</h1>
-    
-    <div class="mapping-tabs">
-        <div class="mapping-tab active" data-tab="targets">🎯 Базовые цели</div>
-        <div class="mapping-tab" data-tab="esn">🔗 ESN маппинг</div>
-        <div class="mapping-tab" data-tab="details">📋 License Details</div>
-    </div>
-    
-    <!-- Вкладка 1: Базовые цели -->
-    <div id="pane-targets" class="mapping-pane active">
-        {% if message %}
-        <div class="info-card" style="background: #D4EDDA; color: #155724; margin-bottom: 1rem;">{{ message }}</div>
-        {% endif %}
-        
-        <div style="display: flex; gap: 1rem; margin-bottom: 1.5rem; flex-wrap: wrap;">
-            <form method="post" style="display: inline;">
-                <input type="hidden" name="action" value="load">
-                <button type="submit" class="btn-primary">📥 Загрузить из Excel</button>
-            </form>
-            <form method="post" style="display: inline;">
-                <input type="hidden" name="action" value="compute">
-                <button type="submit" class="btn-primary">🔄 Вычислить цели</button>
-            </form>
-        </div>
-        
-        <p class="text-muted">Файл целей: <code>{{ targets_file }}</code></p>
-        
-        <h3>📊 Базовые цели (Targets)</h3>
-        {% if domain_targets %}
-        <div class="table-wrapper">
-            <table class="licenses-table">
-                <thead><tr><th>Оператор</th><th>Домен</th><th>Тип</th><th>Город</th><th>Значение</th><th>Ед.</th></tr></thead>
-                <tbody>
-                    {% for t in domain_targets %}
-                    <tr><td>{{ t.operator }}</td><td>{{ t.domain }}</td><td>{{ t.type }}</td><td>{{ t.city }}</td><td>{{ t.value }}</td><td>{{ t.unit }}</td></tr>
-                    {% endfor %}
-                </tbody>
-            </table>
-        </div>
-        {% else %}<p class="text-muted">Нет данных.</p>{% endif %}
-        
-        <h3 style="margin-top: 2rem;">🔢 Формулы</h3>
-        {% if ne_formulas %}
-        <div class="table-wrapper">
-            <table class="licenses-table">
-                <thead><tr><th>Домен</th><th>Тип</th><th>NE тип</th><th>CapacityKey</th><th>Формула</th><th>Sharing</th><th>Main</th></tr></thead>
-                <tbody>
-                    {% for f in ne_formulas %}
-                    <tr><td>{{ f.domain }}</td><td>{{ f.type }}</td><td>{{ f.ne_type }}</td><td>{{ f.capacity_key }}</td><td><code>{{ f.formula }}</code></td><td>{{ f.sharing }}</td><td>{{ '✅' if f.main_key else '' }}</td></tr>
-                    {% endfor %}
-                </tbody>
-            </table>
-        </div>
-        {% else %}<p class="text-muted">Нет формул.</p>{% endif %}
-        
-        {% if computed_targets %}
-        <h3 style="margin-top: 2rem;">🎯 Вычисленные цели</h3>
-        <div class="table-wrapper">
-            <table class="licenses-table">
-                <thead><tr><th>Оператор</th><th>Домен</th><th>Тип</th><th>Город</th><th>NE тип</th><th>CapacityKey</th><th>Цель</th></tr></thead>
-                <tbody>
-                    {% for c in computed_targets %}
-                    <tr><td>{{ c.operator }}</td><td>{{ c.domain }}</td><td>{{ c.type }}</td><td>{{ c.city }}</td><td>{{ c.ne_type }}</td><td>{{ c.capacity_key }}</td><td><strong>{{ c.target_value }}</strong></td></tr>
-                    {% endfor %}
-                </tbody>
-            </table>
-        </div>
-        {% endif %}
-    </div>
-    
-    <!-- Вкладка 2: ESN маппинг -->
-    <div id="pane-esn" class="mapping-pane">
-        <div style="display: flex; gap: 1rem; margin-bottom: 1rem; flex-wrap: wrap; align-items: center;">
-            <form method="post" enctype="multipart/form-data" style="display: inline;">
-                <input type="file" name="upload_file" accept=".xlsx" style="display: none;" id="esnUploadInput">
-                <button type="button" class="btn-primary" onclick="document.getElementById('esnUploadInput').click()">📤 Загрузить ESN маппинг</button>
-            </form>
-            <form method="post" style="display: inline;">
-                <input type="hidden" name="export" value="1">
-                <button type="submit" class="btn-secondary">📥 Экспорт в Excel</button>
-            </form>
-            <button id="applyMappingBtn" class="btn-primary">📝 Применить маппинг к лицензиям</button>
-        </div>
-        
-        <div class="table-wrapper">
-            <table class="licenses-table">
-                <thead><tr><th>ESN</th><th>LSN</th><th>Оператор</th><th>Домен</th><th>NE тип</th><th>Город</th><th>Сайт</th></tr></thead>
-                <tbody>
-                    {% for m in mappings %}
-                    <tr><td>{{ m[0] or '-' }}</td><td>{{ m[1] or '-' }}</td><td>{{ m[2] or '-' }}</td><td>{{ m[3] or '-' }}</td><td>{{ m[4] or '-' }}</td><td>{{ m[5] or '-' }}</td><td>{{ m[6] or '-' }}</td></tr>
-                    {% endfor %}
-                </tbody>
-            </table>
-        </div>
-    </div>
-    
-    <!-- Вкладка 3: License Details -->
-    <div id="pane-details" class="mapping-pane">
-        <h3>📋 Статус License Details по NE типам</h3>
-        <div id="licenseDetailsStatus"><p class="text-muted">Загрузка...</p></div>
-    </div>
-</div>
 
-<script>
-    document.querySelectorAll('.mapping-tab').forEach(tab => {
-        tab.addEventListener('click', () => {
-            document.querySelectorAll('.mapping-tab').forEach(t => t.classList.remove('active'));
-            document.querySelectorAll('.mapping-pane').forEach(p => p.classList.remove('active'));
-            tab.classList.add('active');
-            document.getElementById(`pane-${tab.dataset.tab}`).classList.add('active');
-            if (tab.dataset.tab === 'details') loadLicenseDetailsStatus();
-        });
-    });
+    {% if message %}
+    <div class="info-card success">{{ message }}</div>
+    {% endif %}
+
+    <div class="action-buttons">
+        <form method="post">
+            <input type="hidden" name="action" value="load">
+            <button type="submit" class="btn-primary">📥 Загрузить из Excel</button>
+        </form>
+        <form method="post">
+            <input type="hidden" name="action" value="compute">
+            <button type="submit" class="btn-primary">🔄 Вычислить цели</button>
+        </form>
+    </div>
+
+    <p class="text-muted">Файл целей: <code>{{ targets_file }}</code></p>
+
+    <!-- ========== БАЗОВЫЕ ЦЕЛИ ========== -->
+    <h3>🎯 Базовые цели (Targets)</h3>
+    {% if domain_targets %}
+        {% set cities = [] %}
+        {% set targets_dict = {} %}
+        
+        {% for t in domain_targets %}
+            {% if t.city not in cities %}{% set _ = cities.append(t.city) %}{% endif %}
+            {% if t.target_key not in targets_dict %}
+                {% set _ = targets_dict.update({t.target_key: {
+                    'type': t.type, 
+                    'unit': t.unit, 
+                    'operator': t.operator,
+                    'domain': t.domain,
+                    'sharing': {},
+                    'city_vals': {}
+                }}) %}
+            {% endif %}
+            {% set _ = targets_dict[t.target_key]['city_vals'].update({t.city: t.value}) %}
+            {% if t.sharing %}
+                {% set _ = targets_dict[t.target_key]['sharing'].update({t.city: t.sharing}) %}
+            {% endif %}
+        {% endfor %}
+        
+        {% set cities = cities|sort %}
+        
+        <div class="targets-table-wrapper">
+            <table class="targets-table">
+                <thead>
+                    <tr>
+                        <th>TargetKey</th>
+                        <th>Тип</th>
+                        <th>Ед. изм.</th>
+                        <th>Operator</th>
+                        <th>Domain</th>
+                        {% for city in cities %}<th class="city-column">Значение ({{ city }})</th>{% endfor %}
+                        {% for city in cities %}<th class="city-column">Sharing ({{ city }})</th>{% endfor %}
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for key, info in targets_dict.items() %}
+                    <tr>
+                        <td class="capacity-key">{{ key }}</td>
+                        <td><span class="type-badge type-target">{{ info.type or '-' }}</span></td>
+                        <td>{{ info.unit or '-' }}</td>
+                        <td>{{ info.operator or '-' }}</td>
+                        <td>{{ info.domain or '-' }}</td>
+                        {% for city in cities %}
+                        <td class="city-column">
+                            {% set val = info.city_vals[city] if city in info.city_vals else none %}
+                            {% if val is not none %}<span class="value-number">{{ val }}</span>{% else %}<span class="value-null">—</span>{% endif %}
+                        </td>
+                        {% endfor %}
+                        {% for city in cities %}
+                        <td class="city-column">
+                            {% set shr = info.sharing[city] if city in info.sharing else none %}
+                            {% if shr is not none %}{{ shr }}{% else %}<span class="value-null">—</span>{% endif %}
+                        </td>
+                        {% endfor %}
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    {% else %}
+        <p class="text-muted">Нет данных. Нажмите "Загрузить из Excel".</p>
+    {% endif %}
+
+    <!-- ========== ВЫЧИСЛЕННЫЕ ЦЕЛИ ========== -->
+    {% if computed_targets %}
+    <h3 style="margin-top: 2rem;">🔢 Вычисленные цели</h3>
     
-    async function loadLicenseDetailsStatus() {
-        const container = document.getElementById('licenseDetailsStatus');
-        try {
-            const resp = await fetch('/api/license_details_status');
-            const data = await resp.json();
-            if (data.success) {
-                container.innerHTML = `
-                    <table class="licenses-table">
-                        <thead><tr><th>NE Type</th><th>Файл</th><th>Статус</th><th>Записей</th></tr></thead>
-                        <tbody>${data.items.map(i => `
-                            <tr>
-                                <td>${i.ne_type}</td>
-                                <td><code>${i.file}</code></td>
-                                <td>${i.exists ? '✅' : '❌'}</td>
-                                <td>${i.count || 0}</td>
-                            </tr>
-                        `).join('')}</tbody>
-                    </table>`;
-            }
-        } catch(e) {
-            container.innerHTML = '<p class="text-muted">Ошибка загрузки</p>';
-        }
-    }
+    {% set ne_groups = {} %}
+    {% set all_cities = [] %}
     
-    // Загрузка ESN маппинга
-    document.getElementById('esnUploadInput')?.addEventListener('change', async function() {
-        const file = this.files[0];
-        if (!file) return;
-        const formData = new FormData();
-        formData.append('upload_file', file);
-        try {
-            const resp = await fetch('/{{ current_operator }}/esn_mapping', { method: 'POST', body: formData });
-            if (resp.ok) location.reload();
-        } catch(e) { alert('Ошибка: ' + e.message); }
-    });
+    {% for c in computed_targets %}
+        {% set ne = c.ne_type or 'Общие' %}
+        {% if ne not in ne_groups %}{% set _ = ne_groups.update({ne: {}}) %}{% endif %}
+        {% if c.capacity_key not in ne_groups[ne] %}
+            {% set _ = ne_groups[ne].update({c.capacity_key: {'item_type': c.item_type, 'city_vals': {}}}) %}
+        {% endif %}
+        {% set _ = ne_groups[ne][c.capacity_key]['city_vals'].update({c.city: c.target_value}) %}
+        {% if c.city not in all_cities %}{% set _ = all_cities.append(c.city) %}{% endif %}
+    {% endfor %}
     
-    // Применить маппинг
-    document.getElementById('applyMappingBtn')?.addEventListener('click', async () => {
-        if (!confirm('Применить ESN маппинг ко всем лицензиям?')) return;
-        const resp = await fetch('/{{ current_operator }}/apply_mapping', { method: 'POST' });
-        const data = await resp.json();
-        alert(data.message || 'Готово');
-    });
-</script>
+    {% set all_cities = all_cities|sort %}
+    
+    {% for ne_type, keys in ne_groups.items() %}
+    <div class="ne-group">
+        <div class="ne-header">📁 {{ ne_type }}</div>
+        <div class="targets-table-wrapper">
+            <table class="targets-table">
+                <thead>
+                    <tr>
+                        <th>CapacityKey</th><th>Тип</th>
+                        {% for city in all_cities %}<th class="city-column">{{ city }}</th>{% endfor %}
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for key, info in keys.items() %}
+                    <tr>
+                        <td class="capacity-key">{{ key }}</td>
+                        <td>
+                            {% if info.item_type == 'spart' %}<span class="type-badge type-spart">SPart</span>
+                            {% elif info.item_type == 'bpart' %}<span class="type-badge type-bpart">BPart</span>
+                            {% elif info.item_type == 'variable' %}<span class="type-badge type-variable">Variable</span>
+                            {% else %}<span class="type-badge type-target">Target</span>{% endif %}
+                        </td>
+                        {% for city in all_cities %}
+                        <td class="city-column">
+                            {% set val = info.city_vals[city] if city in info.city_vals else none %}
+                            {% if val is not none %}<span class="value-number">{{ val }}</span>{% else %}<span class="value-null">—</span>{% endif %}
+                        </td>
+                        {% endfor %}
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+    {% endfor %}
+    {% else %}
+    <p class="text-muted">Нет вычисленных целей. Нажмите "Вычислить цели".</p>
+    {% endif %}
+</div>
 {% endblock %}

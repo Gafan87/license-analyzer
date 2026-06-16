@@ -73,6 +73,8 @@ def init_local_db(db_path=None):
             FOREIGN KEY (spart_id) REFERENCES license_spart_hierarchy(id) ON DELETE CASCADE
         )
     ''')
+    
+
 
     # ========== ВОТ СЮДА ДОБАВЛЯЙТЕ ALTER TABLE ==========
     # Добавляем колонки для разделения PERMANENT и dated значений
@@ -383,6 +385,35 @@ def init_local_db(db_path=None):
     cursor.execute('''
         CREATE UNIQUE INDEX IF NOT EXISTS idx_licenses_unique 
         ON licenses(operator, domain, ne_type, city, site, year, lsn)
+    ''')
+    
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS domain_targets (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            operator TEXT,
+            domain TEXT,
+            type TEXT,
+            unit TEXT,
+            target_key TEXT,
+            city TEXT,
+            value REAL,
+            sharing INTEGER,
+            sort_order INTEGER DEFAULT 0
+        )
+    ''')
+    
+    # Таблица для вычисленных целей
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS license_targets (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            operator TEXT,
+            target_key TEXT,
+            city TEXT,
+            ne_type TEXT,
+            capacity_key TEXT,
+            target_value REAL,
+            item_type TEXT DEFAULT 'target'
+        )
     ''')
     
     conn.commit()
@@ -1936,6 +1967,8 @@ def reset_and_recreate_db():
             UNIQUE(license_id, column_id)
         )
     ''')
+    
+    
     logger.info("Таблица dynamic_values создана")
     
     # Обновляем уникальный индекс
