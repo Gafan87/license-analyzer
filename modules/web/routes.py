@@ -1261,7 +1261,8 @@ def get_xml_hierarchy(license_id, mode, domain, show_all_sparts=False, operator_
                 'spart_id': None, 'spart_name': spart_name,
                 'spart_value': 0, 'spart_valid_date': '',
                 'permanent_value': 0, 'dated_value': 0, 'dated_date': None,
-                'sort_order': excel_sparts.get(spart_name, {}).get('order', 9999)
+                'sort_order': excel_sparts.get(spart_name, {}).get('order', 9999),
+                'is_virtual': True   # ← ДОБАВИТЬ флаг
             }
     
     # ========== 3. ЕСЛИ show_all_sparts=True - ДОБАВЛЯЕМ ВСЕ SPart ИЗ EXCEL ==========
@@ -1383,7 +1384,7 @@ def get_xml_hierarchy(license_id, mode, domain, show_all_sparts=False, operator_
             current_section = spart_section
             result_sparts.append({
                 'name': current_section, 'is_section': True,
-                'value': '', 'valid_date': '', 'children': [], 'is_empty': False
+                'value': '', 'valid_date': '', 'children': [], 'is_empty': False,'is_virtual': spart_data.get('is_virtual', False)
             })
         
         # Вычисляем значение SPart
@@ -1464,7 +1465,8 @@ def get_xml_hierarchy(license_id, mode, domain, show_all_sparts=False, operator_
             'is_empty': spart_data['spart_id'] is None,
             'is_section': False,
             'formula': excel_info.get('formula'),
-            'sort_order': spart_data.get('sort_order', 9999)
+            'sort_order': spart_data.get('sort_order', 9999),
+            'is_virtual': spart_data.get('is_virtual', False)
         })
     
     # ========== ФИЛЬТРАЦИЯ ==========
@@ -1475,6 +1477,10 @@ def get_xml_hierarchy(license_id, mode, domain, show_all_sparts=False, operator_
                 filtered_sparts.append(spart)
                 continue
             
+            # ========== ИСКЛЮЧАЕМ ВИРТУАЛЬНЫЕ (из целей) ==========
+            if spart.get('is_virtual'):
+                continue
+            
             has_value = spart.get('value', 0) > 0
             has_target = (spart.get('target_value') is not None and 
                         spart.get('target_value') != '' and 
@@ -1483,18 +1489,18 @@ def get_xml_hierarchy(license_id, mode, domain, show_all_sparts=False, operator_
             # Фильтруем детей
             children_to_keep = []
             for child in spart.get('children', []):
+                # ========== ИСКЛЮЧАЕМ ВИРТУАЛЬНЫХ ДЕТЕЙ ==========
+                if child.get('is_virtual'):
+                    continue
+                
                 child_target = child.get('target_value')
                 child_value = child.get('value', 0)
                 
-                # Ребёнок нужен только если у родителя есть цель
-                # И у ребёнка есть либо значение, либо цель
                 if has_target and (child_value > 0 or (child_target and child_target != '' and child_target != 0)):
                     children_to_keep.append(child)
-                # Особый случай: ребёнок с fix:число (цель есть, но значения может не быть)
                 elif has_target and child_target and child_target != '' and child_target != 0:
                     children_to_keep.append(child)
             
-            # Если есть дети ИЛИ SPart сам значимый
             if children_to_keep or has_value or has_target:
                 spart['children'] = children_to_keep
                 filtered_sparts.append(spart)
@@ -1933,6 +1939,10 @@ def get_dat_hierarchy(license_id, mode, domain, show_all=False, operator_name=No
             for item in result_items:
                 if item.get('is_section'):
                     filtered_items.append(item)
+                    continue
+                
+                # ========== ПРОПУСКАЕМ ПЕРЕМЕННЫЕ ==========
+                if item.get('type') == 'variable' or item.get('is_variable'):
                     continue
                 
                 has_value = item.get('value', 0) > 0

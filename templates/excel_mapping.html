@@ -116,13 +116,20 @@
             <table class="targets-table">
                 <thead>
                     <tr>
-                        <th>TargetKey</th>
-                        <th>Тип</th>
-                        <th>Ед. изм.</th>
-                        <th>Operator</th>
-                        <th>Domain</th>
-                        {% for city in cities %}<th class="city-column">Значение ({{ city }})</th>{% endfor %}
-                        {% for city in cities %}<th class="city-column">Sharing ({{ city }})</th>{% endfor %}
+                        <th rowspan="2">TargetKey</th>
+                        <th rowspan="2">Тип</th>
+                        <th rowspan="2">Ед. изм.</th>
+                        <th rowspan="2">Operator</th>
+                        <th rowspan="2">Domain</th>
+                        {% for city in cities %}
+                            <th class="city-column header" colspan="2">{{ city }}</th>
+                        {% endfor %}
+                    </tr>
+                    <tr>
+                        {% for city in cities %}
+                            <th class="city-column header" style="font-size: 0.65rem; font-weight: 400;">Val</th>
+                            <th class="city-column header" style="font-size: 0.65rem; font-weight: 400;">Sh</th>
+                        {% endfor %}
                     </tr>
                 </thead>
                 <tbody>
@@ -138,9 +145,7 @@
                             {% set val = info.city_vals[city] if city in info.city_vals else none %}
                             {% if val is not none %}<span class="value-number">{{ val }}</span>{% else %}<span class="value-null">—</span>{% endif %}
                         </td>
-                        {% endfor %}
-                        {% for city in cities %}
-                        <td class="city-column">
+                        <td class="city-column" style="font-size: 0.65rem; color: var(--text-muted);">
                             {% set shr = info.sharing[city] if city in info.sharing else none %}
                             {% if shr is not none %}{{ shr }}{% else %}<span class="value-null">—</span>{% endif %}
                         </td>

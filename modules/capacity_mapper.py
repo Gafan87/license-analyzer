@@ -20,6 +20,11 @@ _capacity_descriptions_cache = {}
 # Кэш для маппинга NE Type -> Domain -> Файл
 _ne_type_mapping_cache = None
 
+def roundup(value, decimals=0):
+    """Округление вверх до указанного количества знаков"""
+    multiplier = 10 ** decimals
+    return math.ceil(value * multiplier) / multiplier
+
 def load_ne_type_mapping(mapping_file=None):
     """
     Загружает маппинг NE Type -> Domain -> Файл описаний из Excel
@@ -411,45 +416,64 @@ def load_targets_from_excel(file_path, operator_name=None):
             sheet = wb['Targets']
             headers = [str(cell.value).strip() if cell.value else '' for cell in next(sheet.iter_rows(min_row=1, max_row=1))]
             
-            # Находим колонки Value_City и Sh_City
+            # Находим колонки по именам
+            col_operator = None
+            col_domain = None
+            col_type = None
+            col_unit = None
+            col_target_key = None
             city_cols = {}  # {col_idx: {'city': 'MSK', 'type': 'value'}}
+            sh_cols = {}    # {col_idx: {'city': 'MSK'}}
+            
             for i, h in enumerate(headers):
-                if h.startswith('Value_'):
+                if h == 'Operator':
+                    col_operator = i
+                elif h == 'Domain':
+                    col_domain = i
+                elif h == 'Type':
+                    col_type = i
+                elif h == 'Unit':
+                    col_unit = i
+                elif h == 'TargetKey':
+                    col_target_key = i
+                elif h.startswith('Value_'):
                     city = h.replace('Value_', '').strip()
-                    city_cols[i] = {'city': city, 'type': 'value'}
+                    city_cols[i] = {'city': city}
                 elif h.startswith('Sh_'):
                     city = h.replace('Sh_', '').strip()
-                    # Ищем колонку с таким же городом
-                    for j, info in city_cols.items():
-                        if info['city'] == city:
-                            info['Sh_col'] = i
-                            break
+                    sh_cols[i] = {'city': city}
+            
+            # Проверяем, что обязательные колонки найдены
+            if col_target_key is None:
+                logger.warning("Колонка TargetKey не найдена в файле")
+                return []
             
             for row in sheet.iter_rows(min_row=2, values_only=True):
-                if not row[0]:
+                if not row or not row[col_operator] if col_operator is not None else not row[0]:
                     continue
                 
-                operator = str(row[0]).strip()
-                domain = str(row[1]).strip() if len(row) > 1 else ''
-                type_val = str(row[2]).strip() if len(row) > 2 else ''
-                # Пропускаем Value_MSK (col 3) и Value_NSK (col 4) - они читаются в цикле city_cols
-                unit = str(row[5]).strip() if len(row) > 5 else ''        # Col 5 = Unit
-                target_key = str(row[6]).strip() if len(row) > 6 else ''  # Col 6 = TargetKey
-                # Col 7 = разделитель "_"
-                # Sh_MSK и Sh_NSK читаются в city_cols
+                operator = str(row[col_operator]).strip() if col_operator is not None and col_operator < len(row) and row[col_operator] else ''
+                domain = str(row[col_domain]).strip() if col_domain is not None and col_domain < len(row) and row[col_domain] else ''
+                type_val = str(row[col_type]).strip() if col_type is not None and col_type < len(row) and row[col_type] else ''
+                unit = str(row[col_unit]).strip() if col_unit is not None and col_unit < len(row) and row[col_unit] else ''
+                target_key = str(row[col_target_key]).strip() if col_target_key is not None and col_target_key < len(row) and row[col_target_key] else ''
                 
                 if not target_key:
                     continue
                 
+                # Для каждого города
                 for col_idx, info in city_cols.items():
-                    if info['type'] == 'value' and col_idx < len(row) and row[col_idx]: 
+                    if col_idx < len(row) and row[col_idx]:
                         try:
                             value = float(row[col_idx])
                             city = info['city']
+                            
+                            # Ищем Sharing для этого города
                             sharing = 1
-                            Sh_col = info.get('Sh_col')
-                            if Sh_col and Sh_col < len(row) and row[Sh_col]:
-                                sharing = int(row[Sh_col])
+                            for sh_idx, sh_info in sh_cols.items():
+                                if sh_info['city'] == city and sh_idx < len(row) and row[sh_idx]:
+                                    sharing = int(row[sh_idx])
+                                    break
                             
                             targets.append({
                                 'operator': operator,
@@ -469,8 +493,8 @@ def load_targets_from_excel(file_path, operator_name=None):
         
     except Exception as e:
         logger.error(f"Ошибка загрузки целей: {e}")
-        return [], []
-      
+        return [], []   
+
 def compute_license_targets(targets, capacity_list, operator_name=None):
     """
     Вычисляет целевые значения для каждой комбинации город/NE_type/CapacityKey
@@ -648,7 +672,77 @@ def compute_license_targets(targets, capacity_list, operator_name=None):
                     return left_val != right_val
         
         return False
-    
+
+    def get_numeric_value_with_variables(token, city, targets_map, spart_targets, variables):
+        """Получает числовое значение из targets_map, spart_targets или variables"""
+        token_clean = token.strip()
+
+        # Проверяем в targets_map
+        if token_clean in targets_map and city in targets_map[token_clean]:
+            return targets_map[token_clean][city]['value'] / targets_map[token_clean][city]['sharing']
+
+        # Проверяем в spart_targets
+        if token_clean in spart_targets and city in spart_targets[token_clean]:
+            return spart_targets[token_clean][city]
+
+        # Проверяем в variables
+        if token_clean in variables and city in variables[token_clean]:
+            return variables[token_clean][city]
+
+        # Пробуем как число
+        try:
+            return float(token_clean)
+        except ValueError:
+            return None
+
+    def evaluate_condition_with_variables(condition, city, targets_map, spart_targets, variables):
+        """Вычисляет условие для IF с учётом variables"""
+        condition_lower = condition.lower().strip()
+
+        # AND
+        if ' and ' in condition_lower:
+            parts = condition_lower.split(' and ')
+            for part in parts:
+                if not evaluate_condition_with_variables(part, city, targets_map, spart_targets, variables):
+                    return False
+            return True
+
+        # OR
+        if ' or ' in condition_lower:
+            parts = condition_lower.split(' or ')
+            for part in parts:
+                if evaluate_condition_with_variables(part, city, targets_map, spart_targets, variables):
+                    return True
+            return False
+
+        # Сравнения
+        operators = ['>=', '<=', '==', '!=', '>', '<']
+        for op in operators:
+            if op in condition:
+                left, right = condition.split(op, 1)
+                left_val = get_numeric_value_with_variables(left.strip(), city, targets_map, spart_targets, variables)
+                right_val = get_numeric_value_with_variables(right.strip(), city, targets_map, spart_targets, variables)
+
+                if left_val is None:
+                    left_val = 0
+                if right_val is None:
+                    right_val = 0
+
+                if op == '>':
+                    return left_val > right_val
+                elif op == '<':
+                    return left_val < right_val
+                elif op == '>=':
+                    return left_val >= right_val
+                elif op == '<=':
+                    return left_val <= right_val
+                elif op == '==':
+                    return left_val == right_val
+                elif op == '!=':
+                    return left_val != right_val
+
+        return False
+
     def evaluate_formula(formula_str, city, targets_map, spart_targets):
         """Вычисляет формулу с поддержкой функций"""
         formula_lower = formula_str.lower().strip()
@@ -731,14 +825,14 @@ def compute_license_targets(targets, capacity_list, operator_name=None):
                 return math.ceil(value * multiplier) / multiplier
             return None
         
-        # round()
+        # roundup()
         round_match = re.match(r'round\((.+),\s*(\d+)\)', formula_lower, re.IGNORECASE)
         if round_match:
             inner_expr = round_match.group(1).strip()
             decimals = int(round_match.group(2))
             value = evaluate_simple_expression(inner_expr, city, targets_map, spart_targets)
             if value is not None:
-                return round(value, decimals)
+                return roundup(value, decimals)
             return None
         
         # ceil()
@@ -783,7 +877,7 @@ def compute_license_targets(targets, capacity_list, operator_name=None):
             fixed_value = float(formula_str)
             spart_targets[spart_name] = {}
             for city in city_set:
-                target_value = round(fixed_value, 2)
+                target_value = roundup(fixed_value, 0)
                 spart_targets[spart_name][city] = target_value
                 results.append({
                     'operator': operator_name or '',
@@ -803,7 +897,7 @@ def compute_license_targets(targets, capacity_list, operator_name=None):
         if formula_str in targets_map:
             spart_targets[spart_name] = {}
             for city, data in targets_map[formula_str].items():
-                target_value = round(data['value'] / data['sharing'], 2)
+                target_value = roundup(data['value'] / data['sharing'], 0)
                 spart_targets[spart_name][city] = target_value
                 results.append({
                     'operator': data['operator'],
@@ -856,7 +950,7 @@ def compute_license_targets(targets, capacity_list, operator_name=None):
                     if target_key_found:
                         spart_targets[spart_name] = {}
                         for city, data in targets_map[target_key_found].items():
-                            target_value = round(data['value'] / data['sharing'] * multiplier, 2)
+                            target_value = roundup(data['value'] / data['sharing'] * multiplier, 0)
                             spart_targets[spart_name][city] = target_value
                             results.append({
                                 'operator': data['operator'],
@@ -895,7 +989,7 @@ def compute_license_targets(targets, capacity_list, operator_name=None):
             for city in city_set:
                 if var_name not in variables:
                     variables[var_name] = {}
-                variables[var_name][city] = round(fixed_value, 2)
+                variables[var_name][city] = roundup(fixed_value, 0)
             logger.debug(f"Фиксированное число: {var_name} = {fixed_value}")
             continue
         except (ValueError, TypeError):
@@ -905,25 +999,32 @@ def compute_license_targets(targets, capacity_list, operator_name=None):
         if formula_str.lower().strip().startswith('if('):
             try:
                 import re
-                # Поддерживаем оба разделителя: ; и ,
                 match = re.match(r'if\(\s*(.+?)\s*[;,]\s*(.+?)\s*[;,]\s*(.+?)\s*\)', formula_str, re.IGNORECASE)
                 if match:
                     condition = match.group(1).strip()
                     value_true = match.group(2).strip()
                     value_false = match.group(3).strip()
-                    
+
                     for city in city_set:
-                        cond_result = evaluate_condition(condition, city, targets_map, spart_targets)
-                        
+                        # Используем evaluate_condition_with_variables
+                        cond_result = evaluate_condition_with_variables(
+                            condition, city, targets_map, spart_targets, variables
+                        )
+
                         if cond_result:
-                            val = get_numeric_value(value_true, city, targets_map, spart_targets)
+                            # Используем get_numeric_value_with_variables
+                            val = get_numeric_value_with_variables(
+                                value_true, city, targets_map, spart_targets, variables
+                            )
                         else:
-                            val = get_numeric_value(value_false, city, targets_map, spart_targets)
-                        
+                            val = get_numeric_value_with_variables(
+                                value_false, city, targets_map, spart_targets, variables
+                            )
+
                         if val is not None:
                             if var_name not in variables:
                                 variables[var_name] = {}
-                            variables[var_name][city] = round(val, 2)
+                            variables[var_name][city] = roundup(val, 0)
                         else:
                             if var_name not in variables:
                                 variables[var_name] = {}
@@ -954,7 +1055,7 @@ def compute_license_targets(targets, capacity_list, operator_name=None):
                     for city in city_set:
                         if original_ref and city in targets_map[original_ref]:
                             value = targets_map[original_ref][city]['value'] / targets_map[original_ref][city]['sharing']
-                            value = round(value * multiplier, 2)
+                            value = roundup(value * multiplier, 0)
                         else:
                             value = 0
                         
@@ -993,7 +1094,7 @@ def compute_license_targets(targets, capacity_list, operator_name=None):
                             
                             if var_name not in total_result:
                                 total_result[city] = 0
-                            total_result[city] += round(total * multiplier, 2)
+                            total_result[city] += roundup(total * multiplier, 0)
                 
                 if total_result:
                     for city in city_set:
@@ -1005,6 +1106,54 @@ def compute_license_targets(targets, capacity_list, operator_name=None):
                     continue
             except Exception as e:
                 logger.error(f"Ошибка скобок в {var_name}: {formula_str} - {e}")
+
+        # ========== Обработка вычитания (A - B) ==========
+        if '-' in formula_str and '+' not in formula_str and '*' not in formula_str and '(' not in formula_str:
+            try:
+                parts = [p.strip() for p in formula_str.split('-')]
+                if len(parts) == 2:
+                    ref_left = parts[0]
+                    ref_right = parts[1]
+                    
+                    for city in city_set:
+                        left_val = None
+                        right_val = None
+                        
+                        # Левую часть
+                        if ref_left in spart_targets and city in spart_targets[ref_left]:
+                            left_val = spart_targets[ref_left][city]
+                        elif ref_left in targets_map and city in targets_map[ref_left]:
+                            left_val = targets_map[ref_left][city]['value'] / targets_map[ref_left][city]['sharing']
+                        elif ref_left in variables and city in variables[ref_left]:
+                            left_val = variables[ref_left][city]
+                        else:
+                            try:
+                                left_val = float(ref_left)
+                            except:
+                                pass
+                        
+                        # Правую часть
+                        if ref_right in spart_targets and city in spart_targets[ref_right]:
+                            right_val = spart_targets[ref_right][city]
+                        elif ref_right in targets_map and city in targets_map[ref_right]:
+                            right_val = targets_map[ref_right][city]['value'] / targets_map[ref_right][city]['sharing']
+                        elif ref_right in variables and city in variables[ref_right]:
+                            right_val = variables[ref_right][city]
+                        else:
+                            try:
+                                right_val = float(ref_right)
+                            except:
+                                pass
+                        
+                        if left_val is not None and right_val is not None:
+                            if var_name not in variables:
+                                variables[var_name] = {}
+                            variables[var_name][city] = roundup(left_val - right_val, 0)
+                    if var_name in variables:
+                        logger.debug(f"Вычитание: {var_name} = {formula_str}")
+                    continue
+            except Exception as e:
+                logger.error(f"Ошибка вычитания в {var_name}: {formula_str} - {e}")
         
         # ========== 5. Сумма умножений A*C + B*D ==========
         if '+' in formula_str and '*' in formula_str and '(' not in formula_str:
@@ -1038,7 +1187,7 @@ def compute_license_targets(targets, capacity_list, operator_name=None):
                     if all_resolved:
                         if var_name not in variables:
                             variables[var_name] = {}
-                        variables[var_name][city] = round(total, 2)
+                        variables[var_name][city] = roundup(total, 0)
                 if var_name in variables:
                     logger.debug(f"Сумма умножений: {var_name} = {formula_str}")
                 continue
@@ -1061,7 +1210,7 @@ def compute_license_targets(targets, capacity_list, operator_name=None):
                 
                 if var_name not in variables:
                     variables[var_name] = {}
-                variables[var_name][city] = round(total, 2)
+                variables[var_name][city] = roundup(total, 0)
             logger.debug(f"Сумма: {var_name} = {formula_str}")
             continue
         
@@ -1080,14 +1229,14 @@ def compute_license_targets(targets, capacity_list, operator_name=None):
             
             if var_name not in variables:
                 variables[var_name] = {}
-            variables[var_name][city] = round(value, 2) if value is not None else 0
+            variables[var_name][city] = roundup(value, 0) if value is not None else 0
         logger.debug(f"Простая ссылка: {var_name} = {formula_str}")
 
     # ========== Добавляем переменные в spart_targets и результаты ==========
     for var_name, city_values in variables.items():
         if var_name not in spart_targets:
             spart_targets[var_name] = {}
-        spart_targets[var_name].update(city_values)
+        spart_targets[var_name].update(variables[var_name])
         
         for city, target_value in city_values.items():
             results.append({
@@ -1135,7 +1284,7 @@ def compute_license_targets(targets, capacity_list, operator_name=None):
                         ref_value = targets_map[ref_spart][city]['value'] / targets_map[ref_spart][city]['sharing']
                     
                     if ref_value is not None:
-                        target_value = round(ref_value * pct, 2)
+                        target_value = roundup(ref_value * pct, 0)
                         spart_targets[spart_name][city] = target_value
                         results.append({
                             'operator': operator_name or '',
@@ -1170,7 +1319,7 @@ def compute_license_targets(targets, capacity_list, operator_name=None):
         
         # Проверяем наличие функций
         has_function = any(func in formula_str.lower() for func in 
-                          ['max(', 'min(', 'avg(', 'sum(', 'if(', 'roundup(', 'round(', 'ceil(', 'floor('])
+                          ['max(', 'min(', 'avg(', 'sum(', 'if(', 'roundup(', 'roundup(', 'ceil(', 'floor('])
         
         if has_function:
             for city in city_set:
@@ -1178,7 +1327,7 @@ def compute_license_targets(targets, capacity_list, operator_name=None):
                 if value is not None:
                     if spart_name not in spart_targets:
                         spart_targets[spart_name] = {}
-                    target_value = round(value, 2)
+                    target_value = roundup(value, 0)
                     spart_targets[spart_name][city] = target_value
                     results.append({
                         'operator': operator_name or '',
@@ -1238,7 +1387,7 @@ def compute_license_targets(targets, capacity_list, operator_name=None):
         if not spart_exists and target_key not in spart_targets:
             spart_targets[target_key] = {}
             for city, data in cities_data.items():
-                target_value = round(data['value'] / data['sharing'], 2)
+                target_value = roundup(data['value'] / data['sharing'], 0)
                 spart_targets[target_key][city] = target_value
                 results.append({
                     'operator': data['operator'],

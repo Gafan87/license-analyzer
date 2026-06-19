@@ -31,13 +31,16 @@
 /* ========== ТАБЛИЦА РЕСУРСОВ ========== */
 .resources-table { width: 100%; min-width: 700px; border-collapse: collapse; font-size: var(--table-font-size, 12px); }
 .resources-table th, .resources-table td { padding: 0.15rem 0.4rem; text-align: left; border-bottom: 1px solid var(--border-light); font-size: inherit; font-family: inherit; font-weight: normal; white-space: nowrap; }
-.resources-table td:nth-child(2) { color: var(--huawei-red); font-weight: 500; }
+.resources-table td:nth-child(2) { color: #000080; font-weight: 500; }
 .resources-table th { padding: 0.6rem 0.5rem; background: var(--bg-secondary); font-weight: 600; color: var(--text-secondary); }
 .resources-table code { font-size: inherit; background: none; padding: 0; font-family: inherit; }
 .resources-table small { font-size: inherit; }
 .resources-table .main-badge { font-size: 0.85em; color: var(--huawei-red); margin-left: 0.5rem; }
 .resources-table tbody tr { height: var(--table-row-height, 32px); }
 .resources-table .spart-row { height: calc(var(--table-row-height, 32px) + 4px); font-weight: bold !important; }
+
+.resources-table th:nth-child(2),
+.resources-table td:nth-child(2) {color: #000080;font-weight: 600;}
 
 /* ========== ФИЛЬТРЫ РЕСУРСОВ ========== */
 .resource-filters { display: flex; gap: 0.5rem; margin-left: auto; }
@@ -485,7 +488,7 @@ function renderHierarchyTable(sparts, orphans) {
         if (targetVal && actualVal) {
             const diff = actualVal - targetVal;
             deltaColor = diff > 0 ? 'green' : diff < 0 ? 'red' : '';
-            delta = `<span style="color: ${deltaColor};">${diff > 0 ? '+' : ''}${diff.toFixed(2)}</span>`;
+            delta = `<span style="color: ${deltaColor};">${diff > 0 ? '+' : ''}${diff.toFixed(0)}</span>`;
         }
         
         html += `
@@ -522,7 +525,7 @@ function renderHierarchyTable(sparts, orphans) {
                             ${child.is_main ? '<span class="main-badge">(main)</span>' : ''}
                          </td>
                          <td>${childTarget}</td>
-                         <td>${childDelta ? `<span style="color: ${childDeltaColor};">${childDelta > 0 ? '+' : ''}${childDelta.toFixed(2)}</span>` : ''}</td>
+                         <td>${childDelta ? `<span style="color: ${childDeltaColor};">${childDelta > 0 ? '+' : ''}${childDelta.toFixed(0)}</span>` : ''}</td>
                          <td>${childValue}</td>
                         <td class="valid-date-cell">${escapeHtml(child.valid_date || '-')}</td>
                          <td>${escapeHtml(child.part_number || '-')}</td>
@@ -549,7 +552,7 @@ function renderHierarchyTable(sparts, orphans) {
             if (orTargetVal && orActualVal) {
                 const diff = orActualVal - orTargetVal;
                 orDeltaColor = diff > 0 ? 'green' : diff < 0 ? 'red' : '';
-                orDelta = `<span style="color: ${orDeltaColor};">${diff > 0 ? '+' : ''}${diff.toFixed(2)}</span>`;
+                orDelta = `<span style="color: ${orDeltaColor};">${diff > 0 ? '+' : ''}${diff.toFixed(0)}</span>`;
             }
             
             // Определяем тип orphan
