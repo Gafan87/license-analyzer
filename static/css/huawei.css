@@ -451,6 +451,10 @@ body.dark .filter-list-item label { color: var(--text-primary); }
 .page-link:hover{border-color:var(--huawei-red);color:var(--huawei-red)}
 .page-info{color:var(--text-muted);font-size:0.75rem}
 
+
+.variable-badge { display: inline-block; margin-left: 0.5rem; padding: 0.1rem 0.4rem; font-size: 0.65rem; background: #6c757d; color: white; border-radius: 3px; vertical-align: middle; }
+
+
 /* ========== АДАПТИВНОСТЬ ========== */
 @media (max-width: 1200px) {
     .filter-layout { gap: 0.75rem; }

@@ -168,6 +168,163 @@ def get_capacity_mapping_config(operator_name=None):
     # formula и sharing определяются динамически из заголовков
     return config
 
+def load_sharing_from_excel(file_path):
+    """
+    Загружает вкладку 'Sharing' из targets.xlsx.
+
+    Структура листа:
+        Operator | Domain | NE types | Share_Group | CopyFrom | <Cities...>
+
+    Возвращает:
+        {
+            ('beeline', 'UGW'): {
+                'domain': 'PS',
+                'share_group': 'GGSN',
+                'copy_from': None,
+                'sh': {'MSK': 4, 'SPb': 2}
+            },
+            ('beeline', 'UDG'): {
+                'domain': 'vEPC',
+                'share_group': None,
+                'copy_from': 'UNC(CGW)',
+                'sh': {'MSK': 4, 'SPb': 2}
+            },
+            ...
+        }
+
+    Правила (см. спецификацию):
+        - Одна строка = один NE type
+        - (Operator, NE types) уникален — побеждает последняя
+        - Share_Group и CopyFrom взаимоисключающие
+        - Цепочки CopyFrom — warning
+        - Пустая ячейка города = нет значения
+    """
+    FIXED_COLUMNS = {'Operator', 'Domain', 'NE types', 'Share_Group', 'CopyFrom'}
+
+    if not os.path.exists(file_path):
+        logger.warning(f"Файл Sharing не найден: {file_path}")
+        return {}
+
+    try:
+        wb = openpyxl.load_workbook(file_path, data_only=True)
+
+        if 'Sharing' not in wb.sheetnames:
+            logger.warning(f"Лист 'Sharing' не найден в {file_path}")
+            return {}
+
+        sheet = wb['Sharing']
+
+        # ========== ЧИТАЕМ ЗАГОЛОВКИ ==========
+        headers = []
+        for cell in next(sheet.iter_rows(min_row=1, max_row=1)):
+            headers.append(str(cell.value).strip() if cell.value else '')
+
+        # Карта колонок
+        col_map = {}       # {name: idx} для фиксированных
+        city_cols = {}     # {city: idx}
+
+        for i, h in enumerate(headers):
+            if not h:
+                continue
+            if h in FIXED_COLUMNS:
+                col_map[h] = i
+            else:
+                city_cols[h] = i
+
+        # Проверка обязательных колонок
+        required = ['Operator', 'NE types']
+        missing = [c for c in required if c not in col_map]
+        if missing:
+            logger.error(f"Отсутствуют обязательные колонки в Sharing: {missing}")
+            return {}
+
+        if not city_cols:
+            logger.warning("Не найдено ни одной колонки-города в Sharing")
+            return {}
+
+        col_operator = col_map['Operator']
+        col_domain = col_map.get('Domain')
+        col_ne = col_map['NE types']
+        col_share_group = col_map.get('Share_Group')
+        col_copy_from = col_map.get('CopyFrom')
+
+        logger.info(f"Sharing: города = {list(city_cols.keys())}")
+
+        # ========== ЧИТАЕМ СТРОКИ ==========
+        sharing = {}
+        duplicates = []
+
+        for row_idx, row in enumerate(sheet.iter_rows(min_row=2, values_only=True), start=2):
+            if not row or len(row) <= col_ne:
+                continue
+
+            # Operator и NE types — обязательные
+            operator = str(row[col_operator]).strip() if col_operator < len(row) and row[col_operator] else ''
+            ne_type = str(row[col_ne]).strip() if col_ne < len(row) and row[col_ne] else ''
+
+            if not operator or not ne_type:
+                continue
+
+            # Опциональные
+            domain = str(row[col_domain]).strip() if col_domain is not None and col_domain < len(row) and row[col_domain] else ''
+            share_group = str(row[col_share_group]).strip() if col_share_group is not None and col_share_group < len(row) and row[col_share_group] else None
+            copy_from = str(row[col_copy_from]).strip() if col_copy_from is not None and col_copy_from < len(row) and row[col_copy_from] else None
+
+            # Города
+            sh = {}
+            for city, col_idx in city_cols.items():
+                if col_idx >= len(row):
+                    continue
+                val = row[col_idx]
+                if val is None or val == '':
+                    continue
+                try:
+                    sh[city] = int(val)
+                except (ValueError, TypeError):
+                    try:
+                        sh[city] = int(float(val))
+                    except (ValueError, TypeError):
+                        logger.warning(f"Sharing[{row_idx}]: {city} = '{val}' не число")
+                        continue
+
+            key = (operator, ne_type)
+            if key in sharing:
+                duplicates.append(key)
+
+            sharing[key] = {
+                'domain': domain,
+                'share_group': share_group,
+                'copy_from': copy_from,
+                'sh': sh,
+            }
+
+        # ========== ПРОВЕРКА ==========
+        # 1. Конфликт Share_Group + CopyFrom
+        conflicts = [ne for (op, ne), info in sharing.items()
+                     if info['share_group'] and info['copy_from']]
+        if conflicts:
+            logger.warning(f"Sharing: Share_Group и CopyFrom одновременно: {conflicts}")
+
+        # 2. Цепочки CopyFrom
+        chains = []
+        for (op, ne), info in sharing.items():
+            src = info.get('copy_from')
+            if not src:
+                continue
+            if (op, src) in sharing and sharing[(op, src)].get('copy_from'):
+                chains.append(f"{ne}→{src}→{sharing[(op, src)]['copy_from']}")
+        if chains:
+            logger.warning(f"Sharing: цепочки CopyFrom: {chains}")
+
+        if duplicates:
+            logger.warning(f"Sharing: дубликаты (Operator, NE types): {duplicates}")
+
+        logger.info(f"Sharing загружен: {len(sharing)} NE types из {file_path}")
+        return sharing
+
+    except Exception as e:
+        logger.error(f"Ошибка загрузки Sharing: {e}", exc_info=True)
+        return {}
 
 def load_capacity_descriptions(domain, network_storage_path, ne_type=None, operator_name=None):
     """
@@ -263,9 +420,18 @@ def load_capacity_descriptions(domain, network_storage_path, ne_type=None, opera
             
             capacity_key = str(row[col_idx_key - 1]).strip()
             description = str(row[col_idx_desc - 1]).strip() if col_idx_desc <= len(row) and row[col_idx_desc - 1] else ''
-            unit = str(row[col_idx_unit - 1]).strip() if col_idx_unit <= len(row) and row[col_idx_unit - 1] else ''
+            unit = str(row[col_idx_unit - 1]).strip() if col_idx_unit <= len(row) and row[col_idx_unit - 1] else ''                            
             part_number = str(row[col_idx_part - 1]).strip() if col_idx_part <= len(row) and row[col_idx_part - 1] else ''
             key_type = str(row[col_idx_type - 1]).strip().lower() if col_idx_type <= len(row) and row[col_idx_type - 1] else 'bpart'
+            
+                        # Dimensioning — только для variable (число = шаг округления)
+            dimensioning = 0
+            if key_type == 'variable' and unit:
+                try:
+                    dimensioning = float(unit)
+                except (ValueError, TypeError):
+                    dimensioning = 0
+            
             parent = str(row[col_idx_parent - 1]).strip() if col_idx_parent <= len(row) and row[col_idx_parent - 1] else ''
             spart_coeff = str(row[col_idx_spart_coeff - 1]).strip() if col_idx_spart_coeff <= len(row) and row[col_idx_spart_coeff - 1] else ''
             is_main_for_spart = str(row[col_idx_is_main - 1]).strip().upper() == 'TRUE' if col_idx_is_main <= len(row) and row[col_idx_is_main - 1] else False
@@ -285,6 +451,7 @@ def load_capacity_descriptions(domain, network_storage_path, ne_type=None, opera
                 descriptions[capacity_key] = {
                     'description': description,
                     'unit': unit,
+                    'dimensioning': dimensioning,
                     'part_number': part_number,
                     'type': key_type,
                     'parent': parent if parent else None,
@@ -319,6 +486,7 @@ def load_full_capacity_list(domain, network_storage_path, ne_type=None, operator
             'parent': info.get('parent'),
             'part_number': info.get('part_number', ''),
             'dimension': info.get('unit', ''),
+            'dimensioning': info.get('dimensioning', 0),
             'description': info.get('description', ''),
             'is_main': info.get('is_main', False),
             'is_main_for_spart': info.get('is_main_for_spart', False),
@@ -401,1009 +569,812 @@ def reload_mapping():
 
 def load_targets_from_excel(file_path, operator_name=None):
     """
-    Загружает цели из Excel файла targets.xlsx
-    Лист Targets: Operator, Domain, Type, Unit, TargetKey, Value_City, Sh_City, ...
+    Загружает вкладку 'Targets' из targets.xlsx.
+
+    Структура:
+        Operator | Domain | Group | Unit | TargetKey | <Cities...>
+
+    Возвращает:
+        {
+            ('beeline', 'PS,vEPC_GGSN_kBearers'): {
+                'domain': 'PS,vEPC',
+                'group': 'GGSN',
+                'unit': 'kBearers',
+                'city_values': {'MSK': 12768.0, 'SPb': 9000.0}
+            },
+            ...
+        }
     """
+    FIXED_COLUMNS = {'Operator', 'Domain', 'Group', 'Unit', 'TargetKey'}
+
     if not os.path.exists(file_path):
-        logger.warning(f"Файл целей не найден: {file_path}")
-        return [], []
+        logger.warning(f"Файл Targets не найден: {file_path}")
+        return {}
 
     try:
         wb = openpyxl.load_workbook(file_path, data_only=True)
-        
-        targets = []
-        if 'Targets' in wb.sheetnames:
-            sheet = wb['Targets']
-            headers = [str(cell.value).strip() if cell.value else '' for cell in next(sheet.iter_rows(min_row=1, max_row=1))]
-            
-            # Находим колонки по именам
-            col_operator = None
-            col_domain = None
-            col_type = None
-            col_unit = None
-            col_target_key = None
-            city_cols = {}  # {col_idx: {'city': 'MSK', 'type': 'value'}}
-            sh_cols = {}    # {col_idx: {'city': 'MSK'}}
-            
-            for i, h in enumerate(headers):
-                if h == 'Operator':
-                    col_operator = i
-                elif h == 'Domain':
-                    col_domain = i
-                elif h == 'Type':
-                    col_type = i
-                elif h == 'Unit':
-                    col_unit = i
-                elif h == 'TargetKey':
-                    col_target_key = i
-                elif h.startswith('Value_'):
-                    city = h.replace('Value_', '').strip()
-                    city_cols[i] = {'city': city}
-                elif h.startswith('Sh_'):
-                    city = h.replace('Sh_', '').strip()
-                    sh_cols[i] = {'city': city}
-            
-            # Проверяем, что обязательные колонки найдены
-            if col_target_key is None:
-                logger.warning("Колонка TargetKey не найдена в файле")
-                return []
-            
-            for row in sheet.iter_rows(min_row=2, values_only=True):
-                if not row or not row[col_operator] if col_operator is not None else not row[0]:
-                    continue
-                
-                operator = str(row[col_operator]).strip() if col_operator is not None and col_operator < len(row) and row[col_operator] else ''
-                domain = str(row[col_domain]).strip() if col_domain is not None and col_domain < len(row) and row[col_domain] else ''
-                type_val = str(row[col_type]).strip() if col_type is not None and col_type < len(row) and row[col_type] else ''
-                unit = str(row[col_unit]).strip() if col_unit is not None and col_unit < len(row) and row[col_unit] else ''
-                target_key = str(row[col_target_key]).strip() if col_target_key is not None and col_target_key < len(row) and row[col_target_key] else ''
-                
-                if not target_key:
-                    continue
-                
-                # Для каждого города
-                for col_idx, info in city_cols.items():
-                    if col_idx < len(row) and row[col_idx]:
-                        try:
-                            value = float(row[col_idx])
-                            city = info['city']
-                            
-                            # Ищем Sharing для этого города
-                            sharing = 1
-                            for sh_idx, sh_info in sh_cols.items():
-                                if sh_info['city'] == city and sh_idx < len(row) and row[sh_idx]:
-                                    sharing = int(row[sh_idx])
-                                    break
-                            
-                            targets.append({
-                                'operator': operator,
-                                'domain': domain,
-                                'type': type_val,
-                                'unit': unit,
-                                'target_key': target_key,
-                                'city': city,
-                                'value': value,
-                                'sharing': sharing
-                            })
-                        except (ValueError, TypeError):
-                            pass
-        
-        logger.info(f"Загружено целей: {len(targets)}")
-        return targets
-        
-    except Exception as e:
-        logger.error(f"Ошибка загрузки целей: {e}")
-        return [], []   
 
-def compute_license_targets(targets, capacity_list, operator_name=None):
+        if 'Targets' not in wb.sheetnames:
+            logger.warning(f"Лист 'Targets' не найден в {file_path}")
+            return {}
+
+        sheet = wb['Targets']
+        headers = [str(cell.value).strip() if cell.value else ''
+                   for cell in next(sheet.iter_rows(min_row=1, max_row=1))]
+
+        col_map = {}
+        city_cols = {}
+
+        for i, h in enumerate(headers):
+            if not h:
+                continue
+            if h in FIXED_COLUMNS:
+                col_map[h] = i
+            else:
+                city_cols[h] = i
+
+        required = ['Operator', 'TargetKey']
+        missing = [c for c in required if c not in col_map]
+        if missing:
+            logger.error(f"Отсутствуют обязательные колонки в Targets: {missing}")
+            return {}
+
+        if not city_cols:
+            logger.warning("Не найдено ни одной колонки-города в Targets")
+            return {}
+
+        col_operator = col_map['Operator']
+        col_domain = col_map.get('Domain')
+        col_group = col_map.get('Group')
+        col_unit = col_map.get('Unit')
+        col_target_key = col_map['TargetKey']
+
+        logger.info(f"Targets: города = {list(city_cols.keys())}")
+
+        targets = {}
+        duplicates = []
+
+        for row_idx, row in enumerate(sheet.iter_rows(min_row=2, values_only=True), start=2):
+            if not row or len(row) <= col_target_key:
+                continue
+
+            operator = str(row[col_operator]).strip() if col_operator < len(row) and row[col_operator] else ''
+            target_key = str(row[col_target_key]).strip() if col_target_key < len(row) and row[col_target_key] else ''
+
+            if not operator or not target_key:
+                continue
+
+            domain = str(row[col_domain]).strip() if col_domain is not None and col_domain < len(row) and row[col_domain] else ''
+            group = str(row[col_group]).strip() if col_group is not None and col_group < len(row) and row[col_group] else ''
+            unit = str(row[col_unit]).strip() if col_unit is not None and col_unit < len(row) and row[col_unit] else ''
+
+            city_values = {}
+            for city, col_idx in city_cols.items():
+                if col_idx >= len(row):
+                    continue
+                val = row[col_idx]
+                if val is None or val == '':
+                    continue
+                try:
+                    city_values[city] = float(val)
+                except (ValueError, TypeError):
+                    logger.warning(f"Targets[{row_idx}]: {city} = '{val}' не число")
+                    continue
+
+            key = (operator, target_key)
+            if key in targets:
+                duplicates.append(key)
+
+            targets[key] = {
+                'domain': domain,
+                'group': group,
+                'unit': unit,
+                'city_values': city_values,
+            }
+
+        if duplicates:
+            logger.warning(f"Targets: дубликаты TargetKey: {duplicates}")
+
+        logger.info(f"Targets загружены: {len(targets)} ключей из {file_path}")
+        return targets
+
+    except Exception as e:
+        logger.error(f"Ошибка загрузки Targets: {e}", exc_info=True)
+        return {}
+    
+def load_sharing_cities(file_path):
+    """Возвращает список всех городов из заголовков Sharing (порядок как в Excel)."""
+    if not os.path.exists(file_path):
+        return []
+    try:
+        wb = openpyxl.load_workbook(file_path, data_only=True, read_only=True)
+        if 'Sharing' not in wb.sheetnames:
+            return []
+        sh = wb['Sharing']
+        headers = [cell.value for cell in next(sh.iter_rows(min_row=1, max_row=1))]
+        FIXED = {'Operator', 'Domain', 'NE types', 'Share_Group', 'CopyFrom'}
+        cities = [str(h).strip() for h in headers if h and str(h).strip() not in FIXED]
+        wb.close()
+        return cities
+    except Exception as e:
+        logger.error(f"Ошибка загрузки городов Sharing: {e}")
+        return []
+       
+def compute_license_targets(targets, sharing_map, capacity_list, operator_name=None, extra_values=None):
     """
-    Вычисляет целевые значения для каждой комбинации город/NE_type/CapacityKey
-    
-    Поддерживаемые типы формул (в порядке обработки):
-    1. Фиксированные числа: "1", "100", "0.5"
-    2. Прямые ссылки на TargetKey: "IMS_Core"
-    3. Умножение TargetKey: "PS,vEPC_GGSN_Gbps * 1000"
-    4. Переменные (type='variable'): "SP1+SP2+SP3"
-    5. Проценты от SPart/переменных: "Total_session * 100%"
-    6. Ссылки на другие SPart: "Main_Sessions"
-    7. Функции: MAX(), MIN(), AVG(), SUM(), roundup(), if()
-    
-    Args:
-        targets: список словарей из load_targets_from_excel
-        capacity_list: список словарей из load_full_capacity_list
-        operator_name: str - имя оператора
-    
-    Returns:
-        список словарей [{operator, target_key, city, ne_type, capacity_key, target_value}, ...]
+    ...
+    extra_values: {type_name: {(var_name, city): value}} — значения из других NE
+                  (например, {'SGSN': {...}, 'GGSN': {...}})
+    """
+    if extra_values is None:
+        extra_values = {}
+    """
+    Вычисляет целевые значения для каждой комбинации (TargetKey, city, NE, CapacityKey).
+
+    Логика:
+        1. TargetKey = ёмкость на город (из Targets.xlsx)
+        2. Sharing делит между NE-типами (share_nodes / copy_nodes)
+        3. Значение на 1 экземпляр
+        4. Формулы из license_details:
+           - Фиксированное число
+           - Прямая ссылка на TargetKey
+           - Умножение: TargetKey * N
+           - Сумма: A + B + C
+           - Проценты: TargetKey * X%
+           - Функции: roundup(x, N), round(x, N), max(...), min(...), if(cond, a, b)
+        5. target_value = НА 1 ЭКЗЕМПЛЯР
     """
     import re
     import math
-    from modules.logger import get_logger
-    
-    logger = get_logger(__name__)
+
+    logger_local = get_logger(__name__)
     results = []
-    
-    # ========== 1. ПОСТРОЕНИЕ СЛОВАРЯ ЦЕЛЕЙ ИЗ TARGETS.XLSX ==========
-    targets_map = {}
-    for t in targets:
-        key = t['target_key']
-        if key not in targets_map:
-            targets_map[key] = {}
-        targets_map[key][t['city']] = {
-            'value': t['value'],
-            'sharing': t['sharing'],
-            'operator': t['operator']
+
+    # ========== 1. Города текущего NE ==========
+    ne_type_current = capacity_list[0].get('ne_type', '') if capacity_list else ''
+    ne_cities = set()
+    key = (operator_name, ne_type_current)
+    if key in sharing_map:
+        # Только города, где NE реально участвует (sh > 0)
+        ne_cities = {
+            city for city, sh_val in sharing_map[key]['sh'].items()
+            if sh_val > 0
         }
-    
-    # Собираем список всех городов
-    city_set = set()
-    for t in targets:
-        city_set.add(t['city'])
-    
-    if not city_set:
-        logger.warning("Нет городов в targets.xlsx")
+
+    logger_local.info(f"compute_license_targets для NE {ne_type_current}: города = {sorted(ne_cities)}")
+
+    # ========== 2. Построение targets_map ==========
+    # {tk: {domain, group, city_values: {city: value}}}
+    targets_map = {}
+    for (op, tk), info in targets.items():
+        if op != operator_name:
+            continue
+        targets_map[tk] = {
+            'domain': info.get('domain', ''),
+            'group': info.get('group', ''),
+            'city_values': info.get('city_values', {}),
+        }
+
+    if not targets_map:
+        logger_local.warning(f"Нет TargetKey для оператора {operator_name}")
         return []
-    
-    # ========== 2. ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ==========
-    
-    def get_numeric_value(token, city, targets_map, spart_targets):
-        """Получает числовое значение токена (TargetKey, SPart или число)"""
-        token_clean = token.strip()
-        
-        # Проверяем в targets_map
-        if token_clean in targets_map and city in targets_map[token_clean]:
-            return targets_map[token_clean][city]['value'] / targets_map[token_clean][city]['sharing']
-        
-        # Проверяем в spart_targets (ключами могут быть с пробелами)
-        for spart_name, city_values in spart_targets.items():
-            if spart_name.lower() == token_clean.lower():
-                return city_values.get(city, 0)
-        
-        # Пробуем как число
-        try:
-            return float(token_clean)
-        except ValueError:
+
+    # ========== 3. Утилиты ==========
+    def domain_intersects(d1, d2):
+        if not d1 or not d2:
+            return False
+        set1 = {x.strip().lower() for x in d1.split(',') if x.strip()}
+        set2 = {x.strip().lower() for x in d2.split(',') if x.strip()}
+        return bool(set1 & set2)
+
+    all_nes = {ne: info for (op, ne), info in sharing_map.items() if op == operator_name}
+
+    # ========== 4. Шаринг ==========
+    def compute_sharing_values(tk, city):
+        """
+        Для TargetKey + city возвращает {ne_type: value_per_instance}.
+        Значение — НА 1 ЭКЗЕМПЛЯР.
+        """
+        info = targets_map.get(tk)
+        if not info:
+            return {}
+        group = info['group']
+        domain = info['domain']
+        value = info['city_values'].get(city)
+        if value is None:
+            return {}
+
+        # --- Share-nodes ---
+        share_nodes = {}
+        for ne, ne_info in all_nes.items():
+            if ne_info.get('share_group') != group:
+                continue
+            if not domain_intersects(ne_info.get('domain', ''), domain):
+                continue
+            ne_sh = ne_info['sh'].get(city, 0)
+            if ne_sh and ne_sh > 0:
+                share_nodes[ne] = ne_info
+
+        if not share_nodes:
+            return {}
+
+        sum_sh = sum(ne_info['sh'].get(city, 0) for ne_info in share_nodes.values())
+        if sum_sh == 0:
+            return {}
+
+        # raw — на весь NE-тип
+        raw = {}
+        for ne, ne_info in share_nodes.items():
+            ne_sh = ne_info['sh'].get(city, 0)
+            raw[ne] = value * ne_sh / sum_sh
+
+        # final — на 1 экземпляр
+        final = {}
+        for ne, ne_info in share_nodes.items():
+            ne_sh = ne_info['sh'].get(city, 0)
+            if not ne_sh:
+                continue
+            final[ne] = raw[ne] / ne_sh
+
+        # --- Copy-nodes ---
+        for ne, ne_info in all_nes.items():
+            src = ne_info.get('copy_from')
+            if not src or src not in raw:
+                continue
+            ne_sh = ne_info['sh'].get(city)
+            if not ne_sh:
+                continue
+            final[ne] = raw[src] / ne_sh
+
+        return final
+
+    def get_target_value(tk, city, ne_type):
+        """Значение TargetKey для NE (на 1 экземпляр) или None."""
+        return compute_sharing_values(tk, city).get(ne_type)
+
+    # ========== 5. Вычисление формул ==========
+    def _val(token, city, spart_targets, ne_type):
+        """
+        Значение токена: TargetKey (с шарингом) / SPart (уже посчитан) / число.
+        Поиск регистронезависимый.
+        """
+        token = token.strip()
+        if not token:
             return None
-    
-    def evaluate_simple_expression(expr, city, targets_map, spart_targets):
-        """Вычисляет простое арифметическое выражение с + - * /"""
+
+        token_lower = token.lower()
+
+        # 1. TargetKey — регистронезависимо
+        tk_found = None
+        if token in targets_map:
+            tk_found = token
+        else:
+            for tk in targets_map.keys():
+                if tk.lower() == token_lower:
+                    tk_found = tk
+                    break
+        if tk_found:
+            return get_target_value(tk_found, city, ne_type)
+
+        # 2. SPart / Variable — регистронезависимо
+        sp_found = None
+        if token in spart_targets:
+            sp_found = token
+        else:
+            for sp_name in spart_targets.keys():
+                if sp_name.lower() == token_lower:
+                    sp_found = sp_name
+                    break
+        if sp_found and city in spart_targets[sp_found]:
+            return spart_targets[sp_found][city]
+
+        # 3. Число
         try:
-            # Разбиваем на токены (сохраняя операторы)
+            return float(token)
+        except (ValueError, TypeError):
+            return None
+        
+    def eval_simple(expr, city, spart_targets, ne_type):
+        """Простое арифметическое выражение: + - * /."""
+        try:
             tokens = re.split(r'([+\-*/])', expr)
             result = None
             current_op = '+'
-            
             for token in tokens:
                 token = token.strip()
                 if not token:
                     continue
-                
-                if token in ['+', '-', '*', '/']:
+                if token in ('+', '-', '*', '/'):
                     current_op = token
                     continue
-                
-                value = get_numeric_value(token, city, targets_map, spart_targets)
-                if value is None:
+                v = _val(token, city, spart_targets, ne_type)
+                if v is None:
                     return None
-                
                 if result is None:
-                    result = value
+                    result = v
                 elif current_op == '+':
-                    result += value
+                    result += v
                 elif current_op == '-':
-                    result -= value
+                    result -= v
                 elif current_op == '*':
-                    result *= value
+                    result *= v
                 elif current_op == '/':
-                    if value != 0:
-                        result /= value
-                    else:
+                    if v == 0:
                         return None
-            
+                    result /= v
             return result
         except Exception:
             return None
-    
-    def split_arguments(inner_str):
-        """Разбивает аргументы функции, учитывая запятые в именах"""
-        if ';' in inner_str:
-            return [arg.strip() for arg in inner_str.split(';')]
-        if ',' in inner_str:
-            return [arg.strip() for arg in inner_str.split(',')]
-        return [inner_str.strip()]
-    
-    def evaluate_condition(condition, city, targets_map, spart_targets):
-        """Вычисляет условие для IF"""
-        condition_lower = condition.lower().strip()
-        
-        # AND
-        if ' and ' in condition_lower:
-            parts = condition_lower.split(' and ')
-            for part in parts:
-                if not evaluate_condition(part, city, targets_map, spart_targets):
-                    return False
-            return True
-        
-        # OR
-        if ' or ' in condition_lower:
-            parts = condition_lower.split(' or ')
-            for part in parts:
-                if evaluate_condition(part, city, targets_map, spart_targets):
-                    return True
-            return False
-        
-        # Сравнения
-        operators = ['>=', '<=', '==', '!=', '>', '<']
-        for op in operators:
-            if op in condition:
-                left, right = condition.split(op, 1)
-                left_val = get_numeric_value(left.strip(), city, targets_map, spart_targets)
-                right_val = get_numeric_value(right.strip(), city, targets_map, spart_targets)
-                
-                # Если left_val или right_val None, пробуем найти среди переменных
-                if left_val is None:
-                    # Ищем среди переменных (ключами могут быть с пробелами)
-                    for var_name, city_values in spart_targets.items():
-                        if var_name.lower() == left.strip().lower():
-                            left_val = city_values.get(city, 0)
-                            break
-                    if left_val is None:
-                        left_val = 0
-                
-                if right_val is None:
-                    for var_name, city_values in spart_targets.items():
-                        if var_name.lower() == right.strip().lower():
-                            right_val = city_values.get(city, 0)
-                            break
-                    if right_val is None:
-                        right_val = 0
-                
-                if op == '>':
-                    return left_val > right_val
-                elif op == '<':
-                    return left_val < right_val
-                elif op == '>=':
-                    return left_val >= right_val
-                elif op == '<=':
-                    return left_val <= right_val
-                elif op == '==':
-                    return left_val == right_val
-                elif op == '!=':
-                    return left_val != right_val
-        
+
+    def split_args(s):
+        if ';' in s:
+            return [x.strip() for x in s.split(';')]
+        if ',' in s:
+            return [x.strip() for x in s.split(',')]
+        return [s.strip()]
+
+    def eval_condition(cond, city, spart_targets, ne_type):
+        cond_orig = cond.strip()          # ← оригинал для аргументов
+        cond_lower = cond_orig.lower()    # ← нижний для операторов
+
+        if ' and ' in cond_lower:
+            parts = [p.strip() for p in cond_orig.split(' and ')]  # ← оригинал
+            return all(eval_condition(p, city, spart_targets, ne_type) for p in parts)
+        if ' or ' in cond_lower:
+            parts = [p.strip() for p in cond_orig.split(' or ')]   # ← оригинал
+            return any(eval_condition(p, city, spart_targets, ne_type) for p in parts)
+        for op in ('>=', '<=', '==', '!=', '>', '<'):
+            if op in cond_orig:                                     # ← оригинал
+                left, right = cond_orig.split(op, 1)                # ← оригинал
+                lv = _val(left.strip(), city, spart_targets, ne_type) or 0
+                rv = _val(right.strip(), city, spart_targets, ne_type) or 0
+                if op == '>': return lv > rv
+                if op == '<': return lv < rv
+                if op == '>=': return lv >= rv
+                if op == '<=': return lv <= rv
+                if op == '==': return lv == rv
+                if op == '!=': return lv != rv
         return False
 
-    def get_numeric_value_with_variables(token, city, targets_map, spart_targets, variables):
-        """Получает числовое значение из targets_map, spart_targets или variables"""
-        token_clean = token.strip()
+    def eval_formula(formula_str, city, spart_targets, ne_type):
+        """Вычисление формулы со всеми поддерживаемыми функциями."""
+        f = formula_str.strip()
+        f_lower = f.lower()
 
-        # Проверяем в targets_map
-        if token_clean in targets_map and city in targets_map[token_clean]:
-            return targets_map[token_clean][city]['value'] / targets_map[token_clean][city]['sharing']
+        # MAX
+        m = re.match(r'max\((.+)\)$', f_lower, re.IGNORECASE)
+        if m:
+            # Используем f (оригинал) для аргументов
+            inner = f[4:-1]  # отрезаем 'max(' и ')'
+            vals = [_val(v, city, spart_targets, ne_type) for v in split_args(inner)]
+            vals = [v for v in vals if v is not None]
+            return max(vals) if vals else None
 
-        # Проверяем в spart_targets
-        if token_clean in spart_targets and city in spart_targets[token_clean]:
-            return spart_targets[token_clean][city]
+        # MIN
+        m = re.match(r'min\((.+)\)$', f_lower, re.IGNORECASE)
+        if m:
+            inner = f[4:-1]
+            vals = [_val(v, city, spart_targets, ne_type) for v in split_args(inner)]
+            vals = [v for v in vals if v is not None]
+            return min(vals) if vals else None
 
-        # Проверяем в variables
-        if token_clean in variables and city in variables[token_clean]:
-            return variables[token_clean][city]
+        # AVG
+        m = re.match(r'avg\((.+)\)$', f_lower, re.IGNORECASE)
+        if m:
+            inner = f[4:-1]
+            vals = [_val(v, city, spart_targets, ne_type) for v in split_args(inner)]
+            vals = [v for v in vals if v is not None]
+            return sum(vals) / len(vals) if vals else None
 
-        # Пробуем как число
-        try:
-            return float(token_clean)
-        except ValueError:
-            return None
+        # SUM
+        m = re.match(r'sum\((.+)\)$', f_lower, re.IGNORECASE)
+        if m:
+            inner = f[4:-1]
+            vals = [_val(v, city, spart_targets, ne_type) for v in split_args(inner)]
+            vals = [v for v in vals if v is not None]
+            return sum(vals) if vals else None
 
-    def evaluate_condition_with_variables(condition, city, targets_map, spart_targets, variables):
-        """Вычисляет условие для IF с учётом variables"""
-        condition_lower = condition.lower().strip()
+        # IF — ручной парсинг (устойчив к запятым внутри)
+        if f_lower.startswith('if(') and f_lower.endswith(')'):
+            inner = f[3:-1]  # убираем 'if(' и ')'
+            # Парсим на верхнем уровне (без учёта вложенных скобок)
+            depth = 0
+            parts = []
+            current = ''
+            for ch in inner:
+                if ch == '(':
+                    depth += 1
+                elif ch == ')':
+                    depth -= 1
+                elif ch == ',' and depth == 0:
+                    parts.append(current.strip())
+                    current = ''
+                    continue
+                current += ch
+            if current:
+                parts.append(current.strip())
 
-        # AND
-        if ' and ' in condition_lower:
-            parts = condition_lower.split(' and ')
-            for part in parts:
-                if not evaluate_condition_with_variables(part, city, targets_map, spart_targets, variables):
-                    return False
-            return True
+            if len(parts) == 3:
+                cond, vt, vf = parts
+                if eval_condition(cond, city, spart_targets, ne_type):
+                    return _val(vt, city, spart_targets, ne_type)
+                return _val(vf, city, spart_targets, ne_type)
 
-        # OR
-        if ' or ' in condition_lower:
-            parts = condition_lower.split(' or ')
-            for part in parts:
-                if evaluate_condition_with_variables(part, city, targets_map, spart_targets, variables):
-                    return True
-            return False
+        # ROUNDUP
+        m = re.match(r'roundup\((.+),\s*(-?\d+)\)$', f_lower, re.IGNORECASE)
+        if m:
+            # Извлекаем аргументы из ОРИГИНАЛА
+            inner_str = f[8:]  # отрезаем 'roundup('
+            # Ищем последнюю запятую перед числом
+            last_comma = inner_str.rfind(',')
+            expr = inner_str[:last_comma].strip()
+            dec_str = inner_str[last_comma+1:].strip().rstrip(')')
+            try:
+                dec = int(dec_str)
+            except ValueError:
+                return None
+            v = eval_simple(expr, city, spart_targets, ne_type)
+            if v is None:
+                return None
+            mult = 10 ** dec
+            return math.ceil(v * mult) / mult
 
-        # Сравнения
-        operators = ['>=', '<=', '==', '!=', '>', '<']
-        for op in operators:
-            if op in condition:
-                left, right = condition.split(op, 1)
-                left_val = get_numeric_value_with_variables(left.strip(), city, targets_map, spart_targets, variables)
-                right_val = get_numeric_value_with_variables(right.strip(), city, targets_map, spart_targets, variables)
+        # ROUND
+        m = re.match(r'round\((.+),\s*(-?\d+)\)$', f_lower, re.IGNORECASE)
+        if m:
+            inner_str = f[6:]  # отрезаем 'round('
+            last_comma = inner_str.rfind(',')
+            expr = inner_str[:last_comma].strip()
+            dec_str = inner_str[last_comma+1:].strip().rstrip(')')
+            try:
+                dec = int(dec_str)
+            except ValueError:
+                return None
+            v = eval_simple(expr, city, spart_targets, ne_type)
+            if v is None:
+                return None
+            return roundup(v, dec)
 
-                if left_val is None:
-                    left_val = 0
-                if right_val is None:
-                    right_val = 0
+        # CEIL
+        m = re.match(r'ceil\((.+)\)$', f_lower, re.IGNORECASE)
+        if m:
+            inner = f[5:-1]
+            v = eval_simple(inner, city, spart_targets, ne_type)
+            return math.ceil(v) if v is not None else None
 
-                if op == '>':
-                    return left_val > right_val
-                elif op == '<':
-                    return left_val < right_val
-                elif op == '>=':
-                    return left_val >= right_val
-                elif op == '<=':
-                    return left_val <= right_val
-                elif op == '==':
-                    return left_val == right_val
-                elif op == '!=':
-                    return left_val != right_val
+        # FLOOR
+        m = re.match(r'floor\((.+)\)$', f_lower, re.IGNORECASE)
+        if m:
+            inner = f[6:-1]
+            v = eval_simple(inner, city, spart_targets, ne_type)
+            return math.floor(v) if v is not None else None
 
-        return False
+        # Простая арифметика
+        return eval_simple(f, city, spart_targets, ne_type)
 
-    def evaluate_formula(formula_str, city, targets_map, spart_targets):
-        """Вычисляет формулу с поддержкой функций"""
-        formula_lower = formula_str.lower().strip()
-        
-        # MAX()
-        max_match = re.match(r'max\((.+)\)', formula_lower, re.IGNORECASE)
-        if max_match:
-            inner = max_match.group(1)
-            values = split_arguments(inner)
-            max_value = None
-            for val_expr in values:
-                val = get_numeric_value(val_expr.strip(), city, targets_map, spart_targets)
-                if val is not None:
-                    if max_value is None or val > max_value:
-                        max_value = val
-            return max_value
-        
-        # MIN()
-        min_match = re.match(r'min\((.+)\)', formula_lower, re.IGNORECASE)
-        if min_match:
-            inner = min_match.group(1)
-            values = split_arguments(inner)
-            min_value = None
-            for val_expr in values:
-                val = get_numeric_value(val_expr.strip(), city, targets_map, spart_targets)
-                if val is not None:
-                    if min_value is None or val < min_value:
-                        min_value = val
-            return min_value
-        
-        # AVG()
-        avg_match = re.match(r'avg\((.+)\)', formula_lower, re.IGNORECASE)
-        if avg_match:
-            inner = avg_match.group(1)
-            values = split_arguments(inner)
-            sum_values = 0
-            count = 0
-            for val_expr in values:
-                val = get_numeric_value(val_expr.strip(), city, targets_map, spart_targets)
-                if val is not None:
-                    sum_values += val
-                    count += 1
-            return sum_values / count if count > 0 else None
-        
-        # SUM()
-        sum_match = re.match(r'sum\((.+)\)', formula_lower, re.IGNORECASE)
-        if sum_match:
-            inner = sum_match.group(1)
-            values = split_arguments(inner)
-            total = 0
-            for val_expr in values:
-                val = get_numeric_value(val_expr.strip(), city, targets_map, spart_targets)
-                if val is not None:
-                    total += val
-            return total
-        
-        # IF()
-        if_match = re.match(r'if\((.+);\s*(.+);\s*(.+)\)', formula_lower, re.IGNORECASE)
-        if not if_match:
-            if_match = re.match(r'if\((.+),\s*(.+),\s*(.+)\)', formula_lower, re.IGNORECASE)
-        
-        if if_match:
-            condition = if_match.group(1).strip()
-            value_true = if_match.group(2).strip()
-            value_false = if_match.group(3).strip()
-            
-            if evaluate_condition(condition, city, targets_map, spart_targets):
-                return get_numeric_value(value_true, city, targets_map, spart_targets)
-            else:
-                return get_numeric_value(value_false, city, targets_map, spart_targets)
-        
-        # roundup()
-        roundup_match = re.match(r'roundup\((.+),\s*(\d+)\)', formula_lower, re.IGNORECASE)
-        if roundup_match:
-            inner_expr = roundup_match.group(1).strip()
-            decimals = int(roundup_match.group(2))
-            value = evaluate_simple_expression(inner_expr, city, targets_map, spart_targets)
-            if value is not None:
-                multiplier = 10 ** decimals
-                return math.ceil(value * multiplier) / multiplier
-            return None
-        
-        # roundup()
-        round_match = re.match(r'round\((.+),\s*(\d+)\)', formula_lower, re.IGNORECASE)
-        if round_match:
-            inner_expr = round_match.group(1).strip()
-            decimals = int(round_match.group(2))
-            value = evaluate_simple_expression(inner_expr, city, targets_map, spart_targets)
-            if value is not None:
-                return roundup(value, decimals)
-            return None
-        
-        # ceil()
-        ceil_match = re.match(r'ceil\((.+)\)', formula_lower, re.IGNORECASE)
-        if ceil_match:
-            inner_expr = ceil_match.group(1).strip()
-            value = evaluate_simple_expression(inner_expr, city, targets_map, spart_targets)
-            if value is not None:
-                return math.ceil(value)
-            return None
-        
-        # floor()
-        floor_match = re.match(r'floor\((.+)\)', formula_lower, re.IGNORECASE)
-        if floor_match:
-            inner_expr = floor_match.group(1).strip()
-            value = evaluate_simple_expression(inner_expr, city, targets_map, spart_targets)
-            if value is not None:
-                return math.floor(value)
-            return None
-        
-        # Нет функций - простая арифметика
-        return evaluate_simple_expression(formula_str, city, targets_map, spart_targets)
-    
-    # ========== 3. ИНИЦИАЛИЗАЦИЯ ==========
-    spart_targets = {}  # {spart_name: {city: target_value}}
-    
-    # ========== 4. ШАГ 1: ПРЯМЫЕ ССЫЛКИ И ФИКСИРОВАННЫЕ ЧИСЛА ==========
-    for item in capacity_list:
-        if item['type'] != 'spart':
-            continue
-        
+    # ========== 6. Обработка одного элемента ==========
+    def process_item(item, spart_targets):
+        """
+        Возвращает (city_values, item_type) или (None, None).
+        city_values: {city: value_per_instance}
+        """
         formula = item.get('formula')
         if not formula:
-            continue
-        
+            return None, None
+
         formula_str = str(formula).strip()
-        spart_name = item['name']
-        ne_type = item.get('ne_type', '')
+        name = item['name']
+        ne_type = item.get('ne_type', ne_type_current)
+        is_spart = item.get('type') == 'spart'
         
-        # Проверяем на фиксированное число
+        
+        # ========== 6.0.4 max_by_type(var, type1, type2, ...) ==========
+        if formula_str.lower().startswith('max_by_type('):
+            try:
+                inner = formula_str[len('max_by_type('):-1]
+                parts = [p.strip() for p in inner.split(',')]
+                if len(parts) >= 2:
+                    var_name = parts[0]
+                    type_names = parts[1:]
+
+                    vals = {}
+                    for city in ne_cities:
+                        max_val = None
+                        for type_name in type_names:
+                            type_values = extra_values.get(type_name, {})
+                            v = type_values.get((var_name, city))
+                            if v is not None:
+                                if max_val is None or v > max_val:
+                                    max_val = v
+                        if max_val is not None:
+                            vals[city] = roundup(max_val, 0)
+
+                    if vals:
+                        return vals, 'variable'
+                return None, None
+            except Exception as e:
+                logger_local.error(f"Ошибка max_by_type '{formula_str}': {e}")
+                return None, None
+
+        # ========== 6.0 fix:число ==========
+        # Показываем только для городов, где есть Targets для этого NE
+        if formula_str.lower().startswith('fix:'):
+            try:
+                fixed = float(formula_str[4:].strip())
+
+                # Определяем города с Targets для этого NE
+                cities_with_targets = set()
+                ne_info = all_nes.get(ne_type, {})
+
+                for tk, tk_info in targets_map.items():
+                    tk_group = tk_info.get('group', '')
+                    tk_domain = tk_info.get('domain', '')
+
+                    # Проверяем, применим ли TargetKey к этому NE
+                    applicable = False
+
+                    # 1. NE в share_group этой группы
+                    if ne_info.get('share_group') == tk_group:
+                        if domain_intersects(ne_info.get('domain', ''), tk_domain):
+                            applicable = True
+
+                    # 2. NE копирует от NE в этой группе
+                    elif ne_info.get('copy_from'):
+                        src_info = all_nes.get(ne_info['copy_from'], {})
+                        if src_info.get('share_group') == tk_group:
+                            if domain_intersects(src_info.get('domain', ''), tk_domain):
+                                applicable = True
+
+                    if applicable:
+                        cities_with_targets.update(tk_info['city_values'].keys())
+
+                # Только пересечение ne_cities и cities_with_targets
+                vals = {
+                    city: roundup(fixed, 0)
+                    for city in (ne_cities & cities_with_targets)
+                }
+                if vals:
+                    return vals, 'variable'
+                return None, None
+            except (ValueError, TypeError):
+                return None, None
+
+        # ========== 6.1 Фиксированное число ==========
         try:
-            fixed_value = float(formula_str)
-            spart_targets[spart_name] = {}
-            for city in city_set:
-                target_value = roundup(fixed_value, 0)
-                spart_targets[spart_name][city] = target_value
+            fixed = float(formula_str)
+            vals = {city: roundup(fixed, 0) for city in ne_cities}
+            return vals, 'variable' if not is_spart else 'target'
+        except (ValueError, TypeError):
+            pass
+
+        # ========== 6.2 Прямая ссылка на TargetKey ==========
+        if formula_str in targets_map:
+            vals = {}
+            for city in targets_map[formula_str]['city_values'].keys():
+                v = get_target_value(formula_str, city, ne_type)
+                if v is not None:
+                    vals[city] = roundup(v, 0)
+            return vals, 'target'
+
+        # ========== 6.3 Скобки: (A + B) * N, (A + B + C) * N, ... ==========
+        # Формула типа "(A + B) * 1000"
+        m = re.match(r'^\((.+)\)\s*\*\s*([\d.]+)$', formula_str)
+        if m:
+            inner = m.group(1)
+            try:
+                mult = float(m.group(2))
+            except (ValueError, TypeError):
+                mult = None
+            if mult is not None:
+                refs = [r.strip() for r in inner.split('+')]
+                vals = {}
+                for city in ne_cities:
+                    total = 0
+                    ok = True
+                    for ref in refs:
+                        v = _val(ref, city, spart_targets, ne_type)
+                        if v is None:
+                            ok = False
+                            break
+                        total += v
+                    if ok:
+                        vals[city] = roundup(total * mult, 0)
+                if vals:
+                    return vals, 'variable' if not is_spart else 'target'
+                return None, None
+
+        # ========== 6.4 Умножение: Ref * N ==========
+        if '*' in formula_str and '%' not in formula_str and '(' not in formula_str:
+            formula_clean = formula_str.replace(' ', '').replace(',', '')
+            parts = formula_clean.split('*')
+            if len(parts) == 2:
+                ref = parts[0].strip()
+                try:
+                    mult = float(parts[1].strip())
+                except (ValueError, TypeError):
+                    mult = None
+
+                if mult is not None:
+                    # 1. TargetKey
+                    tk_found = ref if ref in targets_map else None
+                    if not tk_found:
+                        for tk in targets_map.keys():
+                            if tk.replace(',', '').replace(' ', '') == ref:
+                                tk_found = tk
+                                break
+                    if tk_found:
+                        vals = {}
+                        for city in targets_map[tk_found]['city_values'].keys():
+                            base = get_target_value(tk_found, city, ne_type)
+                            if base is not None:
+                                vals[city] = roundup(base * mult, 0)
+                        return vals, 'target'
+
+                    # 2. Variable/SPart
+                    ref_found = None
+                    if ref in spart_targets:
+                        ref_found = ref
+                    else:
+                        for sp_name in spart_targets.keys():
+                            if sp_name.lower() == ref.lower():
+                                ref_found = sp_name
+                                break
+                    if ref_found:
+                        vals = {}
+                        for city in ne_cities:
+                            base = spart_targets[ref_found].get(city)
+                            if base is not None:
+                                vals[city] = roundup(base * mult, 0)
+                        if vals:
+                            return vals, 'variable' if not is_spart else 'target'
+
+        # ========== 6.5 Вычитание: A - B ==========
+        if '-' in formula_str and '+' not in formula_str and '*' not in formula_str and '(' not in formula_str:
+            parts = [p.strip() for p in formula_str.split('-')]
+            if len(parts) == 2:
+                left, right = parts
+                vals = {}
+                for city in ne_cities:
+                    lv = _val(left, city, spart_targets, ne_type)
+                    rv = _val(right, city, spart_targets, ne_type)
+                    if lv is not None and rv is not None:
+                        vals[city] = roundup(lv - rv, 0)
+                if vals:
+                    return vals, 'variable' if not is_spart else 'target'
+
+        # ========== 6.6 Сумма: A + B + C ==========
+        if '+' in formula_str and '(' not in formula_str:
+            refs = [s.strip() for s in formula_str.split('+')]
+            vals = {}
+            for city in ne_cities:
+                total = 0
+                for ref in refs:
+                    v = _val(ref, city, spart_targets, ne_type)
+                    if v is None:
+                        v = 0
+                    total += v
+                vals[city] = roundup(total, 0)
+            return vals, 'variable' if not is_spart else 'target'
+
+        # ========== 6.7 Проценты: Ref * X% ==========
+        if '*' in formula_str and '%' in formula_str and '(' not in formula_str:
+            parts = formula_str.split('*')
+            ref = parts[0].strip()
+            try:
+                pct = float(parts[1].strip().replace('%', '')) / 100
+                vals = {}
+                for city in ne_cities:
+                    base = _val(ref, city, spart_targets, ne_type)
+                    if base is not None:
+                        vals[city] = roundup(base * pct, 0)
+                if vals:
+                    return vals, 'variable' if not is_spart else 'target'
+            except (ValueError, TypeError):
+                pass
+
+        # ========== 6.8 Функции (if, roundup, max, ...) ==========
+        has_fn = any(f in formula_str.lower() for f in
+                     ['max(', 'min(', 'avg(', 'sum(', 'if(', 'roundup(', 'round(', 'ceil(', 'floor('])
+        if has_fn:
+            vals = {}
+            has_none = False
+            for city in ne_cities:
+                v = eval_formula(formula_str, city, spart_targets, ne_type)
+                if v is not None:
+                    vals[city] = roundup(v, 0)
+                else:
+                    # Данные ещё не готовы — откладываем на следующую итерацию
+                    has_none = True
+            
+            if has_none:
+                # Если хоть один город не посчитан — пробуем на следующей итерации
+                return None, None
+            
+            return vals, 'variable' if not is_spart else 'target'
+
+        # ========== 6.9 Простая ссылка на Variable/SPart ==========
+        if formula_str in spart_targets:
+            # SPart без формулы — не сохраняем (вычисляется на лету)
+            if is_spart:
+                return None, None
+            # Variable — сохраняем
+            vals = {city: spart_targets[formula_str][city]
+                    for city in ne_cities
+                    if city in spart_targets[formula_str]}
+            return vals, 'variable'
+
+        # ========== 6.10 Ничего не сработало ==========
+        return None, None
+    
+    # ========== 7. Основной цикл ==========
+    spart_targets = {}
+
+    # 7.1 Сначала — spart и variable, независимо от порядка
+    # Проходим в несколько итераций, пока есть прогресс
+    remaining = [it for it in capacity_list if it['type'] in ('spart', 'variable')]
+    max_iter = 10
+    for _ in range(max_iter):
+        progress = False
+        still_remaining = []
+        for item in remaining:
+            name = item['name']
+            if name in spart_targets:
+                continue
+            vals, item_type = process_item(item, spart_targets)
+            if vals is not None:
+                # Применяем dimensioning (только для variable)
+                if item.get('type') == 'variable':
+                    dim = item.get('dimensioning', 0)
+                    if dim and dim > 0:
+                        dim = float(dim)
+                        vals = {city: roundup(v / dim) * dim for city, v in vals.items()}
+                
+                spart_targets[name] = vals
+                for city, v in vals.items():
+                    results.append({
+                        'operator': operator_name or '',
+                        'target_key': item.get('formula') or name,
+                        'city': city,
+                        'ne_type': item.get('ne_type', ne_type_current),
+                        'capacity_key': name,
+                        'target_value': v,
+                        'item_type': item.get('type', 'target'),
+                    })
+                progress = True
+            else:
+                still_remaining.append(item)
+        remaining = still_remaining
+        if not progress:
+            break
+
+    # 7.2 Виртуальные SPart для TargetKey, которых нет в license_details
+    for tk, info in targets_map.items():
+        if tk in spart_targets:
+            continue
+        vals = {}
+        for city in info['city_values'].keys():
+            v = get_target_value(tk, city, ne_type_current)
+            if v is not None:
+                vals[city] = roundup(v, 0)
+        if vals:
+            spart_targets[tk] = vals
+            for city, v in vals.items():
                 results.append({
                     'operator': operator_name or '',
-                    'target_key': formula_str,
+                    'target_key': tk,
                     'city': city,
-                    'ne_type': ne_type,
-                    'capacity_key': spart_name,
-                    'target_value': target_value,
-                    'item_type': 'target'
+                    'ne_type': ne_type_current,
+                    'capacity_key': tk,
+                    'target_value': v,
+                    'item_type': 'target',
                 })
-            logger.debug(f"Фиксированное число: {spart_name} = {fixed_value}")
-            continue
-        except (ValueError, TypeError):
-            pass
-        
-        # Проверяем на прямую ссылку на TargetKey
-        if formula_str in targets_map:
-            spart_targets[spart_name] = {}
-            for city, data in targets_map[formula_str].items():
-                target_value = roundup(data['value'] / data['sharing'], 0)
-                spart_targets[spart_name][city] = target_value
-                results.append({
-                    'operator': data['operator'],
-                    'target_key': formula_str,
-                    'city': city,
-                    'ne_type': ne_type,
-                    'capacity_key': spart_name,
-                    'target_value': target_value,
-                    'item_type': 'target'
-                })
-            logger.debug(f"Прямая ссылка: {spart_name} = {formula_str}")
-            continue
-    
-    # ========== 5. ШАГ 2: УМНОЖЕНИЕ TARGETKEY * ЧИСЛО ==========
-    for item in capacity_list:
-        if item['type'] != 'spart':
-            continue
-        
-        formula = item.get('formula')
-        if not formula:
-            continue
-        
-        formula_str = str(formula).strip()
-        spart_name = item['name']
-        ne_type = item.get('ne_type', '')
-        
-        if spart_name in spart_targets:
-            continue
-        
-        # Очищаем от пробелов и запятых для поиска
-        formula_clean = formula_str.replace(' ', '').replace(',', '')
-        
-        if '*' in formula_clean and '%' not in formula_str:
-            try:
-                parts = formula_clean.split('*')
-                if len(parts) == 2:
-                    target_key_candidate = parts[0]
-                    multiplier = float(parts[1])
-                    
-                    # Ищем TargetKey
-                    target_key_found = None
-                    if target_key_candidate in targets_map:
-                        target_key_found = target_key_candidate
-                    else:
-                        for tk in targets_map.keys():
-                            if tk.replace(',', '').replace(' ', '') == target_key_candidate:
-                                target_key_found = tk
-                                break
-                    
-                    if target_key_found:
-                        spart_targets[spart_name] = {}
-                        for city, data in targets_map[target_key_found].items():
-                            target_value = roundup(data['value'] / data['sharing'] * multiplier, 0)
-                            spart_targets[spart_name][city] = target_value
-                            results.append({
-                                'operator': data['operator'],
-                                'target_key': formula_str,
-                                'city': city,
-                                'ne_type': ne_type,
-                                'capacity_key': spart_name,
-                                'target_value': target_value,
-                                'item_type': 'target'
-                            })
-                        logger.debug(f"Умножение: {spart_name} = {target_key_found} * {multiplier}")
-                        continue
-            except Exception as e:
-                logger.error(f"Ошибка умножения {formula_str}: {e}")
-    
-    # ========== 6. ШАГ 3: ПЕРЕМЕННЫЕ ==========
-    variables = {}
 
-    for item in capacity_list:
-        if item['type'] != 'variable':
-            continue
-        
-        formula = item.get('formula')
-        if not formula:
-            continue
-        
-        formula_str = str(formula).strip()
-        var_name = item['name']
-        
-        if var_name in spart_targets:
-            continue
-        
-        # ========== 1. Фиксированное число ==========
-        try:
-            fixed_value = float(formula_str)
-            for city in city_set:
-                if var_name not in variables:
-                    variables[var_name] = {}
-                variables[var_name][city] = roundup(fixed_value, 0)
-            logger.debug(f"Фиксированное число: {var_name} = {fixed_value}")
-            continue
-        except (ValueError, TypeError):
-            pass
-        
-        # ========== 2. IF условия ==========
-        if formula_str.lower().strip().startswith('if('):
-            try:
-                import re
-                match = re.match(r'if\(\s*(.+?)\s*[;,]\s*(.+?)\s*[;,]\s*(.+?)\s*\)', formula_str, re.IGNORECASE)
-                if match:
-                    condition = match.group(1).strip()
-                    value_true = match.group(2).strip()
-                    value_false = match.group(3).strip()
+    # 7.3 Финальная фильтрация: только города NE
+    if ne_cities:
+        results = [r for r in results if r['city'] in ne_cities]
 
-                    for city in city_set:
-                        # Используем evaluate_condition_with_variables
-                        cond_result = evaluate_condition_with_variables(
-                            condition, city, targets_map, spart_targets, variables
-                        )
-
-                        if cond_result:
-                            # Используем get_numeric_value_with_variables
-                            val = get_numeric_value_with_variables(
-                                value_true, city, targets_map, spart_targets, variables
-                            )
-                        else:
-                            val = get_numeric_value_with_variables(
-                                value_false, city, targets_map, spart_targets, variables
-                            )
-
-                        if val is not None:
-                            if var_name not in variables:
-                                variables[var_name] = {}
-                            variables[var_name][city] = roundup(val, 0)
-                        else:
-                            if var_name not in variables:
-                                variables[var_name] = {}
-                            variables[var_name][city] = 0
-                    logger.debug(f"IF: {var_name} = if({condition}, {value_true}, {value_false})")
-                    continue
-            except Exception as e:
-                logger.error(f"Ошибка IF в {var_name}: {formula_str} - {e}")
-        
-        # ========== 3. Умножение (TargetKey * число) ==========
-        if '*' in formula_str and '%' not in formula_str and '(' not in formula_str:
-            try:
-                formula_clean = formula_str.replace(' ', '').replace(',', '')
-                parts = formula_clean.split('*')
-                if len(parts) == 2:
-                    ref_name = parts[0]
-                    multiplier = float(parts[1])
-                    
-                    original_ref = None
-                    if ref_name in targets_map:
-                        original_ref = ref_name
-                    else:
-                        for tk in targets_map.keys():
-                            if tk.replace(',', '').replace(' ', '') == ref_name:
-                                original_ref = tk
-                                break
-                    
-                    for city in city_set:
-                        if original_ref and city in targets_map[original_ref]:
-                            value = targets_map[original_ref][city]['value'] / targets_map[original_ref][city]['sharing']
-                            value = roundup(value * multiplier, 0)
-                        else:
-                            value = 0
-                        
-                        if var_name not in variables:
-                            variables[var_name] = {}
-                        variables[var_name][city] = value
-                    logger.debug(f"Умножение: {var_name} = {original_ref} * {multiplier}")
-                    continue
-            except Exception as e:
-                logger.error(f"Ошибка умножения в {var_name}: {formula_str} - {e}")
-        
-        # ========== 4. Скобки (A+B)*C ==========
-        if '(' in formula_str and ')' in formula_str:
-            try:
-                import re
-                # Ищем (A+B)*C или (A+B)*C + (D+E)*F
-                parts = re.split(r'(?<=\))\s*\+\s*(?=\()', formula_str)
-                total_result = {}
-                
-                for part in parts:
-                    match = re.match(r'\(([^)]+)\)\s*\*\s*(\d+)', part.strip())
-                    if match:
-                        inner = match.group(1).strip()
-                        multiplier = float(match.group(2))
-                        refs = [r.strip() for r in inner.split('+')]
-                        
-                        for city in city_set:
-                            total = 0
-                            for ref in refs:
-                                if ref in targets_map and city in targets_map[ref]:
-                                    total += targets_map[ref][city]['value'] / targets_map[ref][city]['sharing']
-                                elif ref in spart_targets and city in spart_targets[ref]:
-                                    total += spart_targets[ref][city]
-                                elif ref in variables and city in variables[ref]:
-                                    total += variables[ref][city]
-                            
-                            if var_name not in total_result:
-                                total_result[city] = 0
-                            total_result[city] += roundup(total * multiplier, 0)
-                
-                if total_result:
-                    for city in city_set:
-                        if city in total_result:
-                            if var_name not in variables:
-                                variables[var_name] = {}
-                            variables[var_name][city] = total_result[city]
-                    logger.debug(f"Скобки: {var_name} = {formula_str}")
-                    continue
-            except Exception as e:
-                logger.error(f"Ошибка скобок в {var_name}: {formula_str} - {e}")
-
-        # ========== Обработка вычитания (A - B) ==========
-        if '-' in formula_str and '+' not in formula_str and '*' not in formula_str and '(' not in formula_str:
-            try:
-                parts = [p.strip() for p in formula_str.split('-')]
-                if len(parts) == 2:
-                    ref_left = parts[0]
-                    ref_right = parts[1]
-                    
-                    for city in city_set:
-                        left_val = None
-                        right_val = None
-                        
-                        # Левую часть
-                        if ref_left in spart_targets and city in spart_targets[ref_left]:
-                            left_val = spart_targets[ref_left][city]
-                        elif ref_left in targets_map and city in targets_map[ref_left]:
-                            left_val = targets_map[ref_left][city]['value'] / targets_map[ref_left][city]['sharing']
-                        elif ref_left in variables and city in variables[ref_left]:
-                            left_val = variables[ref_left][city]
-                        else:
-                            try:
-                                left_val = float(ref_left)
-                            except:
-                                pass
-                        
-                        # Правую часть
-                        if ref_right in spart_targets and city in spart_targets[ref_right]:
-                            right_val = spart_targets[ref_right][city]
-                        elif ref_right in targets_map and city in targets_map[ref_right]:
-                            right_val = targets_map[ref_right][city]['value'] / targets_map[ref_right][city]['sharing']
-                        elif ref_right in variables and city in variables[ref_right]:
-                            right_val = variables[ref_right][city]
-                        else:
-                            try:
-                                right_val = float(ref_right)
-                            except:
-                                pass
-                        
-                        if left_val is not None and right_val is not None:
-                            if var_name not in variables:
-                                variables[var_name] = {}
-                            variables[var_name][city] = roundup(left_val - right_val, 0)
-                    if var_name in variables:
-                        logger.debug(f"Вычитание: {var_name} = {formula_str}")
-                    continue
-            except Exception as e:
-                logger.error(f"Ошибка вычитания в {var_name}: {formula_str} - {e}")
-        
-        # ========== 5. Сумма умножений A*C + B*D ==========
-        if '+' in formula_str and '*' in formula_str and '(' not in formula_str:
-            try:
-                parts = [p.strip() for p in formula_str.split('+')]
-                
-                for city in city_set:
-                    total = 0
-                    all_resolved = True
-                    
-                    for part in parts:
-                        if '*' in part:
-                            sub_parts = [s.strip() for s in part.split('*')]
-                            if len(sub_parts) == 2:
-                                ref_name = sub_parts[0]
-                                multiplier = float(sub_parts[1])
-                                
-                                if ref_name in targets_map and city in targets_map[ref_name]:
-                                    value = targets_map[ref_name][city]['value'] / targets_map[ref_name][city]['sharing']
-                                    total += value * multiplier
-                                else:
-                                    all_resolved = False
-                                    break
-                            else:
-                                all_resolved = False
-                                break
-                        else:
-                            all_resolved = False
-                            break
-                    
-                    if all_resolved:
-                        if var_name not in variables:
-                            variables[var_name] = {}
-                        variables[var_name][city] = roundup(total, 0)
-                if var_name in variables:
-                    logger.debug(f"Сумма умножений: {var_name} = {formula_str}")
-                continue
-            except Exception as e:
-                logger.error(f"Ошибка суммы умножений в {var_name}: {formula_str} - {e}")
-        
-        # ========== 6. Сумма SP1+SP2+SP3 ==========
-        if '+' in formula_str:
-            ref_sparts = [s.strip() for s in formula_str.split('+')]
-            
-            for city in city_set:
-                total = 0
-                for ref in ref_sparts:
-                    if ref in spart_targets and city in spart_targets[ref]:
-                        total += spart_targets[ref][city]
-                    elif ref in targets_map and city in targets_map[ref]:
-                        total += targets_map[ref][city]['value'] / targets_map[ref][city]['sharing']
-                    elif ref in variables and city in variables[ref]:
-                        total += variables[ref][city]
-                
-                if var_name not in variables:
-                    variables[var_name] = {}
-                variables[var_name][city] = roundup(total, 0)
-            logger.debug(f"Сумма: {var_name} = {formula_str}")
-            continue
-        
-        # ========== 7. Простая ссылка ==========
-        ref = formula_str
-        for city in city_set:
-            value = None
-            if ref in spart_targets and city in spart_targets[ref]:
-                value = spart_targets[ref][city]
-            elif ref in targets_map and city in targets_map[ref]:
-                value = targets_map[ref][city]['value'] / targets_map[ref][city]['sharing']
-            elif ref in variables and city in variables[ref]:
-                value = variables[ref][city]
-            else:
-                value = 0
-            
-            if var_name not in variables:
-                variables[var_name] = {}
-            variables[var_name][city] = roundup(value, 0) if value is not None else 0
-        logger.debug(f"Простая ссылка: {var_name} = {formula_str}")
-
-    # ========== Добавляем переменные в spart_targets и результаты ==========
-    for var_name, city_values in variables.items():
-        if var_name not in spart_targets:
-            spart_targets[var_name] = {}
-        spart_targets[var_name].update(variables[var_name])
-        
-        for city, target_value in city_values.items():
-            results.append({
-                'operator': operator_name or '',
-                'target_key': f"variable_{var_name}",
-                'city': city,
-                'ne_type': item.get('ne_type', ''),
-                'capacity_key': var_name,
-                'target_value': target_value,
-                'item_type': 'variable'
-            })
-        logger.debug(f"Переменная сохранена: {var_name} = {city_values}")
-    
-    # ========== 7. ШАГ 4: ПРОЦЕНТЫ ОТ SPART/ПЕРЕМЕННЫХ ==========
-    for item in capacity_list:
-        if item['type'] != 'spart':
-            continue
-        
-        formula = item.get('formula')
-        if not formula:
-            continue
-        
-        formula_str = str(formula).strip()
-        spart_name = item['name']
-        ne_type = item.get('ne_type', '')
-        
-        if spart_name in spart_targets:
-            continue
-        
-        if '*' in formula_str and '%' in formula_str:
-            try:
-                parts = formula_str.split('*')
-                ref_spart = parts[0].strip()
-                pct_str = parts[1].strip().replace('%', '')
-                pct = float(pct_str) / 100
-                
-                spart_targets[spart_name] = {}
-                for city in city_set:
-                    ref_value = None
-                    # Ищем в spart_targets (включая переменные)
-                    if ref_spart in spart_targets and city in spart_targets[ref_spart]:
-                        ref_value = spart_targets[ref_spart][city]
-                    # Ищем в targets_map
-                    elif ref_spart in targets_map and city in targets_map[ref_spart]:
-                        ref_value = targets_map[ref_spart][city]['value'] / targets_map[ref_spart][city]['sharing']
-                    
-                    if ref_value is not None:
-                        target_value = roundup(ref_value * pct, 0)
-                        spart_targets[spart_name][city] = target_value
-                        results.append({
-                            'operator': operator_name or '',
-                            'target_key': formula_str,
-                            'city': city,
-                            'ne_type': ne_type,
-                            'capacity_key': spart_name,
-                            'target_value': target_value,
-                            'item_type': 'target'
-                        })
-                if spart_targets[spart_name]:
-                    logger.debug(f"Процент: {spart_name} = {ref_spart} * {pct*100}%")
-                continue
-            except Exception as e:
-                logger.error(f"Ошибка процентов {formula_str}: {e}")
-    
-    # ========== 8. ШАГ 5: ФОРМУЛЫ С ФУНКЦИЯМИ ==========
-    for item in capacity_list:
-        if item['type'] != 'spart':
-            continue
-        
-        formula = item.get('formula')
-        if not formula:
-            continue
-        
-        formula_str = str(formula).strip()
-        spart_name = item['name']
-        ne_type = item.get('ne_type', '')
-        
-        if spart_name in spart_targets:
-            continue
-        
-        # Проверяем наличие функций
-        has_function = any(func in formula_str.lower() for func in 
-                          ['max(', 'min(', 'avg(', 'sum(', 'if(', 'roundup(', 'roundup(', 'ceil(', 'floor('])
-        
-        if has_function:
-            for city in city_set:
-                value = evaluate_formula(formula_str, city, targets_map, spart_targets)
-                if value is not None:
-                    if spart_name not in spart_targets:
-                        spart_targets[spart_name] = {}
-                    target_value = roundup(value, 0)
-                    spart_targets[spart_name][city] = target_value
-                    results.append({
-                        'operator': operator_name or '',
-                        'target_key': formula_str,
-                        'city': city,
-                        'ne_type': ne_type,
-                        'capacity_key': spart_name,
-                        'target_value': target_value,
-                        'item_type': 'target'
-                    })
-            if spart_targets.get(spart_name):
-                logger.debug(f"Функция: {spart_name} = {formula_str}")
-    
-    # ========== 9. ШАГ 6: ССЫЛКИ НА ДРУГИЕ SPART ==========
-    for item in capacity_list:
-        if item['type'] != 'spart':
-            continue
-        
-        formula = item.get('formula')
-        if not formula:
-            continue
-        
-        formula_str = str(formula).strip()
-        spart_name = item['name']
-        ne_type = item.get('ne_type', '')
-        
-        if spart_name in spart_targets:
-            continue
-        
-        # Если формула — просто имя другого SPart или переменной
-        if formula_str in spart_targets:
-            spart_targets[spart_name] = {}
-            for city in city_set:
-                if city in spart_targets[formula_str]:
-                    target_value = spart_targets[formula_str][city]
-                    spart_targets[spart_name][city] = target_value
-                    results.append({
-                        'operator': operator_name or '',
-                        'target_key': formula_str,
-                        'city': city,
-                        'ne_type': ne_type,
-                        'capacity_key': spart_name,
-                        'target_value': target_value,
-                        'item_type': 'target'
-                    })
-            if spart_targets[spart_name]:
-                logger.debug(f"Ссылка: {spart_name} = {formula_str}")
-    
-    # ========== 10. ШАГ 7: ВИРТУАЛЬНЫЕ SPART ДЛЯ НЕДОСТАЮЩИХ TARGETKEY ==========
-    for target_key, cities_data in targets_map.items():
-        # Проверяем, есть ли уже SPart
-        spart_exists = any(
-            item['type'] == 'spart' and item['name'] == target_key 
-            for item in capacity_list
-        )
-        
-        if not spart_exists and target_key not in spart_targets:
-            spart_targets[target_key] = {}
-            for city, data in cities_data.items():
-                target_value = roundup(data['value'] / data['sharing'], 0)
-                spart_targets[target_key][city] = target_value
-                results.append({
-                    'operator': data['operator'],
-                    'target_key': target_key,
-                    'city': city,
-                    'ne_type': item.get('ne_type', ''),
-                    'capacity_key': target_key,
-                    'target_value': target_value,
-                    'item_type': 'target'
-                })
-    
-    # ========== 11. СОРТИРОВКА РЕЗУЛЬТАТОВ ==========
+    # 7.4 Сортировка
     results.sort(key=lambda r: (r['operator'], r['target_key'], r['city'], r['ne_type']))
-    
-    logger.info(f"Вычислено {len(results)} целевых значений")
+
+    logger_local.info(f"Вычислено {len(results)} целевых значений")
     return results
-
-
-#$

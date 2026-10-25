@@ -41,11 +41,11 @@ def init_local_db(db_path=None):
     """Инициализация локальной БД со всеми таблицами и индексами"""
     if db_path is None:
         db_path = _DB_PATH
-    
+
     conn = get_connection(db_path)
     cursor = conn.cursor()
-    
-    # Таблица для иерархии SPart
+
+    # ========== 1. ИЕРАРХИЯ SPART / BPART ==========
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS license_spart_hierarchy (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -58,7 +58,6 @@ def init_local_db(db_path=None):
         )
     ''')
 
-    # Таблица для иерархии BPart
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS license_bpart_hierarchy (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -73,54 +72,42 @@ def init_local_db(db_path=None):
             FOREIGN KEY (spart_id) REFERENCES license_spart_hierarchy(id) ON DELETE CASCADE
         )
     ''')
-    
 
+    # ========== 2. МИГРАЦИИ: дополнительные колонки ==========
+    # permanent_value / dated_value / dated_date для spart
+    for col, sql in [
+        ('permanent_value', 'ALTER TABLE license_spart_hierarchy ADD COLUMN permanent_value INTEGER DEFAULT 0'),
+        ('dated_value',     'ALTER TABLE license_spart_hierarchy ADD COLUMN dated_value INTEGER DEFAULT 0'),
+        ('dated_date',      'ALTER TABLE license_spart_hierarchy ADD COLUMN dated_date TEXT'),
+    ]:
+        try:
+            cursor.execute(sql)
+        except sqlite3.OperationalError:
+            pass
 
-    # ========== ВОТ СЮДА ДОБАВЛЯЙТЕ ALTER TABLE ==========
-    # Добавляем колонки для разделения PERMANENT и dated значений
-    # (если они ещё не существуют)
+    # permanent_value / dated_value / dated_date для bpart
+    for col, sql in [
+        ('permanent_value', 'ALTER TABLE license_bpart_hierarchy ADD COLUMN permanent_value INTEGER DEFAULT 0'),
+        ('dated_value',     'ALTER TABLE license_bpart_hierarchy ADD COLUMN dated_value INTEGER DEFAULT 0'),
+        ('dated_date',      'ALTER TABLE license_bpart_hierarchy ADD COLUMN dated_date TEXT'),
+    ]:
+        try:
+            cursor.execute(sql)
+        except sqlite3.OperationalError:
+            pass
 
-    try:
-        cursor.execute('ALTER TABLE license_spart_hierarchy ADD COLUMN permanent_value INTEGER DEFAULT 0')
-    except sqlite3.OperationalError:
-        pass  # Колонка уже существует
-
-    try:
-        cursor.execute('ALTER TABLE license_spart_hierarchy ADD COLUMN dated_value INTEGER DEFAULT 0')
-    except sqlite3.OperationalError:
-        pass
-
-    try:
-        cursor.execute('ALTER TABLE license_spart_hierarchy ADD COLUMN dated_date TEXT')
-    except sqlite3.OperationalError:
-        pass
-
-    try:
-        cursor.execute('ALTER TABLE license_bpart_hierarchy ADD COLUMN permanent_value INTEGER DEFAULT 0')
-    except sqlite3.OperationalError:
-        pass
-
-    try:
-        cursor.execute('ALTER TABLE license_bpart_hierarchy ADD COLUMN dated_value INTEGER DEFAULT 0')
-    except sqlite3.OperationalError:
-        pass
-
-    try:
-        cursor.execute('ALTER TABLE license_bpart_hierarchy ADD COLUMN dated_date TEXT')
-    except sqlite3.OperationalError:
-        pass
-    
+    # local_path / main_capacity_key для licenses
     try:
         cursor.execute('ALTER TABLE licenses ADD COLUMN local_path TEXT')
     except sqlite3.OperationalError:
         pass
-    
+
     try:
         cursor.execute('ALTER TABLE licenses ADD COLUMN main_capacity_key TEXT')
     except sqlite3.OperationalError:
         pass
 
-    # Таблица лицензий
+    # ========== 3. ОСНОВНЫЕ ТАБЛИЦЫ ==========
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS licenses (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -146,8 +133,7 @@ def init_local_db(db_path=None):
             UNIQUE(operator, ne_type, city, site, year, lsn)
         )
     ''')
-    
-    # Таблица ресурсов
+
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS resources (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -158,8 +144,7 @@ def init_local_db(db_path=None):
             FOREIGN KEY (license_id) REFERENCES licenses(id)
         )
     ''')
-    
-    # Таблица базовых целей
+
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS base_targets (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -173,8 +158,8 @@ def init_local_db(db_path=None):
             updated_at TEXT
         )
     ''')
-    
-    # Таблица доменных целей (из Excel Targets)
+
+    # ========== 4. DOMAIN_TARGETS (единая версия) ==========
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS domain_targets (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -185,12 +170,20 @@ def init_local_db(db_path=None):
             target_key TEXT,
             city TEXT,
             value REAL,
-            sharing INTEGER DEFAULT 1,
-            UNIQUE(operator, target_key, city)
+            sharing INTEGER,
+            sort_order INTEGER DEFAULT 0,
+            group_name TEXT
         )
     ''')
 
-    # Таблица формул (из Excel Formulas)
+    # Миграция для уже существующих БД
+    try:
+        cursor.execute('ALTER TABLE domain_targets ADD COLUMN group_name TEXT')
+        logger.info("Добавлена колонка group_name в domain_targets")
+    except sqlite3.OperationalError:
+        pass
+
+    # ========== 5. NE_FORMULAS ==========
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS ne_formulas (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -206,7 +199,7 @@ def init_local_db(db_path=None):
         )
     ''')
 
-    # Таблица вычисленных целей
+    # ========== 6. LICENSE_TARGETS (единая версия) ==========
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS license_targets (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -216,11 +209,18 @@ def init_local_db(db_path=None):
             ne_type TEXT,
             capacity_key TEXT,
             target_value REAL,
-            UNIQUE(operator, target_key, city, ne_type, capacity_key)
+            item_type TEXT DEFAULT 'target'
         )
     ''')
-        
-    # Таблица истории изменений
+
+    # Миграция для уже существующих БД
+    try:
+        cursor.execute('ALTER TABLE license_targets ADD COLUMN item_type TEXT DEFAULT \'target\'')
+        logger.info("Добавлена колонка item_type в license_targets")
+    except sqlite3.OperationalError:
+        pass
+
+    # ========== 7. ИСТОРИЯ, МАППИНГ, ТЕГИ, КОММЕНТАРИИ ==========
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS change_history (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -233,8 +233,7 @@ def init_local_db(db_path=None):
             changed_at TEXT
         )
     ''')
-    
-    # Таблица маппинга ESN
+
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS esn_mapping (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -247,8 +246,7 @@ def init_local_db(db_path=None):
             site TEXT
         )
     ''')
-    
-    # Таблица тегов
+
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS tags (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -257,8 +255,7 @@ def init_local_db(db_path=None):
             created_at TEXT
         )
     ''')
-    
-    # Таблица связи лицензий с тегами
+
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS license_tags (
             license_id INTEGER,
@@ -268,8 +265,7 @@ def init_local_db(db_path=None):
             PRIMARY KEY (license_id, tag_id)
         )
     ''')
-    
-    # Таблица комментариев
+
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS comments (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -280,8 +276,7 @@ def init_local_db(db_path=None):
             FOREIGN KEY (license_id) REFERENCES licenses(id)
         )
     ''')
-    
-    # Таблица шаблонов отчётов
+
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS report_templates (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -293,8 +288,7 @@ def init_local_db(db_path=None):
             created_at TEXT
         )
     ''')
-    
-    # Таблица динамических колонок
+
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS dynamic_columns (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -309,8 +303,7 @@ def init_local_db(db_path=None):
             updated_at TEXT
         )
     ''')
-    
-    # Таблица значений динамических полей
+
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS dynamic_values (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -322,8 +315,8 @@ def init_local_db(db_path=None):
             UNIQUE(license_id, column_id)
         )
     ''')
-    
-    # ========== НОВАЯ ТАБЛИЦА ДЛЯ АГРЕГИРОВАННЫХ РЕСУРСОВ ==========
+
+    # ========== 8. АГРЕГИРОВАННЫЕ ДАННЫЕ ==========
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS capacity_aggregated (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -331,44 +324,15 @@ def init_local_db(db_path=None):
             capacity_key TEXT NOT NULL,
             total_value INTEGER DEFAULT 0,
             permanent_value INTEGER DEFAULT 0,
-            dated_values TEXT,  -- JSON: [{"date": "2027-03-01", "value": 7215}, ...]
+            dated_values TEXT,
             latest_date TEXT,
             latest_value INTEGER,
             FOREIGN KEY (license_id) REFERENCES licenses(id) ON DELETE CASCADE,
             UNIQUE(license_id, capacity_key)
         )
     ''')
-    
-    # Таблица для иерархии SPart
-    cursor.execute('''
-        CREATE TABLE IF NOT EXISTS license_spart_hierarchy (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            license_id INTEGER NOT NULL,
-            spart_name TEXT NOT NULL,
-            spart_value INTEGER DEFAULT 0,
-            spart_valid_date TEXT,
-            sort_order INTEGER DEFAULT 0,
-            FOREIGN KEY (license_id) REFERENCES licenses(id) ON DELETE CASCADE
-        )
-    ''')
-    
-    # Таблица для иерархии BPart (spart_id может быть NULL для "сирот")
-    cursor.execute('''
-        CREATE TABLE IF NOT EXISTS license_bpart_hierarchy (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            license_id INTEGER NOT NULL,
-            spart_id INTEGER,
-            bpart_name TEXT NOT NULL,
-            bpart_value INTEGER DEFAULT 0,
-            bpart_valid_date TEXT,
-            is_main BOOLEAN DEFAULT 0,
-            sort_order INTEGER DEFAULT 0,
-            FOREIGN KEY (license_id) REFERENCES licenses(id) ON DELETE CASCADE,
-            FOREIGN KEY (spart_id) REFERENCES license_spart_hierarchy(id) ON DELETE CASCADE
-        )
-    ''')
-    
-    # ========== ИНДЕКСЫ ДЛЯ УСКОРЕНИЯ ==========
+
+    # ========== 9. ИНДЕКСЫ ==========
     cursor.execute('CREATE INDEX IF NOT EXISTS idx_licenses_operator_esn ON licenses(operator, esn)')
     cursor.execute('CREATE INDEX IF NOT EXISTS idx_licenses_valid_date ON licenses(valid_date)')
     cursor.execute('CREATE INDEX IF NOT EXISTS idx_licenses_esn_valid ON licenses(esn, valid_date)')
@@ -379,47 +343,19 @@ def init_local_db(db_path=None):
     cursor.execute('CREATE INDEX IF NOT EXISTS idx_dynamic_values_license_id ON dynamic_values(license_id)')
     cursor.execute('CREATE INDEX IF NOT EXISTS idx_comments_license_id ON comments(license_id)')
     cursor.execute('CREATE INDEX IF NOT EXISTS idx_license_tags_license_id ON license_tags(license_id)')
-    
-    # Уникальный индекс с domain
+
+    # Уникальный индекс лицензий (с domain)
     cursor.execute("DROP INDEX IF EXISTS idx_licenses_unique")
     cursor.execute('''
-        CREATE UNIQUE INDEX IF NOT EXISTS idx_licenses_unique 
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_licenses_unique
         ON licenses(operator, domain, ne_type, city, site, year, lsn)
     ''')
-    
-    cursor.execute('''
-        CREATE TABLE IF NOT EXISTS domain_targets (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            operator TEXT,
-            domain TEXT,
-            type TEXT,
-            unit TEXT,
-            target_key TEXT,
-            city TEXT,
-            value REAL,
-            sharing INTEGER,
-            sort_order INTEGER DEFAULT 0
-        )
-    ''')
-    
-    # Таблица для вычисленных целей
-    cursor.execute('''
-        CREATE TABLE IF NOT EXISTS license_targets (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            operator TEXT,
-            target_key TEXT,
-            city TEXT,
-            ne_type TEXT,
-            capacity_key TEXT,
-            target_value REAL,
-            item_type TEXT DEFAULT 'target'
-        )
-    ''')
-    
+
+    # ========== 10. ФИНАЛИЗАЦИЯ ==========
     conn.commit()
     conn.close()
     logger.info(f"Локальная БД инициализирована: {db_path}")
-    
+      
 def add_change_history(table_name, record_id, action, old_value, new_value, changed_by):
     """Добавляет запись в историю изменений"""
     conn = get_connection()
