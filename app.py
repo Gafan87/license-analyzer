@@ -2,7 +2,7 @@ import os
 import sys
 import json
 import logging
-from flask import Flask, render_template, request, jsonify, redirect, url_for, session, send_file
+from flask import Flask, render_template
 
 # Добавляем путь к модулям
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -234,8 +234,6 @@ with app.app_context():
         print(f"⚠️ Пропускаем загрузку целей: {e}")
 
 print("✅ Инициализация завершена")
-
-# ========== ЗАПУСК ==========
 
 # ========== ЗАПУСК ==========
 
