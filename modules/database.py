@@ -1058,7 +1058,7 @@ def add_tag_to_license(license_id, tag_id):
     conn.close()
 
 def remove_tag_from_license(license_id, tag_id):
-    """Удаляет тег лицензии"""
+    """Удаляет тег с лицензии"""
     conn = get_connection()
     cursor = conn.cursor()
     cursor.execute('DELETE FROM license_tags WHERE license_id = ? AND tag_id = ?',
