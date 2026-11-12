@@ -339,8 +339,6 @@ def load_capacity_descriptions(domain, network_storage_path, ne_type=None, opera
     Returns:
         dict: {capacity_key: {description, unit, part_number, type, parent, formula, sharing, ...}}
     """
-    global _capacity_descriptions_cache
-    
     if not domain:
         logger.warning("Домен не указан, пропускаем загрузку описаний")
         return {}
