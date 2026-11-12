@@ -1,51 +1,701 @@
-# modules/web/routes.py
-"""Web routes for License Analyzer"""
+from flask import Blueprint, render_template, current_app, abort, request, redirect, url_for, jsonify, session, flash
 import os
-import re
 import json
 import shutil
-import logging
-from datetime import datetime, timedelta
-from flask import Blueprint, render_template, request, jsonify, redirect, url_for, flash, session, current_app, abort
+import re
+from datetime import datetime
 
+import tempfile  # добавь, если нет
+
+from modules.logger import get_logger
 from modules.database import (
-    get_connection, get_licenses, get_license_by_id, get_resources,
-    get_all_tags, get_license_tags, add_tag_to_license, remove_tag_from_license,
-    get_comments, add_comment, delete_comment, create_tag,
+    init_local_db, get_all_licenses, get_license_by_id, get_change_history, 
+    save_base_target, get_base_targets, get_connection, get_filter_options,
+    get_dynamic_columns, add_dynamic_column, update_dynamic_column, delete_dynamic_column,
     get_dynamic_values_for_license, update_parsed_cache, get_parsed_cache,
     get_all_licenses_with_aggregated,
     get_unique_esn_licenses, get_all_licenses_for_esn, save_license,
-    get_extraction_rules, save_extraction_rules,
-    backup_db, get_expiring_licenses, get_operator_statistics,
-    get_history_records, delete_history_record, get_rename_history,
-    get_db_stats
+    add_tag, get_all_tags, add_tag_to_license, remove_tag_from_license, get_license_tags,
+    add_comment, get_comments, save_report_template, get_report_templates, delete_report_template,
+    backup_database as backup_db, get_dynamic_columns, get_dynamic_values_for_license
 )
-from modules.config_store import get_esn_mapping_config
-from modules.excel_importer import import_excel, preview_excel
-from modules.export_manager import export_licenses
+from modules.esn_mapper import (
+    load_esn_mapping_from_excel, save_esn_mapping_to_db, 
+    export_esn_mapping_to_excel, get_mapping_by_esn, get_mapping_by_lsn
+)
+from modules.scanner import scan_local_folder
+from modules.sync_manager import sync_all_licenses, download_db_from_remote, upload_db_to_remote
+from modules.target_manager import compare_with_targets, get_targets_for_site
+from modules.file_renamer import batch_rename_files, rename_file_by_esn
+from modules.excel_importer import import_licenses_from_excel
+from modules.tester import run_tests
+from modules.excel_evaluator import ExcelFormulaEvaluator
+from modules.license_service import LicenseService
+from modules.capacity_mapper import get_capacity_description, load_capacity_descriptions, get_description_file_and_sheet
 
-logger = logging.getLogger(__name__)
+from functools import lru_cache
+from datetime import datetime, timedelta
+import math
+
+
+_cache = {}
+_cache_time = {}
+
+def roundup(value, decimals=0):
+    """Округление вверх до указанного количества знаков"""
+    multiplier = 10 ** decimals
+    return math.ceil(value * multiplier) / multiplier
+
+def get_cached_licenses(operator):
+    # Кэш на 5 минут
+    now = datetime.now()
+    if operator in _cache and (now - _cache_time.get(operator, datetime.min)) < timedelta(minutes=5):
+        return _cache[operator]
+    
+    result = get_unique_esn_licenses(operator)
+    _cache[operator] = result
+    _cache_time[operator] = now
+    return result
+
+
+logger = get_logger(__name__)
 web_bp = Blueprint('web', __name__)
 
 
-def get_operator_config(operator):
-    """Получить конфигурацию оператора"""
-    operators = current_app.config.get('OPERATORS', [])
-    return next((op for op in operators if op['name'] == operator), None)
+# ========== ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ==========
 
+def get_operator_config(operator_name):
+    operators = current_app.config.get('OPERATORS', [])
+    for op in operators:
+        if op.get('name') == operator_name:
+            return op
+    return None
+
+
+# ========== ОСНОВНЫЕ МАРШРУТЫ ==========
 
 @web_bp.route('/')
-def root():
-    """Редирект на главную первого оператора"""
+def index():
     operators = current_app.config.get('OPERATORS', [])
     if operators:
-        return redirect(url_for('web.index', operator=operators[0]['name']))
-    return render_template('index.html', licenses=[], operators=[])
+        session['current_operator'] = operators[0]['name']
+        return redirect(f'/{operators[0]["name"]}/')
+    return "Нет настроенных операторов", 500
 
+
+@web_bp.route('/<operator>/')
+def license_list(operator):
+    op_config = get_operator_config(operator)
+    if not op_config:
+        abort(404)
+
+    visible_columns = session.get(f'visible_columns_{operator}', 
+                                   ['ne_type', 'city', 'site', 'year', 'lsn', 'product', 'version', 'esn', 'tags', 'comments_count'])
+
+    licenses = get_unique_esn_licenses(operator)
+
+    # Один запрос вместо N+1
+    from modules.database import get_aggregated_for_operator
+    agg_map = get_aggregated_for_operator(operator)
+    default_agg = {'tags': [], 'comments_count': 0}
+    for lic in licenses:
+        agg = agg_map.get(lic['id'], default_agg)
+        lic['tags'] = agg['tags']
+        lic['comments_count'] = agg['comments_count']
+
+    ne_types = list(set([l.get('ne_type') for l in licenses if l.get('ne_type')]))
+    cities = list(set([l.get('city') for l in licenses if l.get('city')]))
+    
+    return render_template('index.html',
+                          operators=current_app.config['OPERATORS'],
+                          current_operator=operator,
+                          current_operator_title=op_config.get('title', operator),
+                          licenses=licenses,
+                          filter_options={'ne_types': ne_types, 'cities': cities},
+                          visible_columns=visible_columns)
+
+@web_bp.route('/<operator>/save_columns', methods=['POST'])
+def save_visible_columns(operator):
+    """Сохраняет настройки видимых колонок и их порядок"""
+    from flask import session
+    data = request.get_json()
+    columns = data.get('columns', [])
+    order = data.get('order', columns)
+    
+    session[f'visible_columns_{operator}'] = columns
+    session[f'column_order_{operator}'] = order
+    return jsonify({'success': True})
+
+# modules/web/routes.py
+
+@web_bp.route('/<operator>/license/<int:license_id>')
+def license_detail(operator, license_id):
+    op_config = get_operator_config(operator)
+    if not op_config:
+        abort(404)
+
+    # Получаем данные лицензии
+    license_data = get_license_by_id(license_id)
+    if not license_data:
+        abort(404)
+
+    # ===== ДОБАВЬТЕ ЭТОТ БЛОК =====
+    domain = license_data.get('domain')
+    if not domain:
+        conn = get_connection()
+        cur = conn.cursor()
+        cur.execute('SELECT domain FROM licenses WHERE id = ?', (license_id,))
+        row = cur.fetchone()
+        domain = row[0] if row else ''
+        conn.close()
+        license_data['domain'] = domain
+    # ================================
+
+    network_storage_path = current_app.config.get('network_storage_path', '')
+
+    from modules.license_service import LicenseService
+    license_data = LicenseService.enrich_resources_with_descriptions(
+        license_data, domain, network_storage_path
+    )
+
+    license_data['tags'] = get_license_tags(license_id)
+    license_data['comments'] = get_comments(license_id)
+    license_data['dynamic_values'] = get_dynamic_values_for_license(license_id)
+
+    return render_template('license_detail.html',
+                          operators=current_app.config['OPERATORS'],
+                          current_operator=operator,
+                          current_operator_title=op_config.get('title', operator),
+                          license=license_data,
+                          all_licenses_for_esn=[license_data],
+                          esn=license_data.get('esn'),
+                          domain=domain)
+
+
+# ========== СКАНИРОВАНИЕ Ии СИНХРОНИЗАЦИЯ ==========
+
+@web_bp.route('/<operator>/scan', methods=['POST'])
+def scan_operator_route(operator):
+    """Запуск сканирования для конкретного оператора"""
+    op_config = get_operator_config(operator)
+    if not op_config:
+        return jsonify({'success': False, 'message': 'Оператор не найден'}), 404
+    
+    local_path = op_config.get('local_scan_path')
+    if not local_path:
+        return jsonify({'success': False, 'message': 'Не указан путь для сканирования'}), 400
+    
+    try:
+        licenses = scan_local_folder(local_path, operator)
+        
+        if not licenses:
+            return jsonify({'success': True, 'message': 'Новых лицензий не найдено', 'count': 0})
+        
+        # Используем пакетное сохранение
+        from modules.database import save_licenses_batch
+        saved_count, error_count = save_licenses_batch(licenses, operator)
+        
+        return jsonify({
+            'success': True,
+            'message': f'Найдено {len(licenses)} лицензий, сохранено: {saved_count}, ошибок: {error_count}',
+            'count': len(licenses),
+            'saved': saved_count,
+            'errors': error_count
+        })
+    except Exception as e:
+        logger.error(f"Ошибка сканирования: {e}")
+        return jsonify({'success': False, 'message': str(e)}), 500
+
+@web_bp.route('/<operator>/sync', methods=['POST'])
+def sync_operator_route(operator):
+    """Синхронизация лицензий на сервер"""
+    op_config = get_operator_config(operator)
+    if not op_config:
+        return jsonify({'success': False, 'message': 'Оператор не найден'}), 404
+
+    from modules.database import force_release_all_connections
+    import time
+
+    licenses = get_all_licenses(operator=operator)
+
+    if not licenses:
+        return jsonify({'success': False, 'message': 'Нет лицензий для синхронизации'}), 400
+
+    remote_base = current_app.config.get('network_storage_path')
+    if not remote_base:
+        return jsonify({'success': False, 'message': 'Не указан путь к сетевому хранилищу'}), 400
+
+    try:
+        # Освобождаем БД перед синхронизацией
+        import gc
+        gc.collect()
+        
+        # Закрываем соединение от get_all_licenses
+        # (оно уже закрыто, но нужно очистить WAL)
+        import sqlite3
+        wal_conn = sqlite3.connect('local_licenses.db', timeout=5.0)
+        wal_conn.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+        wal_conn.close()
+        
+        time.sleep(0.5)
+        
+        force_release_all_connections()
+        time.sleep(0.5)
+
+        licenses_to_sync = []
+        for lic in licenses:
+            # Пропускаем лицензии без local_path
+            local_path = lic.get('local_path', '')
+            if not local_path:
+                continue
+                
+            licenses_to_sync.append({
+                'filename': lic.get('filename', 'unknown.dat'),
+                'operator': operator,
+                'domain': lic.get('domain', 'Unknown'),
+                'ne_type': lic.get('ne_type', 'Unknown'),
+                'city': lic.get('city', 'Unknown'),
+                'site': lic.get('site', 'Unknown'),
+                'year': lic.get('year', 'permanent'),
+                'lsn': lic.get('lsn', ''),
+                'local_path': local_path,
+                'file_hash': lic.get('file_hash', ''),
+                'version': lic.get('version', ''),
+                'valid_date': lic.get('valid_date', '')
+            })
+
+        if not licenses_to_sync:
+            return jsonify({'success': False, 'message': 'Нет лицензий с local_path для синхронизации'}), 400
+
+        success, fail = sync_all_licenses(licenses_to_sync, remote_base, modified_by=operator)
+
+        return jsonify({
+            'success': True,
+            'message': f'Синхронизация завершена: успешно {success}, ошибок {fail}'
+        })
+    except Exception as e:
+        logger.error(f"Ошибка синхронизации: {e}")
+        return jsonify({'success': False, 'message': str(e)}), 500
+    
+@web_bp.route('/<operator>/download_db', methods=['POST'])
+def download_db_route(operator):
+    remote_base = current_app.config.get('network_storage_path')
+    local_db = current_app.config.get('local_db_path', 'local_licenses.db')
+    network_db = os.path.join(remote_base, 'DB', 'master_licenses.db') if remote_base else None
+    
+    if not remote_base:
+        return jsonify({'success': False, 'message': 'Путь к сетевому хранилищу не задан'}), 400
+    
+    if download_db_from_remote(network_db, local_db):
+        return jsonify({'success': True, 'message': 'База данных загружена'})
+    else:
+        return jsonify({'success': False, 'message': 'Ошибка загрузки БД'}), 500
+
+
+@web_bp.route('/<operator>/scan_status', methods=['GET'])
+def scan_status(operator):
+    count = session.get('scan_count', 0)
+    return jsonify({'count': count})
+
+
+# ========== ОТЧЁТЫ ==========
+
+@web_bp.route('/<operator>/reports')
+def reports(operator):
+    op_config = get_operator_config(operator)
+    if not op_config:
+        abort(404)
+    
+    licenses = get_all_licenses(operator=operator)
+    ne_types = list(set([l['ne_type'] for l in licenses if l['ne_type']]))
+    cities = list(set([l['city'] for l in licenses if l['city']]))
+    
+    return render_template('reports.html',
+                          operators=current_app.config['OPERATORS'],
+                          current_operator=operator,
+                          current_operator_title=op_config.get('title', operator),
+                          ne_types=ne_types,
+                          cities=cities)
+
+
+@web_bp.route('/<operator>/compare_target', methods=['GET'])
+def compare_target(operator):
+    op_config = get_operator_config(operator)
+    if not op_config:
+        abort(404)
+    
+    ne_type = request.args.get('ne_type')
+    city = request.args.get('city')
+    site = request.args.get('site')
+    year = request.args.get('year')
+    
+    comparison = None
+    if ne_type and city and site and year:
+        comparison = compare_with_targets(operator, ne_type, city, site, year)
+    
+    licenses = get_all_licenses(operator=operator)
+    sites = list(set([(l['ne_type'], l['city'], l['site']) for l in licenses if l['site']]))
+    
+    return render_template('reports.html',
+                          operators=current_app.config['OPERATORS'],
+                          current_operator=operator,
+                          current_operator_title=op_config.get('title', operator),
+                          comparison=comparison,
+                          sites=sites,
+                          selected_ne=ne_type,
+                          selected_city=city,
+                          selected_site=site,
+                          selected_year=year)
+
+# ========== ESN МАППИНГ ==========
+
+@web_bp.route('/<operator>/esn_mapping', methods=['GET', 'POST'])
+def esn_mapping(operator):
+    op_config = get_operator_config(operator)
+    if not op_config:
+        abort(404)
+    
+    if request.method == 'POST':
+        if 'upload_file' in request.files:
+            file = request.files['upload_file']
+            if file and file.filename.endswith('.xlsx'):
+                filepath = f"temp_mapping_{operator}.xlsx"
+                file.save(filepath)
+                mappings = load_esn_mapping_from_excel(filepath)
+                save_esn_mapping_to_db(mappings, operator)
+                os.remove(filepath)
+                flash(f'✅ Загружено {len(mappings)} записей маппинга', 'success')
+        
+        elif 'export' in request.form:
+            remote_base = current_app.config.get('network_storage_path')
+            if remote_base:
+                export_path = os.path.join(remote_base, 'mapping', f'esn_mapping_{operator}.xlsx')
+                os.makedirs(os.path.dirname(export_path), exist_ok=True)
+                export_esn_mapping_to_excel(export_path)
+                flash(f'✅ Маппинг экспортирован в {export_path}', 'success')
+    
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute('SELECT esn, lsn, operator, domain, ne_type, city, site FROM esn_mapping')
+    mappings = cursor.fetchall()
+    conn.close()
+    
+    return render_template('esn_mapping.html',
+                          operators=current_app.config['OPERATORS'],
+                          current_operator=operator,
+                          current_operator_title=op_config.get('title', operator),
+                          mappings=mappings,
+                          esn_config=get_esn_mapping_config())
+
+
+@web_bp.route('/<operator>/apply_mapping', methods=['POST'])
+def apply_mapping_to_licenses(operator):
+    """Применяет маппинг ко всем существующим лицензиям"""
+    try:
+        # Передаём operator в функцию
+        updated, conflicts, errors = LicenseService.apply_mapping_batch(operator=operator)
+        
+        message = f'Обновлено: {updated}, конфликтов (удалено): {conflicts}'
+        if errors > 0:
+            message += f', ошибок: {errors}'
+        
+        return jsonify({
+            'success': True,
+            'updated': updated,
+            'conflicts': conflicts,
+            'errors': errors,
+            'message': message
+        })
+    except Exception as e:
+        logger.error(f"Ошибка применения маппинга: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+# ========== ИСТОРИЯ ==========
+
+@web_bp.route('/<operator>/history')
+def history(operator):
+    op_config = get_operator_config(operator)
+    if not op_config:
+        abort(404)
+    
+    changes = get_change_history(100)
+    
+    return render_template('history.html',
+                          operators=current_app.config['OPERATORS'],
+                          current_operator=operator,
+                          current_operator_title=op_config.get('title', operator),
+                          changes=changes)
+
+
+# ========== ИСТЕКАЮЩИЕ ЛИЦЕНЗИИ ==========
+
+def get_expiring_licenses(operator, days=30):
+    from datetime import datetime, timedelta
+    
+    conn = get_connection()
+    cursor = conn.cursor()
+    
+    today = datetime.now().date()
+    limit_date = today + timedelta(days=days)
+    
+    cursor.execute('''
+        SELECT l.id, l.ne_type, l.city, l.site, l.year, l.lsn, 
+               r.capacity_key, r.value, r.valid_date
+        FROM resources r
+        JOIN licenses l ON r.license_id = l.id
+        WHERE l.operator = ? AND r.valid_date != 'PERMANENT' AND r.valid_date != 'UNKNOWN'
+        AND r.valid_date <= ?
+        ORDER BY r.valid_date
+    ''', (operator, limit_date.isoformat()))
+    
+    rows = cursor.fetchall()
+    conn.close()
+    
+    expiring = []
+    for row in rows:
+        try:
+            valid_date = datetime.strptime(row[8], '%Y-%m-%d').date()
+            days_left = (valid_date - today).days
+            if days_left >= 0:
+                expiring.append({
+                    'license_id': row[0], 'ne_type': row[1], 'city': row[2],
+                    'site': row[3], 'year': row[4], 'lsn': row[5],
+                    'capacity_key': row[6], 'value': row[7],
+                    'valid_date': row[8], 'days_left': days_left
+                })
+        except:
+            pass
+    
+    return expiring
+
+
+@web_bp.route('/<operator>/expiring')
+def expiring_licenses(operator):
+    op_config = get_operator_config(operator)
+    if not op_config:
+        abort(404)
+    
+    days = request.args.get('days', 30, type=int)
+    expiring = get_expiring_licenses(operator, days)
+    
+    return render_template('expiring.html',
+                          operators=current_app.config['OPERATORS'],
+                          current_operator=operator,
+                          current_operator_title=op_config.get('title', operator),
+                          expiring=expiring,
+                          days=days)
+
+
+# ========== ПЕРЕИМЕНОВАНИЕ ФАЙЛОВ ==========
+
+@web_bp.route('/<operator>/rename_files', methods=['GET', 'POST'])
+def rename_files_page(operator):
+    op_config = get_operator_config(operator)
+    if not op_config:
+        abort(404)
+    
+    incoming_folder = op_config.get('incoming_folder', f'./incoming/{operator}')
+    target_folder = current_app.config.get('network_storage_path')
+    
+    if request.method == 'POST':
+        success, failed = batch_rename_files(incoming_folder, target_folder, operator)
+        session['renamed_files'] = success
+        session.modified = True
+        
+        return render_template('rename_files.html',
+                              operators=current_app.config['OPERATORS'],
+                              current_operator=operator,
+                              current_operator_title=op_config.get('title', operator),
+                              incoming_folder=incoming_folder,
+                              success=success,
+                              failed=failed)
+    
+    return render_template('rename_files.html',
+                          operators=current_app.config['OPERATORS'],
+                          current_operator=operator,
+                          current_operator_title=op_config.get('title', operator),
+                          incoming_folder=incoming_folder,
+                          success=None,
+                          failed=None)
+
+
+@web_bp.route('/<operator>/rename_single', methods=['POST'])
+def rename_single_file(operator):
+    if 'file' not in request.files:
+        return jsonify({'success': False, 'error': 'No file'})
+    
+    file = request.files['file']
+    with tempfile.NamedTemporaryFile(suffix=os.path.splitext(file.filename)[1], delete=False) as tmp:
+        file.save(tmp.name)
+        target_folder = current_app.config.get('network_storage_path')
+        success, new_path, message = rename_file_by_esn(tmp.name, target_folder, operator)
+        os.unlink(tmp.name)
+    
+    if success:
+        return jsonify({'success': True, 'new_name': os.path.basename(new_path), 'new_path': new_path})
+    return jsonify({'success': False, 'error': message})
+
+
+# ========== ТЕГИ КОММЕНТАРИИ ==========
+
+@web_bp.route('/<operator>/tags/create', methods=['POST'])
+def create_tag(operator):
+    data = request.get_json()
+    name = data.get('name')
+    if name:
+        tag_id = add_tag(name)
+        return jsonify({'success': True, 'tag_id': tag_id})
+    return jsonify({'success': False, 'error': 'Имя тега обязательно'})
+
+
+@web_bp.route('/<operator>/get_all_tags', methods=['GET'])
+def get_all_tags_route(operator):
+    tags = get_all_tags()
+    return jsonify(tags)
+
+
+@web_bp.route('/<operator>/license/<int:license_id>/tags/add', methods=['POST'])
+def add_tag_to_license_route(operator, license_id):
+    data = request.get_json()
+    tag_id = data.get('tag_id')
+    if tag_id:
+        add_tag_to_license(license_id, tag_id)
+        return jsonify({'success': True})
+    return jsonify({'success': False})
+
+
+@web_bp.route('/<operator>/license/<int:license_id>/tags/remove', methods=['POST'])
+def remove_tag_from_license_route(operator, license_id):
+    data = request.get_json()
+    tag_id = data.get('tag_id')
+    if tag_id:
+        remove_tag_from_license(license_id, tag_id)
+        return jsonify({'success': True})
+    return jsonify({'success': False})
+
+
+@web_bp.route('/<operator>/license/<int:license_id>/comments', methods=['POST'])
+def add_comment_route(operator, license_id):
+    comment = request.form.get('comment')
+    user_name = request.form.get('user_name', operator)
+    if comment:
+        add_comment(license_id, user_name, comment)
+    return redirect(url_for('web.license_detail', operator=operator, license_id=license_id))
+
+
+# ========== ШАБЛОНЫ ОТЧЁТОВ ==========
+
+@web_bp.route('/<operator>/report_templates', methods=['GET', 'POST'])
+def report_templates(operator):
+    op_config = get_operator_config(operator)
+    if not op_config:
+        abort(404)
+    
+    if request.method == 'POST':
+        name = request.form.get('name')
+        description = request.form.get('description', '')
+        filters = {
+            'ne_type': request.form.get('filters_ne_type') or '',
+            'city': request.form.get('filters_city') or '',
+            'status': request.form.get('filters_status') or ''
+        }
+        columns = request.form.getlist('columns')
+        if not columns:
+            columns = ['lsn', 'product', 'ne_type', 'city', 'year']
+        
+        save_report_template(name, description, filters, columns, operator)
+        return redirect(url_for('web.report_templates', operator=operator))
+    
+    templates = get_report_templates()
+    licenses = get_all_licenses(operator=operator)
+    ne_types = list(set([l['ne_type'] for l in licenses if l['ne_type']]))
+    cities = list(set([l['city'] for l in licenses if l['city']]))
+    
+    return render_template('report_templates.html',
+                          operators=current_app.config['OPERATORS'],
+                          current_operator=operator,
+                          current_operator_title=op_config.get('title', operator),
+                          templates=templates,
+                          ne_types=ne_types,
+                          cities=cities)
+
+
+@web_bp.route('/<operator>/report_templates/<int:template_id>', methods=['DELETE'])
+def delete_report_template_route(operator, template_id):
+    delete_report_template(template_id)
+    return jsonify({'success': True})
+
+
+# ========== ИМПОРТ EXCEL ==========
+
+@web_bp.route('/<operator>/import_excel', methods=['POST'])
+def import_excel_route(operator):
+    import tempfile
+    
+    if 'file' not in request.files:
+        return jsonify({'success': False, 'error': 'Файл не выбран'})
+    
+    file = request.files['file']
+    if not file.filename.endswith(('.xlsx', '.xls')):
+        return jsonify({'success': False, 'error': 'Требуется Excel файл'})
+    
+    with tempfile.NamedTemporaryFile(suffix='.xlsx', delete=False) as tmp:
+        file.save(tmp.name)
+        imported, errors = import_licenses_from_excel(tmp.name, operator)
+        os.unlink(tmp.name)
+    
+    return jsonify({
+        'success': True,
+        'imported': len(imported),
+        'errors': errors
+    })
+
+
+# ========== ДАШБОРД ==========
+
+@web_bp.route('/dashboard')
+def dashboard():
+    operators = current_app.config.get('OPERATORS', [])
+    
+    stats = []
+    total_licenses = 0
+    total_expiring = 0
+    
+    for op in operators:
+        licenses = get_all_licenses(operator=op['name'])
+        expiring = get_expiring_licenses(op['name'], 30)
+        
+        stats.append({
+            'name': op['title'],
+            'id': op['name'],
+            'licenses_count': len(licenses),
+            'expiring_count': len(expiring),
+            'ne_types': len(set([l['ne_type'] for l in licenses if l['ne_type']])),
+            'cities': len(set([l['city'] for l in licenses if l['city']]))
+        })
+        total_licenses += len(licenses)
+        total_expiring += len(expiring)
+    
+    current_operator = session.get('current_operator', operators[0]['name'] if operators else '')
+    current_operator_title = next(
+        (op.get('title', op['name']) for op in operators if op['name'] == current_operator),
+        current_operator
+    )
+
+    return render_template('dashboard.html',
+                          operators=operators,
+                          stats=stats,
+                          total_licenses=total_licenses,
+                          total_expiring=total_expiring,
+                          current_operator=current_operator,
+                          current_operator_title=current_operator_title)
+
+
+# ========== СПРАВКА ==========
 
 @web_bp.route('/help')
 def help_page():
-    """Справка по рабочему процессу и основным модулям программы."""
     operators = current_app.config.get('OPERATORS', [])
     current_operator = session.get('current_operator', operators[0]['name'] if operators else '')
     current_operator_title = next(
@@ -58,211 +708,159 @@ def help_page():
                           current_operator_title=current_operator_title)
 
 
-@web_bp.route('/dashboard')
-def dashboard():
-    """Дашборд со статистикой"""
-    operators = current_app.config.get('OPERATORS', [])
-    
-    stats = {}
-    total_licenses = 0
-    total_expiring = 0
-    
-    for op in operators:
-        op_stats = get_operator_statistics(op['name'])
-        stats[op['name']] = op_stats
-        total_licenses += op_stats.get('total', 0)
-        total_expiring += op_stats.get('expiring_30', 0)
-    current_operator = session.get('current_operator', operators[0]['name'] if operators else '')
-    current_operator_title = next(
-        (op.get('title', op['name']) for op in operators if op['name'] == current_operator),
-        current_operator
-    )
-    
-    return render_template('dashboard.html',
-                          operators=operators,
-                          stats=stats,
-                          total_licenses=total_licenses,
-                          total_expiring=total_expiring,
-                          current_operator=current_operator,
-                          current_operator_title=current_operator_title)
-
-
-@web_bp.route('/<operator>/')
-def index(operator):
-    """Главная страница оператора с таблицей лицензий"""
-    op_config = get_operator_config(operator)
-    if not op_config:
-        abort(404)
-    
-    session['current_operator'] = operator
-    
-    # Параметры фильтрации
-    filters = {
-        'esn': request.args.get('esn', '').strip(),
-        'ne_type': request.args.get('ne_type', '').strip(),
-        'city': request.args.get('city', '').strip(),
-        'site': request.args.get('site', '').strip(),
-        'year': request.args.get('year', '').strip(),
-        'domain': request.args.get('domain', '').strip(),
-        'tag': request.args.get('tag', '').strip(),
-        'expiring': request.args.get('expiring', type=int),
-        'search': request.args.get('search', '').strip(),
-    }
-    # Убираем пустые фильтры
-    filters = {k: v for k, v in filters.items() if v}
-    
-    # Пагинация
-    page = request.args.get('page', 1, type=int)
-    per_page = request.args.get('per_page', 50, type=int)
-    per_page = min(per_page, 500)  # Максимум 500
-    
-    # Получаем лицензии
-    result = get_licenses(operator, filters=filters, page=page, per_page=per_page)
-    
-    # Получаем теги для фильтра
-    tags = get_all_tags()
-    
-    # Статистика
-    stats = get_operator_statistics(operator)
-    
-    # Динамические колонки
-    from modules.database import get_dynamic_columns
-    dynamic_columns = get_dynamic_columns()
-    
-    return render_template('index.html',
-                          licenses=result['licenses'],
-                          pagination=result['pagination'],
-                          operators=current_app.config['OPERATORS'],
-                          current_operator=operator,
-                          current_operator_title=op_config.get('title', operator),
-                          filters=filters,
-                          tags=tags,
-                          stats=stats,
-                          dynamic_columns=dynamic_columns)
-
-
-@web_bp.route('/<operator>/license/<int:license_id>')
-def license_detail(operator, license_id):
-    """Детальная страница лицензии"""
-    op_config = get_operator_config(operator)
-    if not op_config:
-        abort(404)
-    
-    lic = get_license_by_id(license_id)
-    if not lic:
-        abort(404)
-    
-    # Добавляем связанные данные
-    lic['tags'] = get_license_tags(license_id)
-    lic['comments'] = get_comments(license_id)
-    lic['dynamic_values'] = get_dynamic_values_for_license(license_id)
-    
-    return render_template('license_detail.html',
-                          license=lic,
-                          operators=current_app.config['OPERATORS'],
-                          current_operator=operator,
-                          current_operator_title=op_config.get('title', operator))
-
-
-@web_bp.route('/<operator>/reports')
-def reports(operator):
-    """Страница отчётов"""
-    op_config = get_operator_config(operator)
-    if not op_config:
-        abort(404)
-    
-    return render_template('reports.html',
-                          operators=current_app.config['OPERATORS'],
-                          current_operator=operator,
-                          current_operator_title=op_config.get('title', operator))
-
-
-@web_bp.route('/<operator>/history')
-def history(operator):
-    """История операций"""
-    op_config = get_operator_config(operator)
-    if not op_config:
-        abort(404)
-    
-    records = get_history_records(operator)
-    
-    return render_template('history.html',
-                          records=records,
-                          operators=current_app.config['OPERATORS'],
-                          current_operator=operator,
-                          current_operator_title=op_config.get('title', operator))
-
-
-@web_bp.route('/<operator>/expiring')
-def expiring(operator):
-    """Истекающие лицензии"""
-    op_config = get_operator_config(operator)
-    if not op_config:
-        abort(404)
-    
-    days = request.args.get('days', 30, type=int)
-    licenses = get_expiring_licenses(operator, days)
-    
-    return render_template('expiring.html',
-                          licenses=licenses,
-                          days=days,
-                          operators=current_app.config['OPERATORS'],
-                          current_operator=operator,
-                          current_operator_title=op_config.get('title', operator))
-
-
-@web_bp.route('/<operator>/rename_files')
-def rename_files(operator):
-    """Переименование файлов"""
-    op_config = get_operator_config(operator)
-    if not op_config:
-        abort(404)
-    
-    history_records = get_rename_history(operator)
-    
-    return render_template('rename_files.html',
-                          history=history_records,
-                          operators=current_app.config['OPERATORS'],
-                          current_operator=operator,
-                          current_operator_title=op_config.get('title', operator))
-
-
-@web_bp.route('/<operator>/report_templates')
-def report_templates(operator):
-    """Шаблоны отчётов"""
-    op_config = get_operator_config(operator)
-    if not op_config:
-        abort(404)
-    
-    from modules.report_templates import get_all_templates
-    templates = get_all_templates(operator)
-    
-    return render_template('report_templates.html',
-                          templates=templates,
-                          operators=current_app.config['OPERATORS'],
-                          current_operator=operator,
-                          current_operator_title=op_config.get('title', operator))
-
+# ========== НАСТРОЙКИ ==========
 
 @web_bp.route('/settings')
 def settings():
-    """Страница настроек"""
-    from modules.config_store import load_config
-    config = load_config()
     operators = current_app.config.get('OPERATORS', [])
-    current_operator = session.get('current_operator', operators[0]['name'] if operators else '')
+    network_storage = current_app.config.get('network_storage_path', '')
+    current_log_level = current_app.config.get('LOG_LEVEL', 'INFO')
+    backup_enabled = current_app.config.get('backup_enabled', True)
+    backup_interval_days = current_app.config.get('backup_interval_days', 7)
+    app_path = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    
+    licenses = get_all_licenses()
+    stats = {
+        'licenses_count': len(licenses),
+        'operators_count': len(operators),
+        'db_size': round(os.path.getsize('local_licenses.db') / (1024*1024), 2) if os.path.exists('local_licenses.db') else 0
+    }
+    
+    current_operator = session.get('current_operator', operators[0]['name'] if operators else 'mts')
     current_operator_title = next(
         (op.get('title', op['name']) for op in operators if op['name'] == current_operator),
         current_operator
     )
     
     return render_template('settings.html',
-                          config=config,
                           operators=operators,
+                          network_storage=network_storage,
+                          current_log_level=current_log_level,
+                          backup_enabled=backup_enabled,
+                          backup_interval_days=backup_interval_days,
+                          app_path=app_path,
+                          stats=stats,
                           current_operator=current_operator,
-                          current_operator_title=current_operator_title,
-                          debug_settings=config.get('debug_settings', {}),
-                          backups=get_backup_list())
+                          current_operator_title=current_operator_title)
+
+
+@web_bp.route('/settings/update_paths', methods=['POST'])
+def update_paths():
+    operators = current_app.config.get('OPERATORS', [])
+    
+    for op in operators:
+        new_path = request.form.get(f'path_{op["name"]}')
+        if new_path:
+            op['local_scan_path'] = new_path
+    
+    with open('config.json', 'r', encoding='utf-8') as f:
+        config = json.load(f)
+    config['operators'] = operators
+    with open('config.json', 'w', encoding='utf-8') as f:
+        json.dump(config, f, indent=2)
+    
+    current_app.config['OPERATORS'] = operators
+    flash('✅ Пути сохранены', 'success')
+    return redirect(url_for('web.settings'))
+
+
+@web_bp.route('/settings/update_incoming_paths', methods=['POST'])
+def update_incoming_paths():
+    operators = current_app.config.get('OPERATORS', [])
+    
+    for op in operators:
+        new_path = request.form.get(f'incoming_{op["name"]}')
+        if new_path:
+            op['incoming_folder'] = new_path
+    
+    with open('config.json', 'r', encoding='utf-8') as f:
+        config = json.load(f)
+    config['operators'] = operators
+    with open('config.json', 'w', encoding='utf-8') as f:
+        json.dump(config, f, indent=2)
+    
+    current_app.config['OPERATORS'] = operators
+    flash('✅ Пути к входящим папкам сохранены', 'success')
+    return redirect(url_for('web.settings'))
+
+
+@web_bp.route('/settings/check_storage')
+def check_storage():
+    network_storage = current_app.config.get('network_storage_path', '')
+    exists = os.path.exists(network_storage) if network_storage else False
+    return jsonify({'exists': exists})
+
+
+@web_bp.route('/settings/backup_list')
+def backup_list():
+    backup_dir = 'backups'
+    backups = []
+    if os.path.exists(backup_dir):
+        for f in os.listdir(backup_dir):
+            if f.endswith('.db'):
+                size = round(os.path.getsize(os.path.join(backup_dir, f)) / (1024*1024), 2)
+                backups.append({'name': f, 'size': size})
+    return jsonify({'backups': sorted(backups, key=lambda x: x['name'], reverse=True)})
+
+
+@web_bp.route('/settings/restore_backup', methods=['POST'])
+def restore_backup():
+    filename = request.args.get('file', '')
+    if not filename or os.path.basename(filename) != filename or not filename.endswith('.db'):
+        return jsonify({'success': False, 'message': 'Некорректное имя файла бэкапа'}), 400
+
+    backup_path = os.path.join('backups', filename)
+    local_db = current_app.config.get('local_db_path', 'local_licenses.db')
+    
+    if os.path.exists(backup_path):
+        shutil.copy2(backup_path, local_db)
+        return jsonify({'success': True, 'message': f'Бэкап {filename} восстановлен'})
+    return jsonify({'success': False, 'message': 'Файл не найден'})
+
+
+@web_bp.route('/settings/system_info')
+def system_info():
+    import sys
+    return jsonify({'python_version': sys.version.split()[0]})
+
+
+@web_bp.route('/settings/clear_logs', methods=['POST'])
+def clear_logs():
+    log_dir = 'logs'
+    if os.path.exists(log_dir):
+        for f in os.listdir(log_dir):
+            if f.endswith('.log'):
+                os.remove(os.path.join(log_dir, f))
+    return jsonify({'success': True, 'message': 'Логи очищены'})
+
+
+@web_bp.route('/settings/reset_db', methods=['POST'])
+def reset_db():
+    """Полный сброс локальной БД с пересозданием всех таблиц"""
+    from modules.database import reset_and_recreate_db
+    
+    try:
+        reset_and_recreate_db()
+        return jsonify({'success': True, 'message': 'БД полностью пересоздана с новой структурой'})
+    except Exception as e:
+        logger.error(f"Ошибка сброса БД: {e}")
+        return jsonify({'success': False, 'message': str(e)}), 500
+
+
+@web_bp.route('/settings/log_level', methods=['POST'])
+def set_log_level():
+    level = request.form.get('level', 'INFO')
+    from modules.logger import setup_logging
+    setup_logging(level)
+    
+    with open('config.json', 'r', encoding='utf-8') as f:
+        config = json.load(f)
+    config['log_level'] = level
+    with open('config.json', 'w', encoding='utf-8') as f:
+        json.dump(config, f, indent=2)
+    
+    flash(f'✅ Уровень логирования изменён на {level}', 'success')
+    return redirect(url_for('web.settings'))
 
 
 @web_bp.route('/settings/debug', methods=['POST'])
@@ -279,1496 +877,928 @@ def update_debug_settings():
     return redirect(url_for('web.settings') + '#testing')
 
 
-def get_backup_list():
-    """Получить список бэкапов БД"""
-    backup_dir = current_app.config.get('BACKUP_DIR', 'backups')
-    if not os.path.exists(backup_dir):
-        return []
-    
-    backups = []
-    for f in os.listdir(backup_dir):
-        if f.endswith('.db'):
-            path = os.path.join(backup_dir, f)
-            stat = os.stat(path)
-            backups.append({
-                'name': f,
-                'size': stat.st_size,
-                'date': datetime.fromtimestamp(stat.st_mtime).strftime('%Y-%m-%d %H:%M:%S')
-            })
-    
-    return sorted(backups, key=lambda x: x['date'], reverse=True)
+# ========== ТЕСТИРОВАНИЕ ==========
 
-
-@web_bp.route('/style_guide')
-def style_guide():
-    """Руководство по стилю"""
-    return render_template('style_guide.html')
-
-
-# ========== API ROUTES ==========
-
-@web_bp.route('/<operator>/scan', methods=['POST'])
-def scan_licenses(operator):
-    """Запустить сканирование лицензий"""
-    op_config = get_operator_config(operator)
-    if not op_config:
-        return jsonify({'success': False, 'message': 'Оператор не найден'}), 404
-    
+@web_bp.route('/run_tests', methods=['POST'])
+def run_tests():
+    """Запуск всех тестов"""
     try:
-        from modules.scanner import scan_operator_licenses
-        result = scan_operator_licenses(operator)
-        return jsonify({'success': True, **result})
-    except Exception as e:
-        logger.error(f"Ошибка сканирования: {e}")
-        return jsonify({'success': False, 'message': str(e)}), 500
-
-
-@web_bp.route('/<operator>/sync', methods=['POST'])
-def sync_licenses(operator):
-    """Синхронизация с сетевым хранилищем"""
-    op_config = get_operator_config(operator)
-    if not op_config:
-        return jsonify({'success': False, 'message': 'Оператор не найден'}), 404
-    
-    try:
-        from modules.sync_manager import sync_operator
-        network_storage_path = current_app.config.get('network_storage_path', '')
-        result = sync_operator(operator, network_storage_path)
-        return jsonify({'success': True, **result})
-    except Exception as e:
-        logger.error(f"Ошибка синхронизации: {e}")
-        return jsonify({'success': False, 'message': str(e)}), 500
-
-
-@web_bp.route('/<operator>/scan_status')
-def scan_status(operator):
-    """Статус сканирования"""
-    # TODO: Реализовать отслеживание прогресса
-    return jsonify({'status': 'idle', 'progress': 0})
-
-
-@web_bp.route('/download_db')
-def download_db():
-    """Скачать БД"""
-    from flask import send_file
-    db_path = current_app.config.get('DB_PATH', 'local_licenses.db')
-    if os.path.exists(db_path):
-        return send_file(db_path, as_attachment=True, download_name='local_licenses.db')
-    return jsonify({'error': 'БД не найдена'}), 404
-
-
-@web_bp.route('/import_excel', methods=['POST'])
-def import_excel_route():
-    """Импорт из Excel"""
-    if 'file' not in request.files:
-        return jsonify({'success': False, 'message': 'Файл не выбран'}), 400
-    
-    file = request.files['file']
-    if not file.filename:
-        return jsonify({'success': False, 'message': 'Файл не выбран'}), 400
-    
-    try:
-        # Сохраняем временно
-        import tempfile
-        with tempfile.NamedTemporaryFile(delete=False, suffix='.xlsx') as tmp:
-            file.save(tmp.name)
-            result = import_excel(tmp.name)
-            os.unlink(tmp.name)
+        from modules.tester import SystemTester
         
-        return jsonify({'success': True, **result})
-    except Exception as e:
-        logger.error(f"Ошибка импорта: {e}")
-        return jsonify({'success': False, 'message': str(e)}), 500
-
-
-@web_bp.route('/api/tags', methods=['POST'])
-def api_create_tag():
-    """Создать тег"""
-    data = request.get_json()
-    name = data.get('name', '').strip()
-    color = data.get('color', '#6c757d')
-    
-    if not name:
-        return jsonify({'success': False, 'message': 'Название обязательно'}), 400
-    
-    tag_id = create_tag(name, color)
-    return jsonify({'success': True, 'id': tag_id})
-
-
-@web_bp.route('/api/license/<int:license_id>/tags', methods=['POST'])
-def api_add_tag(license_id):
-    """Добавить тег к лицензии"""
-    data = request.get_json()
-    tag_id = data.get('tag_id')
-    
-    add_tag_to_license(license_id, tag_id)
-    return jsonify({'success': True})
-
-
-@web_bp.route('/api/license/<int:license_id>/tags/<int:tag_id>', methods=['DELETE'])
-def api_remove_tag(license_id, tag_id):
-    """Удалить тег с лицензии"""
-    remove_tag_from_license(license_id, tag_id)
-    return jsonify({'success': True})
-
-
-@web_bp.route('/api/license/<int:license_id>/comments', methods=['POST'])
-def api_add_comment(license_id):
-    """Добавить комментарий"""
-    data = request.get_json()
-    text = data.get('text', '').strip()
-    
-    if not text:
-        return jsonify({'success': False, 'message': 'Текст обязателен'}), 400
-    
-    comment_id = add_comment(license_id, text)
-    return jsonify({'success': True, 'id': comment_id})
-
-
-@web_bp.route('/api/comments/<int:comment_id>', methods=['DELETE'])
-def api_delete_comment(comment_id):
-    """Удалить комментарий"""
-    delete_comment(comment_id)
-    return jsonify({'success': True})
-
-
-@web_bp.route('/api/export', methods=['POST'])
-def api_export():
-    """Экспорт лицензий"""
-    data = request.get_json()
-    operator = data.get('operator')
-    license_ids = data.get('license_ids', [])
-    columns = data.get('columns', [])
-    
-    try:
-        output = export_licenses(operator, license_ids, columns)
-        return jsonify({'success': True, 'data': output})
-    except Exception as e:
-        return jsonify({'success': False, 'message': str(e)}), 500
-
-
-@web_bp.route('/api/settings/paths', methods=['POST'])
-def api_save_paths():
-    """Сохранить пути"""
-    from modules.config_store import load_config, save_config
-    
-    data = request.get_json()
-    config = load_config()
-    
-    if 'network_storage_path' in data:
-        config['network_storage_path'] = data['network_storage_path']
-    if 'targets_file' in data:
-        config['targets_file'] = data['targets_file']
-    
-    save_config(config)
-    return jsonify({'success': True})
-
-
-@web_bp.route('/api/settings/storage', methods=['POST'])
-def api_save_storage():
-    """Сохранить настройки хранения"""
-    from modules.config_store import save_config_section
-    
-    data = request.get_json()
-    save_config_section('storage_settings', data)
-    return jsonify({'success': True})
-
-
-@web_bp.route('/api/backup', methods=['POST'])
-def api_backup():
-    """Создать бэкап БД"""
-    path = backup_db()
-    return jsonify({'success': True, 'path': path})
-
-
-@web_bp.route('/api/restore', methods=['POST'])
-def api_restore():
-    """Восстановить из бэкапа"""
-    data = request.get_json()
-    backup_path = data.get('path')
-    
-    if not backup_path or not os.path.exists(backup_path):
-        return jsonify({'success': False, 'message': 'Бэкап не найден'}), 404
-    
-    try:
-        db_path = current_app.config.get('DB_PATH', 'local_licenses.db')
-        shutil.copy2(backup_path, db_path)
-        return jsonify({'success': True})
-    except Exception as e:
-        return jsonify({'success': False, 'message': str(e)}), 500
-
-
-@web_bp.route('/api/logs/clear', methods=['POST'])
-def api_clear_logs():
-    """Очистить логи"""
-    try:
-        log_dir = current_app.config.get('LOG_DIR', 'logs')
-        for f in os.listdir(log_dir):
-            if f.endswith('.log'):
-                os.remove(os.path.join(log_dir, f))
-        return jsonify({'success': True})
-    except Exception as e:
-        return jsonify({'success': False, 'message': str(e)}), 500
-
-
-@web_bp.route('/api/reset_db', methods=['POST'])
-def api_reset_db():
-    """Сбросить БД"""
-    try:
-        db_path = current_app.config.get('DB_PATH', 'local_licenses.db')
-        if os.path.exists(db_path):
-            os.remove(db_path)
+        # Получаем app_config
+        app_config = {
+            'network_storage_path': current_app.config.get('network_storage_path', ''),
+            'operators': current_app.config.get('OPERATORS', [])
+        }
         
-        from modules.database import init_db
-        init_db()
-        return jsonify({'success': True})
+        tester = SystemTester()
+        result = tester.run_all_tests(app_config)
+        return jsonify(result)
     except Exception as e:
-        return jsonify({'success': False, 'message': str(e)}), 500
+        logger.error(f"Ошибка запуска тестов: {e}", exc_info=True)
+        return jsonify({
+            'success': False,
+            'total': 0,
+            'passed': 0,
+            'failed': 1,
+            'duration': 0,
+            'results': [{'name': 'Тестирование', 'status': False, 'message': str(e)}]
+        }), 500
+
+
+@web_bp.route('/api/tests/list')
+def get_test_list():
+    """Возвращает список всех тестов по категориям"""
+    from modules.tester import SystemTester
+    tester = SystemTester()
+    categories = tester.get_test_categories()
+    return jsonify({'success': True, 'categories': categories})
 
 
 @web_bp.route('/api/tests/run', methods=['POST'])
-def api_run_tests():
-    """Запустить тесты"""
-    import subprocess
-    
-    data = request.get_json() or {}
-    category = data.get('category', 'all')
-    test_name = data.get('test')
-    
-    cmd = ['python', '-m', 'pytest', 'tests/', '-v']
-    if category != 'all':
-        cmd = ['python', '-m', 'pytest', f'tests/test_{category}.py', '-v']
-    if test_name:
-        cmd.append(f'-k {test_name}')
-    
+def run_tests_api():
+    """Запуск тестов: всех, категории или одного"""
     try:
-        result = subprocess.run(cmd, capture_output=True, text=True, timeout=300)
-        return jsonify({
-            'success': result.returncode == 0,
-            'output': result.stdout + result.stderr
-        })
+        data = request.get_json() or {}
+        category_id = data.get('category')
+        test_name = data.get('test_name')
+        
+        from modules.tester import SystemTester
+        tester = SystemTester()
+        result = tester.run_selected_tests(category_id=category_id, test_name=test_name)
+        return jsonify(result)
     except Exception as e:
-        return jsonify({'success': False, 'message': str(e)}), 500
-
-
-# ========== НОВЫЕ МАРШРУТЫ ДЛЯ ПОЛНОЦЕННОГО ИНТЕРФЕЙСА ==========
-
-@web_bp.route('/<operator>/report/<int:report_id>')
-def view_report(operator, report_id):
-    """Просмотр сохранённого отчёта"""
-    op_config = get_operator_config(operator)
-    if not op_config:
-        abort(404)
-    
-    from modules.report_templates import get_template_by_id
-    report = get_template_by_id(report_id)
-    if not report:
-        abort(404)
-    
-    return render_template('view_report.html',
-                          report=report,
-                          operators=current_app.config['OPERATORS'],
-                          current_operator=operator,
-                          current_operator_title=op_config.get('title', operator))
-
-
-@web_bp.route('/<operator>/compare')
-def compare_licenses(operator):
-    """Сравнение лицензий"""
-    op_config = get_operator_config(operator)
-    if not op_config:
-        abort(404)
-    
-    ids = request.args.get('ids', '')
-    license_ids = [int(x) for x in ids.split(',') if x.strip().isdigit()]
-    
-    licenses = []
-    for lid in license_ids[:10]:  # Максимум 10
-        lic = get_license_by_id(lid)
-        if lic:
-            licenses.append(lic)
-    
-    return render_template('compare.html',
-                          licenses=licenses,
-                          operators=current_app.config['OPERATORS'],
-                          current_operator=operator,
-                          current_operator_title=op_config.get('title', operator))
-
-
-@web_bp.route('/<operator>/esn_mapping')
-def esn_mapping(operator):
-    """ESN маппинг"""
-    op_config = get_operator_config(operator)
-    if not op_config:
-        abort(404)
-    
-    return render_template('esn_mapping.html',
-                          operators=current_app.config['OPERATORS'],
-                          current_operator=operator,
-                          current_operator_title=op_config.get('title', operator),
-                          esn_config=get_esn_mapping_config())
-
-
-# ========== API ДЛЯ ДИНАМИЧЕСКИХ ПОЛЕЙ ==========
-
-@web_bp.route('/api/dynamic_fields', methods=['GET'])
-def api_get_dynamic_fields():
-    """Получить динамические поля"""
-    from modules.database import get_dynamic_columns
-    return jsonify(get_dynamic_columns())
-
-
-@web_bp.route('/api/dynamic_fields', methods=['POST'])
-def api_create_dynamic_field():
-    """Создать динамическое поле"""
-    from modules.database import add_dynamic_column
-    
-    data = request.get_json()
-    column_id = add_dynamic_column(
-        data['column_name'],
-        data['display_name'],
-        data.get('rule_id'),
-        data.get('capacity_key'),
-        data.get('aggregation_strategy', 'sum'),
-        data.get('join_separator', ', ')
-    )
-    return jsonify({'success': True, 'id': column_id})
-
-
-@web_bp.route('/api/dynamic_fields/<int:field_id>', methods=['DELETE'])
-def api_delete_dynamic_field(field_id):
-    """Удалить динамическое поле"""
-    from modules.database import delete_dynamic_column
-    delete_dynamic_column(field_id)
-    return jsonify({'success': True})
-
-
-@web_bp.route('/api/dynamic_fields/<int:field_id>', methods=['PUT'])
-def api_update_dynamic_field(field_id):
-    """Обновить динамическое поле"""
-    from modules.database import update_dynamic_column
-    
-    data = request.get_json()
-    update_dynamic_column(field_id, **data)
-    return jsonify({'success': True})
-
-
-# ========== API ДЛЯ ПРАВИЛ ИЗВЛЕЧЕНИЯ ==========
-
-@web_bp.route('/api/extraction_rules', methods=['GET'])
-def api_get_rules():
-    """Получить правила извлечения"""
-    return jsonify(get_extraction_rules())
-
-
-@web_bp.route('/api/extraction_rules', methods=['POST'])
-def api_save_rules():
-    """Сохранить правила извлечения"""
-    data = request.get_json()
-    save_extraction_rules(data)
-    return jsonify({'success': True})
-
-
-# ========== API ДЛЯ МАССОВЫХ ОПЕРАЦИЙ ==========
-
-@web_bp.route('/api/bulk/tags', methods=['POST'])
-def api_bulk_tags():
-    """Массовое добавление/удаление тегов"""
-    data = request.get_json()
-    license_ids = data.get('license_ids', [])
-    tag_id = data.get('tag_id')
-    action = data.get('action', 'add')
-    
-    for lid in license_ids:
-        if action == 'add':
-            add_tag_to_license(lid, tag_id)
-        else:
-            remove_tag_from_license(lid, tag_id)
-    
-    return jsonify({'success': True, 'count': len(license_ids)})
-
-
-@web_bp.route('/api/bulk/delete', methods=['POST'])
-def api_bulk_delete():
-    """Массовое удаление лицензий"""
-    from modules.database import delete_license
-    
-    data = request.get_json()
-    license_ids = data.get('license_ids', [])
-    
-    for lid in license_ids:
-        delete_license(lid)
-    
-    return jsonify({'success': True, 'count': len(license_ids)})
-
-
-# ========== СТАТИСТИКА И МОНИТОРИНГ ==========
-
-@web_bp.route('/api/stats/<operator>')
-def api_operator_stats(operator):
-    """Статистика оператора"""
-    stats = get_operator_statistics(operator)
-    return jsonify(stats)
-
-
-@web_bp.route('/api/stats')
-def api_global_stats():
-    """Общая статистика"""
-    stats = get_db_stats()
-    return jsonify(stats)
-
-
-@web_bp.route('/api/health')
-def api_health():
-    """Проверка здоровья системы"""
-    try:
-        conn = get_connection()
-        conn.execute('SELECT 1')
-        conn.close()
-        db_ok = True
-    except:
-        db_ok = False
-    
-    return jsonify({
-        'status': 'ok' if db_ok else 'error',
-        'database': db_ok,
-        'timestamp': datetime.now().isoformat()
-    })
-
-
-# ========== ОБРАБОТКА ОШИБОК ==========
-
-@web_bp.errorhandler(404)
-def not_found(e):
-    return render_template('404.html'), 404
-
-
-@web_bp.errorhandler(500)
-def server_error(e):
-    logger.error(f"Server error: {e}")
-    return render_template('500.html'), 500
-
-
-
-
-
-# ========== ДОБАВЛЕННЫЕ МАРШРУТЫ ==========
-
-@web_bp.route('/api/capacity_mapping', methods=['GET'])
-def api_get_capacity_mapping():
-    """Получить все соответствия CapacityKey"""
-    from modules.capacity_mapper import get_mapping
-    mapping = get_mapping()
-    return jsonify(mapping)
-
-
-@web_bp.route('/api/capacity_mapping', methods=['POST'])
-def api_save_capacity_mapping():
-    """Сохранить соответствие CapacityKey"""
-    from modules.capacity_mapper import add_mapping
-    
-    data = request.get_json()
-    capacity_key = data.get('capacity_key', '').strip()
-    spart = data.get('spart', '').strip()
-    bpart = data.get('bpart', '').strip()
-    operator = data.get('operator', '').strip() or None
-    
-    if not capacity_key or not spart or not bpart:
-        return jsonify({'success': False, 'message': 'Все поля обязательны'}), 400
-    
-    add_mapping(capacity_key, spart, bpart, operator)
-    return jsonify({'success': True})
-
-
-@web_bp.route('/api/capacity_mapping/<int:mapping_id>', methods=['DELETE'])
-def api_delete_capacity_mapping(mapping_id):
-    """Удалить соответствие"""
-    from modules.capacity_mapper import delete_mapping
-    delete_mapping(mapping_id)
-    return jsonify({'success': True})
-
-
-@web_bp.route('/<operator>/resources/<int:license_id>')
-def api_get_license_resources(operator, license_id):
-    """Получить ресурсы лицензии с группировкой SPart/BPart"""
-    op_config = get_operator_config(operator)
-    if not op_config:
-        return jsonify({'success': False, 'message': 'Оператор не найден'}), 404
-    
-    from modules.capacity_mapper import get_grouped_resources
-    
-    # Параметры
-    filter_empty = request.args.get('filter_empty', 'true').lower() == 'true'
-    capacity_keys = request.args.getlist('capacity_keys')
-    only_with_spart = request.args.get('only_with_spart', 'false').lower() == 'true'
-    
-    resources = get_grouped_resources(
-        license_id=license_id,
-        operator=operator,
-        filter_empty=filter_empty,
-        capacity_keys=capacity_keys if capacity_keys else None,
-        only_with_spart=only_with_spart
-    )
-    
-    return jsonify(resources)
-
-
-@web_bp.route('/<operator>/available_keys')
-def api_available_keys(operator):
-    """Получить доступные CapacityKey для оператора"""
-    from modules.capacity_mapper import get_available_keys
-    keys = get_available_keys(operator)
-    return jsonify(keys)
-
-
-@web_bp.route('/api/settings/levels', methods=['POST'])
-def api_save_levels():
-    """Сохранить настройки уровней структуры папок"""
-    from modules.config_store import load_config, save_config
-    
-    data = request.get_json()
-    config = load_config()
-    config['folder_levels'] = data.get('levels', [])
-    save_config(config)
-    
-    return jsonify({'success': True})
-
-
-@web_bp.route('/api/rename/preview', methods=['POST'])
-def api_rename_preview():
-    """Предпросмотр переименования"""
-    from modules.renamer import preview_rename
-    
-    data = request.get_json()
-    operator = data.get('operator')
-    
-    result = preview_rename(operator)
-    return jsonify(result)
-
-
-@web_bp.route('/api/rename/apply', methods=['POST'])
-def api_rename_apply():
-    """Применить переименование"""
-    from modules.renamer import apply_rename
-    
-    data = request.get_json()
-    operator = data.get('operator')
-    items = data.get('items', [])
-    
-    result = apply_rename(operator, items)
-    return jsonify(result)
-
-
-@web_bp.route('/api/report_templates', methods=['POST'])
-def api_save_report_template():
-    """Сохранить шаблон отчёта"""
-    from modules.report_templates import save_template
-    
-    data = request.get_json()
-    template_id = save_template(data)
-    return jsonify({'success': True, 'id': template_id})
-
-
-@web_bp.route('/api/report_templates/<int:template_id>', methods=['DELETE'])
-def api_delete_report_template(template_id):
-    """Удалить шаблон отчёта"""
-    from modules.report_templates import delete_template
-    delete_template(template_id)
-    return jsonify({'success': True})
-
-
-@web_bp.route('/api/report_templates/<int:template_id>/apply', methods=['POST'])
-def api_apply_report_template(template_id):
-    """Применить шаблон отчёта"""
-    from modules.report_templates import get_template_by_id
-    
-    template = get_template_by_id(template_id)
-    if not template:
-        return jsonify({'success': False, 'message': 'Шаблон не найден'}), 404
-    
-    return jsonify({'success': True, 'config': template.get('config', {})})
-
-
-# ========== ДОПОЛНИТЕЛЬНЫЕ API ДЛЯ ПОЛНОЙ ФУНКЦИОНАЛЬНОСТИ ==========
-
-@web_bp.route('/api/license/<int:license_id>/history')
-def api_license_history(license_id):
-    """История изменений лицензии"""
-    from modules.database import get_license_history
-    history = get_license_history(license_id)
-    return jsonify(history)
-
-
-@web_bp.route('/api/license/<int:license_id>/related')
-def api_related_licenses(license_id):
-    """Связанные лицензии (тот же ESN)"""
-    lic = get_license_by_id(license_id)
-    if not lic:
-        return jsonify([])
-    
-    related = get_all_licenses_for_esn(lic['operator'], lic['esn'])
-    return jsonify(related)
-
-
-@web_bp.route('/api/search/suggestions')
-def api_search_suggestions():
-    """Подсказки для поиска"""
-    query = request.args.get('q', '').strip()
-    operator = request.args.get('operator', '')
-    
-    if not query or len(query) < 2:
-        return jsonify([])
-    
-    suggestions = []
+        logger.error(f"Ошибка запуска тестов API: {e}", exc_info=True)
+        return jsonify({
+            'success': False,
+            'total': 0,
+            'passed': 0,
+            'failed': 1,
+            'duration': 0,
+            'results': [{'name': 'Тест', 'status': False, 'message': str(e)}]
+        }), 500
+        
+# ========== API ДЛЯ ESN МАППИНГА (ТЕСТИРОВАНИЕ) ==========
+
+@web_bp.route('/api/esn_mapping', methods=['GET'])
+def api_get_esn_mapping():
+    """Получить все записи ESN маппинга"""
     conn = get_connection()
     cursor = conn.cursor()
-    
-    # ESN
-    cursor.execute('SELECT DISTINCT esn FROM licenses WHERE esn LIKE ? LIMIT 5', (f'%{query}%',))
-    for row in cursor.fetchall():
-        suggestions.append({'type': 'esn', 'value': row[0]})
-    
-    # City
-    cursor.execute('SELECT DISTINCT city FROM licenses WHERE city LIKE ? LIMIT 5', (f'%{query}%',))
-    for row in cursor.fetchall():
-        suggestions.append({'type': 'city', 'value': row[0]})
-    
-    # Site
-    cursor.execute('SELECT DISTINCT site FROM licenses WHERE site LIKE ? LIMIT 5', (f'%{query}%',))
-    for row in cursor.fetchall():
-        suggestions.append({'type': 'site', 'value': row[0]})
-    
+    cursor.execute('SELECT esn, lsn, operator, domain, ne_type, city, site FROM esn_mapping LIMIT 100')
+    rows = cursor.fetchall()
     conn.close()
-    return jsonify(suggestions)
-
-
-@web_bp.route('/api/export/excel', methods=['POST'])
-def api_export_excel():
-    """Экспорт в Excel файл"""
-    from flask import send_file
-    import tempfile
-    from modules.export_manager import export_to_excel_file
     
+    mappings = [{
+        'esn': r[0],
+        'lsn': r[1],
+        'operator': r[2],
+        'domain': r[3],
+        'ne_type': r[4],
+        'city': r[5],
+        'site': r[6]
+    } for r in rows]
+    
+    return jsonify(mappings)
+
+
+@web_bp.route('/api/esn_mapping/count', methods=['GET'])
+def api_get_esn_mapping_count():
+    """Получить количество записей в маппинге"""
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute('SELECT COUNT(*) FROM esn_mapping')
+    count = cursor.fetchone()[0]
+    conn.close()
+    return jsonify({'count': count})
+
+
+@web_bp.route('/api/apply_mapping', methods=['POST'])
+def api_apply_mapping():
+    """Применить маппинг и вернуть JSON"""
+    op = request.args.get('operator', 'mts')
+    try:
+        updated, conflicts = LicenseService.apply_mapping_batch(op)
+        return jsonify({
+            'success': True,
+            'updated': updated,
+            'conflicts': conflicts,
+            'message': f'Обновлено: {updated}, конфликтов: {conflicts}'
+        })
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+
+@web_bp.route('/api/license_by_esn', methods=['GET'])
+def api_get_license_by_esn():
+    """Получить лицензию по ESN"""
+    esn = request.args.get('esn')
+    if not esn:
+        return jsonify({'error': 'esn required'}), 400
+    
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute('''
+        SELECT id, lsn, operator, ne_type, city, site, year, product, version
+        FROM licenses WHERE esn LIKE ? LIMIT 5
+    ''', (f'%{esn}%',))
+    rows = cursor.fetchall()
+    conn.close()
+    
+    licenses = [{
+        'id': r[0],
+        'lsn': r[1],
+        'operator': r[2],
+        'ne_type': r[3],
+        'city': r[4],
+        'site': r[5],
+        'year': r[6],
+        'product': r[7],
+        'version': r[8]
+    } for r in rows]
+    
+    return jsonify(licenses)
+
+
+# ========== ЭКСПОРТ В EXCEL ==========
+
+@web_bp.route('/api/export_licenses', methods=['POST'])
+def api_export_licenses():
     data = request.get_json()
-    operator = data.get('operator')
     license_ids = data.get('license_ids', [])
-    columns = data.get('columns', [])
+    operator = data.get('operator')
+    visible_columns = data.get('visible_columns', [])
     
-    try:
-        with tempfile.NamedTemporaryFile(delete=False, suffix='.xlsx') as tmp:
-            export_to_excel_file(operator, license_ids, columns, tmp.name)
-            return send_file(tmp.name, as_attachment=True, 
-                           download_name=f'licenses_{operator}_{datetime.now().strftime("%Y%m%d_%H%M%S")}.xlsx')
-    except Exception as e:
-        return jsonify({'success': False, 'message': str(e)}), 500
-
-
-@web_bp.route('/api/import/preview', methods=['POST'])
-def api_import_preview():
-    """Предпросмотр импорта Excel"""
-    if 'file' not in request.files:
-        return jsonify({'success': False, 'message': 'Файл не выбран'}), 400
+    if license_ids:
+        placeholders = ','.join('?' * len(license_ids))
+        query = f'''
+            SELECT l.id, l.lsn, l.product, l.version, l.ne_type, l.city, l.site, l.year,
+                   l.valid_date, l.esn, l.node, l.create_time, l.domain,
+                   GROUP_CONCAT(DISTINCT t.name, ', ') as tags,
+                   (SELECT COUNT(*) FROM comments c WHERE c.license_id = l.id) as comments_count
+            FROM licenses l
+            LEFT JOIN license_tags lt ON lt.license_id = l.id
+            LEFT JOIN tags t ON lt.tag_id = t.id
+            WHERE l.id IN ({placeholders})
+            GROUP BY l.id
+        '''
+        params = license_ids
+    else:
+        query = '''
+            SELECT l.id, l.lsn, l.product, l.version, l.ne_type, l.city, l.site, l.year,
+                   l.valid_date, l.esn, l.node, l.create_time, l.domain,
+                   GROUP_CONCAT(DISTINCT t.name, ', ') as tags,
+                   (SELECT COUNT(*) FROM comments c WHERE c.license_id = l.id) as comments_count
+            FROM licenses l
+            LEFT JOIN license_tags lt ON lt.license_id = l.id
+            LEFT JOIN tags t ON lt.tag_id = t.id
+        '''
+        params = []
+        if operator:
+            query += ' WHERE l.operator = ?'
+            params.append(operator)
+        query += ' GROUP BY l.id ORDER BY l.ne_type, l.city'
     
-    file = request.files['file']
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute(query, params)
+    rows = cursor.fetchall()
+    conn.close()
     
-    try:
-        import tempfile
-        with tempfile.NamedTemporaryFile(delete=False, suffix='.xlsx') as tmp:
-            file.save(tmp.name)
-            result = preview_excel(tmp.name)
-            os.unlink(tmp.name)
-        
-        return jsonify({'success': True, **result})
-    except Exception as e:
-        return jsonify({'success': False, 'message': str(e)}), 500
-
-
-@web_bp.route('/api/notifications')
-def api_notifications():
-    """Получить уведомления"""
-    notifications = []
+    columns_map = {
+        'lsn': 'LSN', 'product': 'Продукт', 'version': 'Версия',
+        'ne_type': 'NE тип', 'city': 'Город', 'site': 'Сайт',
+        'domain': 'Домен', 'year': 'Год', 'valid_date': 'Действует до',
+        'esn': 'ESN', 'node': 'Узел', 'create_time': 'Создана',
+        'tags': 'Теги', 'comments_count': 'Комментарии'
+    }
     
-    # Истекающие лицензии
-    for op in current_app.config.get('OPERATORS', []):
-        expiring = get_expiring_licenses(op['name'], 7)
-        if expiring:
-            notifications.append({
-                'type': 'warning',
-                'title': f"{op['title']}: истекают лицензии",
-                'message': f"{len(expiring)} лицензий истекают в течение 7 дней",
-                'link': url_for('web.expiring', operator=op['name'], days=7)
-            })
+    if not visible_columns:
+        visible_columns = list(columns_map.keys())
     
-    return jsonify(notifications)
-
-
-@web_bp.route('/api/backup/list')
-def api_backup_list():
-    """Список бэкапов"""
-    return jsonify(get_backup_list())
-
-
-@web_bp.route('/api/backup/create', methods=['POST'])
-def api_backup_create():
-    """Создать бэкап с описанием"""
-    data = request.get_json() or {}
-    description = data.get('description', '')
+    headers = [columns_map.get(col, col) for col in visible_columns if col in columns_map]
+    data_rows = []
     
-    path = backup_db(description)
-    return jsonify({'success': True, 'path': path})
-
-
-@web_bp.route('/api/system/info')
-def api_system_info():
-    """Информация о системе"""
-    import sys
-    
-    stats = get_db_stats()
+    for row in rows:
+        row_dict = {
+            'id': row[0], 'lsn': row[1], 'product': row[2], 'version': row[3],
+            'ne_type': row[4], 'city': row[5], 'site': row[6], 'year': row[7],
+            'valid_date': row[8], 'esn': row[9], 'node': row[10],
+            'create_time': row[11], 'domain': row[12], 'tags': row[13] or '',
+            'comments_count': row[14] or 0
+        }
+        data_rows.append([row_dict.get(col, '') for col in visible_columns if col in columns_map])
     
     return jsonify({
-        'python_version': sys.version,
-        'database': stats,
-        'operators': len(current_app.config.get('OPERATORS', [])),
-        'debug': current_app.debug
+        'headers': headers,
+        'rows': data_rows,
+        'filename': f'licenses_{datetime.now().strftime("%Y%m%d_%H%M%S")}.xlsx'
     })
 
+# ========== API ДЛЯ ПОЛУЧЕНИЯ РЕСУРСОВ ПО LSN ==========
 
+@web_bp.route('/api/license/<int:license_id>/resources', methods=['GET'])
+def api_get_license_resources(license_id):
+    from modules.database import get_connection
+    from modules.capacity_mapper import get_capacity_description
+    from flask import current_app
+    import json
 
-# ========== ДОБАВЛЕННЫЕ МАРШРУТЫ ДЛЯ ШАБЛОНОВ ==========
+    mode = request.args.get('mode', 'total')
+    domain = request.args.get('domain', '')
+    network_storage_path = current_app.config.get('network_storage_path', '')
 
-@web_bp.route('/api/report_templates', methods=['GET'])
-def api_get_report_templates():
-    """Получить все шаблоны отчётов"""
-    operator = request.args.get('operator')
-    from modules.report_templates import get_all_templates
-    templates = get_all_templates(operator)
-    return jsonify(templates)
+    conn = get_connection()
+    cursor = conn.cursor()
 
-
-@web_bp.route('/api/rename/history')
-def api_rename_history():
-    """История переименований"""
-    operator = request.args.get('operator')
-    history = get_rename_history(operator)
-    return jsonify(history)
-
-
-@web_bp.route('/api/license/<int:license_id>/resources')
-def api_license_resources(license_id):
-    """Получить ресурсы лицензии"""
-    resources = get_resources(license_id)
-    return jsonify(resources)
-
-
-@web_bp.route('/api/license/<int:license_id>/parse', methods=['POST'])
-def api_parse_license(license_id):
-    """Перепарсить лицензию"""
-    lic = get_license_by_id(license_id)
-    if not lic:
-        return jsonify({'success': False, 'message': 'Лицензия не найдена'}), 404
+    cursor.execute('''
+        SELECT capacity_key, total_value, permanent_value, dated_values, latest_date, latest_value
+        FROM capacity_aggregated WHERE license_id = ?
+    ''', (license_id,))
+    agg_rows = cursor.fetchall()
     
-    try:
-        from modules.parsers import parse_license_file
-        result = parse_license_file(lic['local_path'])
-        
-        # Обновляем кэш
-        update_parsed_cache(license_id, result)
-        
-        return jsonify({'success': True, 'data': result})
-    except Exception as e:
-        return jsonify({'success': False, 'message': str(e)}), 500
-
-
-@web_bp.route('/api/capacity_mapping/import', methods=['POST'])
-def api_import_capacity_mapping():
-    """Импорт соответствий из Excel"""
-    if 'file' not in request.files:
-        return jsonify({'success': False, 'message': 'Файл не выбран'}), 400
-    
-    file = request.files['file']
-    
-    try:
-        from modules.capacity_mapper import import_mapping_from_excel
-        import tempfile
-        
-        with tempfile.NamedTemporaryFile(delete=False, suffix='.xlsx') as tmp:
-            file.save(tmp.name)
-            result = import_mapping_from_excel(tmp.name)
-            os.unlink(tmp.name)
-        
-        return jsonify({'success': True, **result})
-    except Exception as e:
-        return jsonify({'success': False, 'message': str(e)}), 500
-
-
-@web_bp.route('/api/capacity_mapping/export')
-def api_export_capacity_mapping():
-    """Экспорт соответствий в Excel"""
-    from flask import send_file
-    from modules.capacity_mapper import export_mapping_to_excel
-    import tempfile
-    
-    with tempfile.NamedTemporaryFile(delete=False, suffix='.xlsx') as tmp:
-        export_mapping_to_excel(tmp.name)
-        return send_file(tmp.name, as_attachment=True, download_name='capacity_mapping.xlsx')
-
-
-@web_bp.route('/<operator>/resources')
-def operator_resources(operator):
-    """Страница ресурсов оператора"""
-    op_config = get_operator_config(operator)
-    if not op_config:
-        abort(404)
-    
-    from modules.capacity_mapper import get_available_keys
-    keys = get_available_keys(operator)
-    
-    return render_template('resources.html',
-                          capacity_keys=keys,
-                          operators=current_app.config['OPERATORS'],
-                          current_operator=operator,
-                          current_operator_title=op_config.get('title', operator))
-
-
-@web_bp.route('/api/settings/export')
-def api_export_settings():
-    """Экспорт настроек"""
-    from modules.config_store import load_config
-    config = load_config()
-    return jsonify(config)
-
-
-@web_bp.route('/api/settings/import', methods=['POST'])
-def api_import_settings():
-    """Импорт настроек"""
-    from modules.config_store import save_config
-    
-    data = request.get_json()
-    save_config(data)
-    return jsonify({'success': True})
-
-
-@web_bp.route('/api/db/optimize', methods=['POST'])
-def api_optimize_db():
-    """Оптимизация БД"""
-    try:
-        conn = get_connection()
-        conn.execute('VACUUM')
-        conn.execute('ANALYZE')
-        conn.close()
-        return jsonify({'success': True})
-    except Exception as e:
-        return jsonify({'success': False, 'message': str(e)}), 500
-
-
-@web_bp.route('/api/db/stats')
-def api_db_stats():
-    """Статистика БД"""
-    stats = get_db_stats()
-    return jsonify(stats)
-
-
-@web_bp.route('/api/license/<int:license_id>/refresh', methods=['POST'])
-def api_refresh_license(license_id):
-    """Обновить данные лицензии из файла"""
-    lic = get_license_by_id(license_id)
-    if not lic:
-        return jsonify({'success': False, 'message': 'Лицензия не найдена'}), 404
-    
-    try:
-        from modules.parsers import parse_license_file
-        from modules.database import update_license
-        
-        result = parse_license_file(lic['local_path'])
-        update_license(license_id, result)
-        
-        return jsonify({'success': True})
-    except Exception as e:
-        return jsonify({'success': False, 'message': str(e)}), 500
-
-
-@web_bp.route('/api/tags/<int:tag_id>', methods=['PUT'])
-def api_update_tag(tag_id):
-    """Обновить тег"""
-    from modules.database import update_tag
-    
-    data = request.get_json()
-    update_tag(tag_id, data.get('name'), data.get('color'))
-    return jsonify({'success': True})
-
-
-@web_bp.route('/api/tags/<int:tag_id>', methods=['DELETE'])
-def api_delete_tag(tag_id):
-    """Удалить тег"""
-    from modules.database import delete_tag
-    delete_tag(tag_id)
-    return jsonify({'success': True})
-
-
-@web_bp.route('/api/comments/<int:comment_id>', methods=['PUT'])
-def api_update_comment(comment_id):
-    """Обновить комментарий"""
-    from modules.database import update_comment
-    
-    data = request.get_json()
-    update_comment(comment_id, data.get('text'))
-    return jsonify({'success': True})
-
-
-@web_bp.route('/<operator>/export')
-def export_page(operator):
-    """Страница экспорта"""
-    op_config = get_operator_config(operator)
-    if not op_config:
-        abort(404)
-    
-    from modules.database import get_dynamic_columns
-    dynamic_columns = get_dynamic_columns()
-    
-    return render_template('export.html',
-                          dynamic_columns=dynamic_columns,
-                          operators=current_app.config['OPERATORS'],
-                          current_operator=operator,
-                          current_operator_title=op_config.get('title', operator))
-
-
-# ========== ФИНАЛЬНЫЕ ДОПОЛНЕНИЯ ==========
-
-@web_bp.route('/api/capacity_mapping/bulk', methods=['POST'])
-def api_bulk_capacity_mapping():
-    """Массовое добавление соответствий"""
-    from modules.capacity_mapper import add_mapping
-    
-    data = request.get_json()
-    items = data.get('items', [])
-    
-    added = 0
-    for item in items:
-        try:
-            add_mapping(
-                item['capacity_key'],
-                item['spart'],
-                item['bpart'],
-                item.get('operator')
-            )
-            added += 1
-        except:
-            pass
-    
-    return jsonify({'success': True, 'added': added})
-
-
-@web_bp.route('/api/license/<int:license_id>/download')
-def api_download_license(license_id):
-    """Скачать файл лицензии"""
-    from flask import send_file
-    
-    lic = get_license_by_id(license_id)
-    if not lic or not lic.get('local_path'):
-        return jsonify({'success': False, 'message': 'Файл не найден'}), 404
-    
-    path = lic['local_path']
-    if not os.path.exists(path):
-        return jsonify({'success': False, 'message': 'Файл не существует'}), 404
-    
-    return send_file(path, as_attachment=True)
-
-
-@web_bp.route('/api/backup/<path:filename>', methods=['DELETE'])
-def api_delete_backup(filename):
-    """Удалить бэкап"""
-    backup_dir = current_app.config.get('BACKUP_DIR', 'backups')
-    path = os.path.join(backup_dir, os.path.basename(filename))
-    
-    if os.path.exists(path) and path.endswith('.db'):
-        os.remove(path)
-        return jsonify({'success': True})
-    
-    return jsonify({'success': False, 'message': 'Бэкап не найден'}), 404
-
-
-@web_bp.route('/api/logs')
-def api_get_logs():
-    """Получить последние строки лога"""
-    lines = request.args.get('lines', 100, type=int)
-    log_file = current_app.config.get('LOG_FILE', 'logs/app.log')
-    
-    if not os.path.exists(log_file):
-        return jsonify({'lines': []})
-    
-    with open(log_file, 'r', encoding='utf-8', errors='ignore') as f:
-        all_lines = f.readlines()
-    
-    return jsonify({'lines': all_lines[-lines:]})
-
-
-@web_bp.route('/api/settings/reset', methods=['POST'])
-def api_reset_settings():
-    """Сброс настроек к значениям по умолчанию"""
-    from modules.config_store import reset_to_defaults
-    reset_to_defaults()
-    return jsonify({'success': True})
-
-
-@web_bp.route('/<operator>/api/licenses_data')
-def api_licenses_data(operator):
-    """API для получения данных лицензий (для AJAX)"""
-    # Параметры
-    page = request.args.get('page', 1, type=int)
-    per_page = request.args.get('per_page', 50, type=int)
-    
-    filters = {}
-    for key in ['esn', 'ne_type', 'city', 'site', 'year', 'domain', 'tag', 'search']:
-        value = request.args.get(key, '').strip()
-        if value:
-            filters[key] = value
-    
-    result = get_licenses(operator, filters=filters, page=page, per_page=per_page)
-    return jsonify(result)
-
-
-@web_bp.route('/<operator>/api/resources_data')
-def api_resources_data(operator):
-    """API для получения ресурсов"""
-    license_id = request.args.get('license_id', type=int)
-    if not license_id:
-        return jsonify([])
-    
-    from modules.capacity_mapper import get_grouped_resources
-    resources = get_grouped_resources(license_id=license_id, operator=operator)
-    return jsonify(resources)
-
-
-
-
-# ========== УТИЛИТЫ ДЛЯ НОВЫХ МАРШРУТОВ ==========
-
-# ========== TARGETS MAPPING (Excel) ==========
-
-@web_bp.route('/<operator>/targets_mapping')
-def targets_mapping(operator):
-    """Страница маппинга Targets"""
-    op_config = get_operator_config(operator)
-    if not op_config:
-        abort(404)
-    
-    return render_template('targets_mapping.html',
-                          operators=current_app.config['OPERATORS'],
-                          current_operator=operator,
-                          current_operator_title=op_config.get('title', operator))
-
-
-@web_bp.route('/<operator>/targets_mapping/preview', methods=['POST'])
-def targets_mapping_preview(operator):
-    """Предпросмотр загрузки Targets Excel"""
-    from modules.targets_mapper import preview_targets
-    
-    if 'file' not in request.files:
-        return jsonify({'success': False, 'message': 'Файл не выбран'}), 400
-    
-    file = request.files['file']
-    import tempfile
-    with tempfile.NamedTemporaryFile(delete=False, suffix='.xlsx') as tmp:
-        file.save(tmp.name)
-        result = preview_targets(operator, tmp.name)
-        os.unlink(tmp.name)
-    
-    return jsonify(result)
-
-
-@web_bp.route('/<operator>/targets_mapping/load', methods=['POST'])
-def targets_mapping_load(operator):
-    """Загрузка Targets из Excel"""
-    from modules.targets_mapper import load_targets
-    
-    if 'file' not in request.files:
-        return jsonify({'success': False, 'message': 'Файл не выбран'}), 400
-    
-    file = request.files['file']
-    import tempfile
-    with tempfile.NamedTemporaryFile(delete=False, suffix='.xlsx') as tmp:
-        file.save(tmp.name)
-        result = load_targets(operator, tmp.name)
-        os.unlink(tmp.name)
-    
-    return jsonify(result)
-
-
-@web_bp.route('/<operator>/targets_mapping/compute', methods=['POST'])
-def targets_mapping_compute(operator):
-    """Вычисление Targets"""
-    from modules.targets_mapper import compute_targets
-    
-    data = request.get_json() or {}
-    result = compute_targets(operator, data)
-    return jsonify(result)
-
-
-@web_bp.route('/<operator>/targets_mapping/data')
-def targets_mapping_data(operator):
-    """Получить данные Targets"""
-    from modules.targets_mapper import get_targets_data
-    
-    tab = request.args.get('tab', 'targets')
-    result = get_targets_data(operator, tab)
-    return jsonify(result)
-
-
-# ========== ESN MAPPING (Excel) ==========
-
-@web_bp.route('/<operator>/esn_mapping/preview', methods=['POST'])
-def esn_mapping_preview(operator):
-    """Предпросмотр загрузки ESN Excel"""
-    from modules.esn_mapper import preview_esn
-    
-    if 'file' not in request.files:
-        return jsonify({'success': False, 'message': 'Файл не выбран'}), 400
-    
-    file = request.files['file']
-    import tempfile
-    with tempfile.NamedTemporaryFile(delete=False, suffix='.xlsx') as tmp:
-        file.save(tmp.name)
-        result = preview_esn(operator, tmp.name)
-        os.unlink(tmp.name)
-    
-    return jsonify(result)
-
-
-@web_bp.route('/<operator>/esn_mapping/load', methods=['POST'])
-def esn_mapping_load(operator):
-    """Загрузка ESN из Excel"""
-    from modules.esn_mapper import load_esn
-    
-    if 'file' not in request.files:
-        return jsonify({'success': False, 'message': 'Файл не выбран'}), 400
-    
-    file = request.files['file']
-    import tempfile
-    with tempfile.NamedTemporaryFile(delete=False, suffix='.xlsx') as tmp:
-        file.save(tmp.name)
-        result = load_esn(operator, tmp.name)
-        os.unlink(tmp.name)
-    
-    return jsonify(result)
-
-
-@web_bp.route('/<operator>/esn_mapping/apply', methods=['POST'])
-def esn_mapping_apply(operator):
-    """Применение ESN маппинга"""
-    from modules.esn_mapper import apply_esn_mapping
-    
-    result = apply_esn_mapping(operator)
-    return jsonify(result)
-
-
-@web_bp.route('/<operator>/esn_mapping/export')
-def esn_mapping_export(operator):
-    """Экспорт ESN маппинга"""
-    from flask import send_file
-    from modules.esn_mapper import export_esn_mapping
-    import tempfile
-    
-    with tempfile.NamedTemporaryFile(delete=False, suffix='.xlsx') as tmp:
-        export_esn_mapping(operator, tmp.name)
-        return send_file(tmp.name, as_attachment=True, 
-                        download_name=f'esn_mapping_{operator}.xlsx')
-
-
-# ========== ОБНОВЛЁННЫЕ МАРШРУТЫ НАСТРОЕК ==========
-
-@web_bp.route('/api/settings/backup_db', methods=['POST'])
-def api_settings_backup_db():
-    """Создать бэкап БД"""
-    path = backup_db()
-    return jsonify({'success': True, 'path': path})
-
-
-@web_bp.route('/api/settings/preview_reorganize', methods=['POST'])
-def api_preview_reorganize():
-    """Предпросмотр реорганизации"""
-    from modules.renamer import preview_rename
-    
-    data = request.get_json() or {}
-    operator = data.get('operator')
-    
-    if operator:
-        result = preview_rename(operator)
-    else:
-        # Для всех операторов
-        result = []
-        for op in current_app.config.get('OPERATORS', []):
-            result.extend(preview_rename(op['name']))
-    
-    return jsonify({'success': True, 'items': result})
-
-
-@web_bp.route('/api/settings/apply_reorganize', methods=['POST'])
-def api_apply_reorganize():
-    """Применить реорганизацию"""
-    from modules.renamer import apply_rename
-    
-    data = request.get_json() or {}
-    operator = data.get('operator')
-    items = data.get('items', [])
-    
-    result = apply_rename(operator, items)
-    return jsonify(result)
-
-
-@web_bp.route('/api/settings/clear_logs', methods=['POST'])
-def api_settings_clear_logs():
-    """Очистить логи"""
-    try:
-        log_dir = current_app.config.get('LOG_DIR', 'logs')
-        cleared = 0
-        for f in os.listdir(log_dir):
-            if f.endswith('.log'):
-                os.remove(os.path.join(log_dir, f))
-                cleared += 1
-        return jsonify({'success': True, 'cleared': cleared})
-    except Exception as e:
-        return jsonify({'success': False, 'message': str(e)}), 500
-
-
-@web_bp.route('/api/settings/reset_db', methods=['POST'])
-def api_settings_reset_db():
-    """Сбросить БД"""
-    try:
-        db_path = current_app.config.get('DB_PATH', 'local_licenses.db')
-        if os.path.exists(db_path):
-            os.remove(db_path)
-        
-        from modules.database import init_db
-        init_db()
-        return jsonify({'success': True})
-    except Exception as e:
-        return jsonify({'success': False, 'message': str(e)}), 500
-
-
-@web_bp.route('/api/settings/run_tests', methods=['POST'])
-def api_settings_run_tests():
-    """Запустить тесты"""
-    import subprocess
-    
-    data = request.get_json() or {}
-    category = data.get('category', 'all')
-    test_name = data.get('test')
-    
-    cmd = ['python', '-m', 'pytest', 'tests/', '-v', '--tb=short']
-    if category != 'all':
-        cmd = ['python', '-m', 'pytest', f'tests/test_{category}.py', '-v', '--tb=short']
-    if test_name:
-        cmd.extend(['-k', test_name])
-    
-    try:
-        result = subprocess.run(cmd, capture_output=True, text=True, timeout=300)
-        return jsonify({
-            'success': result.returncode == 0,
-            'output': result.stdout + result.stderr,
-            'returncode': result.returncode
+    conn.close()
+
+    resources = []
+
+    for row in agg_rows:
+        capacity_key = row[0]
+        total_value = row[1]
+        permanent_value = row[2]
+        dated_values_str = row[3]
+        latest_date = row[4]
+        latest_value = row[5]
+
+        dated_values = []
+        if dated_values_str:
+            try:
+                dated_values = json.loads(dated_values_str)
+            except:
+                pass
+
+        if mode == 'total':
+            value = total_value
+            dated_values_list = dated_values if isinstance(dated_values, list) else []
+            has_dated = len(dated_values_list) > 0
+            has_permanent = permanent_value > 0
+
+            date_parts = []
+            if has_permanent:
+                date_parts.append('PERMANENT')
+            if has_dated:
+                latest_date = max([dv['date'] for dv in dated_values_list])
+                date_parts.append(latest_date)
+
+            valid_date = ', '.join(date_parts) if date_parts else 'N/A'
+
+        elif mode == 'permanent':
+            value = permanent_value if permanent_value > 0 else 0
+            valid_date = 'PERMANENT'
+
+        else:  # mode == 'latest'
+            latest_dated = None
+            latest_dated_value = 0
+            for dv in dated_values:
+                if latest_dated is None or dv['date'] > latest_dated:
+                    latest_dated = dv['date']
+                    latest_dated_value = dv['value']
+            if latest_dated:
+                value = latest_dated_value
+                valid_date = latest_dated
+            else:
+                value = 0
+                valid_date = ''
+
+        resources.append({
+            'name': capacity_key,
+            'value': value,
+            'valid_date': valid_date,
+            'description': '',
+            'unit': ''
         })
-    except subprocess.TimeoutExpired:
-        return jsonify({'success': False, 'output': 'Тесты превысили лимит времени (5 минут)'})
-    except Exception as e:
-        return jsonify({'success': False, 'output': str(e)})
 
+    # ========== ОБОГАЩАЕМ ОПИСАНИЯМИ ==========
+    # Узнаём ne_type лицензии, чтобы выбрать правильный лист справочника
+    conn_lic = get_connection()
+    row_ne = conn_lic.execute('SELECT ne_type FROM licenses WHERE id = ?', (license_id,)).fetchone()
+    conn_lic.close()
+    ne_type = row_ne[0] if row_ne else None
 
-# ========== ВОССТАНОВЛЕНИЕ ИЗ БЭКАПА ==========
+    for res in resources:
+        if res['name']:
+            desc = get_capacity_description(res['name'], domain, network_storage_path, ne_type)
+            if desc:
+                res['description'] = desc.get('description', '')
+                res['unit'] = desc.get('unit', '')
+            else:
+                res['description'] = ''
+                res['unit'] = ''
 
-@web_bp.route('/settings/restore_backup')
-def restore_backup():
-    """Восстановление БД из бэкапа"""
-    filename = request.args.get('file', '')
-    if not filename or os.path.basename(filename) != filename or not filename.endswith('.db'):
-        return jsonify({'success': False, 'message': 'Некорректное имя файла бэкапа'}), 400
+    return jsonify({'resources': resources})
 
-    backup_dir = current_app.config.get('BACKUP_DIR', 'backups')
-    backup_path = os.path.join(backup_dir, filename)
-    
-    if not os.path.exists(backup_path):
-        flash('Бэкап не найден', 'error')
-        return redirect(url_for('web.settings'))
-    
-    try:
-        db_path = current_app.config.get('DB_PATH', 'local_licenses.db')
-        shutil.copy2(backup_path, db_path)
-        flash(f'БД восстановлена из {filename}', 'success')
-    except Exception as e:
-        flash(f'Ошибка восстановления: {e}', 'error')
-    
-    return redirect(url_for('web.settings'))
+@web_bp.route('/api/license/<int:license_id>/hierarchy', methods=['GET'])
+def api_get_license_hierarchy(license_id):
+    from modules.database import get_connection
+    from modules.capacity_mapper import load_full_capacity_list
+    from flask import current_app
 
+    mode = request.args.get('mode', 'total')
+    domain = request.args.get('domain', '')
+    show_all = request.args.get('show_all', 'false').lower() == 'true'
+    operator = request.args.get('operator', 'beeline')  # ← ДОБАВИТЬ
 
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute('SELECT filename, operator FROM licenses WHERE id = ?', (license_id,))  # ← добавить operator
+    row = cursor.fetchone()
+    filename = row[0] if row else ''
+    license_operator = row[1] if row and len(row) > 1 else operator  # ← получить оператора
+    is_xml = filename.lower().endswith('.xml')
+    conn.close()
 
+    if is_xml:
+        return get_xml_hierarchy(license_id, mode, domain, show_all_sparts=show_all, operator_name=license_operator)  # ← добавить
+    else:
+        return get_dat_hierarchy(license_id, mode, domain, show_all=show_all, operator_name=license_operator)  # ← добавить
+           
+# ========== API ДЛЯ ПРОВЕРКИ ФАЙЛОВ ==========
+def get_xml_hierarchy(license_id, mode, domain, show_all_sparts=False, operator_name=None):
+    """Получает иерархию XML лицензии с целями из БД"""
+    from modules.database import get_connection
+    from modules.capacity_mapper import get_capacity_description, load_full_capacity_list, roundup
+    from flask import current_app
 
+    network_storage_path = current_app.config.get('network_storage_path', '')
 
-# ========== SPart-дерево и Sharing ==========
+    # ========== 1. Данные лицензии ==========
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute('SELECT ne_type, city FROM licenses WHERE id = ?', (license_id,))
+    row = cursor.fetchone()
+    ne_type = row[0] if row else None
+    city = row[1] if row and len(row) > 1 else None
+    conn.close()
 
-@web_bp.route('/api/license/<int:license_id>/spart_tree')
-def api_license_spart_tree(license_id):
-    """Дерево ресурсов SPart/BPart для лицензии"""
-    from modules.capacity_mapper import (
-        load_targets_from_excel, load_sharing_from_excel,
-        compute_license_targets, load_full_capacity_list,
-        get_description_file_and_sheet
-    )
-    
-    lic = get_license_by_id(license_id)
-    if not lic:
-        return jsonify({'error': 'Лицензия не найдена'}), 404
-    
-    operator = lic.get('operator', '')
-    ne_type = lic.get('ne_type', '')
-    show_all = request.args.get('show_all', '0') == '1'
-    
-    targets_file = current_app.config.get('targets_file', '')
-    network_storage = current_app.config.get('network_storage_path', '')
-    
-    if not targets_file or not os.path.exists(targets_file):
-        # Fallback: просто ресурсы без дерева
-        resources = get_resources(license_id)
-        items = []
-        for r in resources:
-            items.append({
-                'name': r['capacity_key'],
-                'value': r['value'],
-                'valid_date': r.get('valid_date', ''),
-                'part_number': r.get('part_number', ''),
-                'dimension': r.get('dimension', ''),
-                'description': r.get('description', ''),
-                'is_empty': False,
-                'target_value': '',
-                'type': 'bpart',
-                'is_bpart': True,
-                'children': []
-            })
-        return jsonify({'sparts': items, 'orphans': []})
-    
-    # Загружаем данные
-    targets = load_targets_from_excel(targets_file)
-    sharing_map = load_sharing_from_excel(targets_file)
-    
-    mapping_info = get_description_file_and_sheet(ne_type)
-    domain = mapping_info.get('domain', '') if mapping_info else ''
-    
-    full_list = load_full_capacity_list(domain, network_storage, ne_type, operator)
-    
-    if not full_list:
-        resources = get_resources(license_id)
-        items = []
-        for r in resources:
-            items.append({
-                'name': r['capacity_key'],
-                'value': r['value'],
-                'valid_date': r.get('valid_date', ''),
-                'part_number': r.get('part_number', ''),
-                'dimension': r.get('dimension', ''),
-                'description': r.get('description', ''),
-                'is_empty': False,
-                'target_value': '',
-                'type': 'bpart',
-                'is_bpart': True,
-                'children': []
-            })
-        return jsonify({'sparts': items, 'orphans': []})
-    
+    # ========== 2. Структура из license_details ==========
+    full_list = load_full_capacity_list(domain, network_storage_path, ne_type, operator_name)
+
+    spart_order = {}
+    excel_sparts = {}
+    sections = []
+
     for item in full_list:
-        item['ne_type'] = ne_type
-    
-    # Значения из БД
-    resources = get_resources(license_id)
-    values_map = {r['capacity_key']: r['value'] for r in resources}
-    date_map = {r['capacity_key']: r.get('valid_date', '') for r in resources}
-    
-    # Targets map
-    targets_map = {}
-    for (op, key), info in targets.items():
-        if op != operator:
+        if item['type'] == 'section':
+            sections.append({'name': item['name'], 'position': item.get('sort_order', 9999)})
+        elif item['type'] == 'spart':
+            spart_order[item['name']] = item.get('sort_order', 9999)
+            excel_sparts[item['name']] = {
+                'name': item['name'],
+                'part_number': item.get('part_number', ''),
+                'dimension': item.get('dimension', ''),
+                'description': item.get('description', ''),
+                'main_bpart': None,
+                'order': item.get('sort_order', 9999),
+                'section': None,
+                'spart_coeff': item.get('spart_coeff'),
+                'formula': item.get('formula')
+            }
+        elif item['type'] == 'bpart' and item.get('is_main_for_spart'):
+            parent = item.get('parent')
+            if parent and parent in excel_sparts:
+                excel_sparts[parent]['main_bpart'] = item['name']
+
+    # Определяем секции
+    if sections:
+        for spart_name, spart_info in excel_sparts.items():
+            spart_position = spart_order.get(spart_name)
+            if spart_position is not None:
+                prev_section = None
+                for section in sections:
+                    if section['position'] < spart_position:
+                        prev_section = section['name']
+                spart_info['section'] = prev_section
+
+    # ========== 3. SPart из БД ==========
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute('''
+        SELECT id, spart_name, spart_value, spart_valid_date,
+               permanent_value, dated_value, dated_date, sort_order
+        FROM license_spart_hierarchy WHERE license_id = ?
+        ORDER BY sort_order
+    ''', (license_id,))
+    sparts = cursor.fetchall()
+
+    existing_sparts = {}
+    for spart_id, spart_name, spart_value, spart_valid_date, perm_val, dated_val, dated_date, so in sparts:
+        existing_sparts[spart_name] = {
+            'spart_id': spart_id, 'spart_name': spart_name,
+            'spart_value': spart_value, 'spart_valid_date': spart_valid_date,
+            'permanent_value': perm_val, 'dated_value': dated_val,
+            'dated_date': dated_date,
+            'sort_order': so
+        }
+
+    # ========== 4. SPart из license_targets (виртуальные) ==========
+    conn_targets = get_connection()
+    cursor_targets = conn_targets.cursor()
+    cursor_targets.execute(
+        'SELECT DISTINCT capacity_key FROM license_targets WHERE ne_type = ?',
+        (ne_type,)
+    )
+    target_sparts = {r[0] for r in cursor_targets.fetchall()}
+    conn_targets.close()
+
+    for spart_name in target_sparts:
+        if spart_name not in existing_sparts:
+            existing_sparts[spart_name] = {
+                'spart_id': None, 'spart_name': spart_name,
+                'spart_value': 0, 'spart_valid_date': '',
+                'permanent_value': 0, 'dated_value': 0, 'dated_date': None,
+                'sort_order': excel_sparts.get(spart_name, {}).get('order', 9999),
+                'is_virtual': True
+            }
+
+    # ========== 5. Все SPart из Excel (если show_all) ==========
+    if show_all_sparts:
+        for spart_name, excel_info in excel_sparts.items():
+            if spart_name not in existing_sparts:
+                existing_sparts[spart_name] = {
+                    'spart_id': None, 'spart_name': spart_name,
+                    'spart_value': 0, 'spart_valid_date': '',
+                    'permanent_value': 0, 'dated_value': 0, 'dated_date': None,
+                    'sort_order': excel_info.get('order', 9999)
+                }
+
+    # ========== 6. BPart из БД ==========
+    bparts_map = {}
+    for spart_id in [s['spart_id'] for s in existing_sparts.values() if s['spart_id'] is not None]:
+        cursor.execute('''
+            SELECT bpart_name, bpart_value, bpart_valid_date, is_main,
+                   permanent_value, dated_value, dated_date, sort_order
+            FROM license_bpart_hierarchy
+            WHERE license_id = ? AND spart_id = ?
+            ORDER BY sort_order
+        ''', (license_id, spart_id))
+        for bp in cursor.fetchall():
+            if len(bp) == 8:
+                bp_name, bp_value, bp_valid_date, is_main, bp_perm, bp_dated, bp_dated_date, bp_order = bp
+            else:
+                bp_name, bp_value, bp_valid_date, is_main, bp_perm, bp_dated, bp_dated_date = bp
+                bp_order = 9999
+            bparts_map[bp_name] = {
+                'value': bp_value, 'valid_date': bp_valid_date,
+                'permanent': bp_perm, 'dated': bp_dated, 'dated_date': bp_dated_date,
+                'is_main': is_main, 'sort_order': bp_order
+            }
+    conn.close()
+
+    # ========== 7. Цели из license_targets ==========
+    conn_targets = get_connection()
+    cursor_targets = conn_targets.cursor()
+    cursor_targets.execute('''
+        SELECT capacity_key, target_value
+        FROM license_targets
+        WHERE ne_type = ? AND city = ?
+    ''', (ne_type, city))
+    targets_map = {row[0]: row[1] for row in cursor_targets.fetchall()}
+    conn_targets.close()
+
+    # ========== 8. ОБОГАЩАЕМ targets_map SPart-ссылками ==========
+    # Для SPart, у которых формула — простая ссылка на Variable
+    # (например, SE8S00MSSP00 = Gate_sessions)
+    # Такие SPart НЕ сохранены в license_targets, но должны быть рассчитаны
+    ref_pattern_ops = ['*', '/', '+', '-', '(', ')', '%']
+    for item in full_list:
+        if item['type'] != 'spart':
             continue
-        city = lic.get('city', '')
-        city_values = info.get('city_values', {})
-        if city in city_values:
-            targets_map[key] = city_values[city]
-        elif 'ALL' in city_values:
-            targets_map[key] = city_values['ALL']
-        elif city_values:
-            targets_map[key] = list(city_values.values())[0]
-    
-    def evaluate_target(formula_str, spart_target=None):
-        """Вычисляет целевое значение по формуле."""
+        spart_name = item['name']
+        if spart_name in targets_map:
+            continue
+        formula = item.get('formula')
+        if not formula:
+            continue
+        formula_str = str(formula).strip()
+
+        # Простая ссылка (без операций)
+        if (formula_str in targets_map
+            and not any(op in formula_str for op in ref_pattern_ops)):
+            targets_map[spart_name] = targets_map[formula_str]
+
+    # ========== 9. Вычисление цели BPart ==========
+    def evaluate_bpart_target(formula_str, parent_spart_target=None):
+        """Вычисляет цель BPart по формуле"""
         if not formula_str:
             return ''
-        expr = str(formula_str).strip()
-        
-        # Если есть targets_map с этим ключом
-        if expr in targets_map:
-            return targets_map[expr]
-        
-        # Заменяем ссылки на переменные
-        def replace_var(m):
-            var_name = m.group(0)
-            if var_name in targets_map:
-                return str(targets_map[var_name])
-            return '0'
-        
-        expr_eval = re.sub(r'[A-Za-z_]\w*', replace_var, expr)
-        
+        formula = str(formula_str).strip()
+
+        # Фиксированное значение (fix:число)
+        # Применяется ТОЛЬКО если у родительского SPart есть цель
+        if formula.lower().startswith('fix:'):
+            if (parent_spart_target is None 
+                or parent_spart_target == '' 
+                or parent_spart_target == 0):
+                return ''
+            try:
+                return roundup(float(formula[4:]), 0)
+            except (ValueError, TypeError):
+                return ''
+        ...
+
+        # Процент
+        if formula.endswith('%'):
+            try:
+                pct = float(formula[:-1]) / 100
+                if parent_spart_target is not None:
+                    return roundup(parent_spart_target * pct, 0)
+                return ''
+            except (ValueError, TypeError):
+                return ''
+
+        # Число (умножение на parent)
         try:
-            result = eval(expr_eval, {'__builtins__': {}}, {})
-            return result
-        except:
+            num = float(formula)
+            if parent_spart_target is not None:
+                return roundup(parent_spart_target * num, 0)
             return ''
-    
-    def roundup(value, digits=0):
-        import math
-        multiplier = 10 ** digits
-        return math.ceil(value * multiplier) / multiplier
-    
-    # ========== 7. СЦЕНАРИЙ 1: ИЕРАРХИЧЕСКИЙ ==========
-    has_spart = any(item.get('type') == 'spart' for item in full_list)
-    
-    if has_spart:
-        sparts_dict = {}
-        
+        except ValueError:
+            pass
+
+        # Точная ссылка
+        if formula in targets_map:
+            return targets_map[formula]
+
+        # Регистронезависимая ссылка
+        formula_lower = formula.lower()
+        for k in targets_map.keys():
+            if k.lower() == formula_lower:
+                return targets_map[k]
+
+        # Сумма A + B
+        if '+' in formula:
+            parts = [p.strip() for p in formula.split('+')]
+            total = 0
+            all_found = True
+            for part in parts:
+                if part in targets_map:
+                    total += targets_map[part]
+                else:
+                    # Регистронезависимо
+                    found = False
+                    for k in targets_map.keys():
+                        if k.lower() == part.lower():
+                            total += targets_map[k]
+                            found = True
+                            break
+                    if not found:
+                        all_found = False
+                        break
+            if all_found:
+                return roundup(total, 0)
+
+        return ''
+
+    # ========== 10. Формируем результат ==========
+    sorted_spart_names = sorted(existing_sparts.keys(), key=lambda n: spart_order.get(n, 9999))
+    result_sparts = []
+    current_section = None
+
+    for spart_name in sorted_spart_names:
+        spart_data = existing_sparts[spart_name]
+        excel_info = excel_sparts.get(spart_name, {})
+
+        # Секция
+        spart_section = excel_info.get('section')
+        if spart_section and spart_section != current_section:
+            current_section = spart_section
+            result_sparts.append({
+                'name': current_section, 'is_section': True,
+                'value': '', 'valid_date': '', 'children': [], 'is_empty': False,
+                'is_virtual': spart_data.get('is_virtual', False)
+            })
+
+        # Значение SPart
+        if mode == 'permanent':
+            spart_val = spart_data['permanent_value'] or 0
+            spart_date = 'PERMANENT' if spart_data['permanent_value'] and spart_data['permanent_value'] > 0 else ''
+        elif mode == 'latest':
+            spart_val = spart_data['dated_value'] or 0
+            spart_date = spart_data['dated_date'] or ''
+        else:
+            spart_val = spart_data['spart_value'] or 0
+            spart_date = spart_data['spart_valid_date'] or ''
+
+        # Цель SPart
+        spart_target = targets_map.get(spart_name, '')
+
+        # Коэффициент SPart — применяется к значению
+        spart_coeff = excel_info.get('spart_coeff')
+        if spart_coeff:
+            try:
+                coeff = float(spart_coeff)
+                spart_val = roundup(spart_val * coeff, 0)
+            except (ValueError, TypeError):
+                pass
+
+        spart_desc = get_capacity_description(spart_name, domain, network_storage_path)
+
+        # BPart
+        children = []
         for item in full_list:
-            if item.get('type') == 'spart':
-                spart_name = item['name']
-                sparts_dict[spart_name] = {
-                    'name': spart_name,
-                    'value': 0,
-                    'valid_date': '',
+            if item['type'] == 'bpart' and item.get('parent') == spart_name:
+                bp_name = item['name']
+                bp_data = bparts_map.get(bp_name, {})
+                bp_formula = item.get('formula')
+
+                # Значение
+                if mode == 'permanent':
+                    bp_val = bp_data.get('permanent', 0) or 0
+                    bp_date = 'PERMANENT' if bp_val > 0 else ''
+                elif mode == 'latest':
+                    bp_val = bp_data.get('dated', 0) or 0
+                    bp_date = bp_data.get('dated_date', '') or ''
+                else:
+                    bp_val = bp_data.get('value', 0) or 0
+                    bp_date = bp_data.get('valid_date', '') or ''
+
+                bp_target = evaluate_bpart_target(bp_formula, spart_target if spart_target else None)
+                bp_desc = get_capacity_description(bp_name, domain, network_storage_path, ne_type)
+
+                children.append({
+                    'name': bp_name,
+                    'value': bp_val,
+                    'valid_date': bp_date,
+                    'target_value': bp_target,
+                    'is_main': item.get('is_main', False),
+                    'part_number': bp_desc.get('part_number', '') if bp_desc else '',
+                    'dimension': bp_desc.get('dimension', '') if bp_desc else '',
+                    'description': bp_desc.get('description', '') if bp_desc else '',
+                    'formula': bp_formula,
+                    'sort_order': item.get('sort_order', 9999)
+                })
+
+        children.sort(key=lambda x: x.get('sort_order', 9999))
+
+        result_sparts.append({
+            'name': spart_name,
+            'value': spart_val,
+            'valid_date': spart_date,
+            'target_value': spart_target,
+            'part_number': spart_desc.get('part_number', '') if spart_desc else excel_info.get('part_number', ''),
+            'dimension': spart_desc.get('dimension', '') if spart_desc else excel_info.get('dimension', ''),
+            'description': spart_desc.get('description', '') if spart_desc else excel_info.get('description', ''),
+            'children': children,
+            'main_bpart': excel_info.get('main_bpart'),
+            'is_empty': spart_data['spart_id'] is None,
+            'is_section': False,
+            'formula': excel_info.get('formula'),
+            'sort_order': spart_data.get('sort_order', 9999),
+            'is_virtual': spart_data.get('is_virtual', False)
+        })
+
+    # ========== 11. Фильтрация ==========
+    # ========== ФИЛЬТРАЦИЯ ==========
+    if not show_all_sparts:
+        filtered_sparts = []
+        for spart in result_sparts:
+            if spart.get('is_section'):
+                filtered_sparts.append(spart)
+                continue
+            
+            if spart.get('is_virtual'):
+                continue
+            
+            has_value = spart.get('value', 0) > 0
+            has_target = (spart.get('target_value') is not None and 
+                        spart.get('target_value') != '' and 
+                        spart.get('target_value') != 0)
+            
+            # ========== НОВОЕ: SPart без цели ==========
+            # Если у SPart нет цели — показываем только BPart с value > 0
+            if not has_target:
+                if has_value:
+                    children_with_value = [
+                        c for c in spart.get('children', [])
+                        if c.get('value', 0) > 0
+                    ]
+                    if children_with_value:
+                        spart['children'] = children_with_value
+                        filtered_sparts.append(spart)
+                continue
+            
+            # ========== SPart с целью ==========
+            children_to_keep = []
+            for child in spart.get('children', []):
+                if child.get('is_virtual'):
+                    continue
+                
+                child_target = child.get('target_value')
+                child_value = child.get('value', 0)
+                has_child_target = (child_target is not None 
+                                    and child_target != '' 
+                                    and child_target != 0)
+                
+                if has_child_target or child_value > 0:
+                    children_to_keep.append(child)
+            
+            if children_to_keep or has_target:
+                spart['children'] = children_to_keep
+                filtered_sparts.append(spart)
+        
+        result_sparts = filtered_sparts
+        
+    return jsonify({
+        'sparts': result_sparts,
+        'orphans': []
+    }) 
+ 
+def get_dat_hierarchy(license_id, mode, domain, show_all=False, operator_name=None):
+    """Получает иерархию DAT лицензии с поддержкой двух сценариев"""
+    from modules.database import get_connection
+    from modules.capacity_mapper import load_full_capacity_list, roundup
+    from flask import current_app
+
+    network_storage_path = current_app.config.get('network_storage_path', '')
+
+    # ========== 1. Данные лицензии ==========
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute('SELECT ne_type, city FROM licenses WHERE id = ?', (license_id,))
+    row = cursor.fetchone()
+    ne_type = row[0] if row else None
+    city = row[1] if row and len(row) > 1 else None
+    conn.close()
+
+    # ========== 2. Структура ==========
+    full_list = load_full_capacity_list(domain, network_storage_path, ne_type, operator_name)
+
+    # Определяем сценарий
+    has_hierarchy = False
+    for item in full_list:
+        if item.get('parent') or item.get('spart_coeff') or item.get('is_main_for_spart'):
+            has_hierarchy = True
+            break
+
+    # ========== 3. Значения из БД ==========
+    conn = get_connection()
+    cursor = conn.cursor()
+
+    if mode == 'total':
+        cursor.execute('SELECT capacity_key, total_value, latest_date FROM capacity_aggregated WHERE license_id = ?', (license_id,))
+    elif mode == 'permanent':
+        cursor.execute('SELECT capacity_key, permanent_value, ? FROM capacity_aggregated WHERE license_id = ? AND permanent_value > 0', ('PERMANENT', license_id))
+    else:
+        cursor.execute('SELECT capacity_key, latest_value, latest_date FROM capacity_aggregated WHERE license_id = ? AND latest_date IS NOT NULL', (license_id,))
+
+    values_map = {}
+    date_map = {}
+    for r in cursor.fetchall():
+        values_map[r[0]] = r[1] if r[1] else 0
+        date_map[r[0]] = r[2] if len(r) > 2 and r[2] else ''
+    conn.close()
+
+    # ========== 4. Цели из license_targets ==========
+    targets_map = {}
+    if city and ne_type:
+        conn_targets = get_connection()
+        cursor_targets = conn_targets.cursor()
+        cursor_targets.execute('''
+            SELECT capacity_key, target_value
+            FROM license_targets
+            WHERE ne_type = ? AND city = ?
+        ''', (ne_type, city))
+        targets_map = {r[0]: r[1] for r in cursor_targets.fetchall()}
+        conn_targets.close()
+
+    # ========== 5. ОБОГАЩАЕМ targets_map SPart-ссылками ==========
+    ref_pattern_ops = ['*', '/', '+', '-', '(', ')', '%']
+    for item in full_list:
+        if item['type'] != 'spart':
+            continue
+        spart_name = item['name']
+        if spart_name in targets_map:
+            continue
+        formula = item.get('formula')
+        if not formula:
+            continue
+        formula_str = str(formula).strip()
+
+        if (formula_str in targets_map
+            and not any(op in formula_str for op in ref_pattern_ops)):
+            targets_map[spart_name] = targets_map[formula_str]
+
+    # ========== 6. Вычисление цели ==========
+    def evaluate_target(formula_str, parent_target=None):
+        """Вычисляет цель по формуле"""
+        if not formula_str:
+            return ''
+        
+        formula = str(formula_str).strip()
+        
+        # Фиксированное значение (fix:число)
+        # Только если у родительского SPart есть цель
+        if formula.lower().startswith('fix:'):
+            if (parent_target is None 
+                or parent_target == '' 
+                or parent_target == 0):
+                return ''
+            try:
+                return roundup(float(formula[4:]), 0)
+            except (ValueError, TypeError):
+                return ''
+
+        if formula.endswith('%'):
+            try:
+                pct = float(formula[:-1]) / 100
+                if parent_target is not None:
+                    return roundup(parent_target * pct, 0)
+                return ''
+            except (ValueError, TypeError):
+                return ''
+
+        try:
+            num = float(formula)
+            if parent_target is not None:
+                return roundup(parent_target * num, 0)
+            return ''
+        except ValueError:
+            pass
+
+        if formula in targets_map:
+            return targets_map[formula]
+
+        # Регистронезависимо
+        formula_lower = formula.lower()
+        for k in targets_map.keys():
+            if k.lower() == formula_lower:
+                return targets_map[k]
+
+        if '+' in formula:
+            parts = [p.strip() for p in formula.split('+')]
+            total = 0
+            all_found = True
+            for part in parts:
+                if part in targets_map:
+                    total += targets_map[part]
+                else:
+                    found = False
+                    for k in targets_map.keys():
+                        if k.lower() == part.lower():
+                            total += targets_map[k]
+                            found = True
+                            break
+                    if not found:
+                        all_found = False
+                        break
+            if all_found:
+                return roundup(total, 0)
+
+        return ''
+
+    # ========== 7. СЦЕНАРИЙ 1: ИЕРАРХИЧЕСКИЙ ==========
+    if has_hierarchy:
+        sparts_dict = {}
+        bparts_list = []
+
+        for item in full_list:
+            if item['type'] == 'spart':
+                sparts_dict[item['name']] = {
+                    'name': item['name'], 'value': 0, 'valid_date': '',
                     'part_number': item.get('part_number', ''),
                     'dimension': item.get('dimension', ''),
                     'description': item.get('description', ''),
-                    'is_empty': True,
-                    'target_value': '',
-                    'sort_order': item.get('sort_order', 9999),
+                    'children': [], 'main_bpart': None,
                     'spart_coeff': item.get('spart_coeff'),
-                    'main_bpart': item.get('main_bpart'),
-                    'type': 'spart',
-                    'children': []
+                    'formula': item.get('formula'),
+                    'is_empty': True, 'target_value': '',
+                    'sort_order': item.get('sort_order', 9999),
+                    'is_section': False
                 }
-        
-        # BPart к SPart
-        for item in full_list:
-            if item.get('type') == 'bpart':
-                spart_name = item.get('spart', '')
-                if spart_name in sparts_dict:
-                    sparts_dict[spart_name]['children'].append({
-                        'name': item['name'],
-                        'value': 0,
-                        'valid_date': '',
-                        'part_number': item.get('part_number', ''),
-                        'dimension': item.get('dimension', ''),
-                        'description': item.get('description', ''),
-                        'formula': item.get('formula'),
-                        'is_empty': True,
-                        'target_value': '',
-                        'sort_order': item.get('sort_order', 9999),
-                        'type': 'bpart',
-                        'is_bpart': True
-                    })
-        
+            elif item['type'] == 'bpart':
+                bparts_list.append({
+                    'name': item['name'], 'value': 0, 'valid_date': '',
+                    'part_number': item.get('part_number', ''),
+                    'dimension': item.get('dimension', ''),
+                    'description': item.get('description', ''),
+                    'formula': item.get('formula'),
+                    'is_main': item.get('is_main', False),
+                    'is_main_for_spart': item.get('is_main_for_spart', False),
+                    'parent': item.get('parent'),
+                    'sort_order': item.get('sort_order', 9999),
+                    'is_bpart': True
+                })
+
+        # Привязка BPart к SPart
+        for bpart in bparts_list:
+            parent = bpart.get('parent')
+            if parent and parent in sparts_dict:
+                sparts_dict[parent]['children'].append(bpart)
+                if bpart.get('is_main_for_spart'):
+                    sparts_dict[parent]['main_bpart'] = bpart['name']
+
         for spart in sparts_dict.values():
             spart['children'].sort(key=lambda x: x.get('sort_order', 9999))
 
