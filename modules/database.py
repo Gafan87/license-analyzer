@@ -1541,7 +1541,7 @@ def update_license_aggregated_cache(license_id):
     Args:
         license_id: int - ID лицензии
     """
-    data = get_licenses_aggregated_data_batch([license_id]).get(license_id, {})
+    get_licenses_aggregated_data_batch([license_id]).get(license_id, {})
     
     # Обновляем поле tags_agg в licenses (если добавим)
     # Пока оставим заглушку
