@@ -319,7 +319,7 @@
 
 <script>
 // ========== ГЛОБАЛЬНЫЕ ПЕРЕМЕННЫЕ (ТОЛЬКО ОДИН РАЗ) ==========
-const operator = '{{ current_operator }}'; 
+const operator = {{ current_operator|tojson }};
 let activeFilters = {};
 let filterValues = {};
 let currentVisibleColumns = {{ visible_columns|tojson }};
@@ -331,51 +331,7 @@ let currentSearchQuery = '';
 let currentSorting = { field: null, direction: 'asc' };
 
 // ========== ФУНКЦИИ ==========
-// ========== КЭШИРОВАНИЕ ДАННЫХ ЛИЦЕНЗИЙ ==========
-// Функция для загрузки данных с сервера
-async function loadLicensesData() {
-    try {
-        const response = await fetch(`/${operator}/api/licenses_data`);
-        if (!response.ok) throw new Error('Ошибка загрузки');
-        const data = await response.json();
-        
-        // Сохраняем в sessionStorage
-        sessionStorage.setItem(`licenses_${operator}`, JSON.stringify(data));
-        
-        // Отображаем таблицу
-        rebuildTable(data);
-        return data;
-    } catch (error) {
-        console.error('Ошибка загрузки лицензий:', error);
-        return null;
-    }
-}
-
-// Функция для восстановления таблицы из данных
-function rebuildTable(licensesData) {
-    // Здесь нужно перестроить таблицу на основе полученных данных
-    // Если эта функция ещё не определена, можно просто вызвать initFilters
-    if (typeof initFilters === 'function') {
-        initFilters();
-    } else {
-        console.warn('initFilters не определена, таблица не перестроена');
-    }
-}
-
-// Загружаем данные при старте (если нет кэша)
-const cachedData = sessionStorage.getItem(`licenses_${operator}`);
-if (cachedData) {
-    try {
-        const data = JSON.parse(cachedData);
-        rebuildTable(data);
-    } catch(e) {
-        console.error('Ошибка парсинга кэша:', e);
-        loadLicensesData();
-    }
-} else {
-    loadLicensesData();
-}
-
+// Таблица уже отрисована сервером; фильтры инициализируются после DOMContentLoaded.
 async function checkPendingSync() {
     try {
         const resp = await fetch(`/${operator}/scan_status`);
