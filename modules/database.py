@@ -1509,11 +1509,14 @@ def get_licenses_aggregated_data_batch(license_ids):
     
     # Получаем теги (агрегированные в строку)
     cursor.execute(f'''
-        SELECT lt.license_id, GROUP_CONCAT(DISTINCT t.name, ', ') as tags
-        FROM license_tags lt
-        JOIN tags t ON lt.tag_id = t.id
-        WHERE lt.license_id IN ({placeholders})
-        GROUP BY lt.license_id
+        SELECT license_id, GROUP_CONCAT(name, ', ') as tags
+        FROM (
+            SELECT DISTINCT lt.license_id AS license_id, t.name AS name
+            FROM license_tags lt
+            JOIN tags t ON lt.tag_id = t.id
+            WHERE lt.license_id IN ({placeholders})
+        )
+        GROUP BY license_id
     ''', license_ids)
     
     for row in cursor.fetchall():
@@ -1631,10 +1634,13 @@ def get_all_licenses_with_aggregated(operator=None, ne_type=None, city=None, lim
             COALESCE(c.cnt, 0) as comments_count
         FROM licenses l
         LEFT JOIN (
-            SELECT lt.license_id, GROUP_CONCAT(DISTINCT t.name, ', ') as tags
-            FROM license_tags lt
-            JOIN tags t ON lt.tag_id = t.id
-            GROUP BY lt.license_id
+            SELECT license_id, GROUP_CONCAT(name, ', ') as tags
+            FROM (
+                SELECT DISTINCT lt.license_id AS license_id, t.name AS name
+                FROM license_tags lt
+                JOIN tags t ON lt.tag_id = t.id
+            )
+            GROUP BY license_id
         ) g ON l.id = g.license_id
         LEFT JOIN (
             SELECT license_id, COUNT(*) as cnt
