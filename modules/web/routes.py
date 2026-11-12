@@ -2,38 +2,29 @@ from flask import Blueprint, render_template, current_app, abort, request, redir
 import os
 import json
 import shutil
-import re
-from datetime import datetime
 
 import tempfile  # добавь, если нет
 
 from modules.logger import get_logger
 from modules.database import (
-    init_local_db, get_all_licenses, get_license_by_id, get_change_history, 
-    save_base_target, get_base_targets, get_connection, get_filter_options,
-    get_dynamic_columns, add_dynamic_column, update_dynamic_column, delete_dynamic_column,
-    get_dynamic_values_for_license, update_parsed_cache, get_parsed_cache,
-    get_all_licenses_with_aggregated,
-    get_unique_esn_licenses, get_all_licenses_for_esn, save_license,
+    get_all_licenses, get_license_by_id, get_change_history,
+    get_connection, get_dynamic_values_for_license,
+    get_unique_esn_licenses, get_all_licenses_for_esn,
     add_tag, get_all_tags, add_tag_to_license, remove_tag_from_license, get_license_tags,
     add_comment, get_comments, save_report_template, get_report_templates, delete_report_template,
-    backup_database as backup_db, get_dynamic_columns, get_dynamic_values_for_license
+    backup_database as backup_db
 )
 from modules.esn_mapper import (
-    load_esn_mapping_from_excel, save_esn_mapping_to_db, 
-    export_esn_mapping_to_excel, get_mapping_by_esn, get_mapping_by_lsn
+    load_esn_mapping_from_excel, save_esn_mapping_to_db,
+    export_esn_mapping_to_excel
 )
 from modules.scanner import scan_local_folder
-from modules.sync_manager import sync_all_licenses, download_db_from_remote, upload_db_to_remote
-from modules.target_manager import compare_with_targets, get_targets_for_site
+from modules.sync_manager import sync_all_licenses, download_db_from_remote
+from modules.target_manager import compare_with_targets
 from modules.file_renamer import batch_rename_files, rename_file_by_esn
 from modules.excel_importer import import_licenses_from_excel
-from modules.tester import run_tests
-from modules.excel_evaluator import ExcelFormulaEvaluator
 from modules.license_service import LicenseService
-from modules.capacity_mapper import get_capacity_description, load_capacity_descriptions, get_description_file_and_sheet
 
-from functools import lru_cache
 from datetime import datetime, timedelta
 import math
 
@@ -3285,5 +3276,4 @@ def backup_operator_folder(operator):
         logger.error(f"Ошибка бэкапа папки {operator}: {e}")
         return jsonify({'success': False, 'error': str(e)}), 500
     
-
 
