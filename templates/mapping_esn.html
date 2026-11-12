@@ -56,7 +56,7 @@
     </div>
 
     <div style="display:flex; gap:0.5rem; flex-wrap:wrap; margin-bottom:1rem;">
-        <button type="submit" class="btn-primary">💾 Сохранить настройки</button>
+        <button type="submit" class="btn-primary" data-tooltip="Сохранить соответствие полей и колонок Excel в config.json.">💾 Сохранить настройки</button>
         <button type="button" id="resetEsnDefaultsBtn" class="secondary-btn">↺ Сбросить к A–G</button>
         <button type="button" id="checkEsnFilesBtn" class="secondary-btn">🔍 Проверить файлы</button>
     </div>
@@ -67,15 +67,15 @@
 <div style="display:flex; gap:0.75rem; flex-wrap:wrap; margin-bottom:1rem; align-items:center;">
     <form method="post" enctype="multipart/form-data" style="display:flex; gap:0.5rem; align-items:center;">
         <input type="file" name="upload_file" accept=".xlsx">
-        <button type="submit" class="btn-primary">📤 Загрузить Excel</button>
+        <button type="submit" class="btn-primary" data-tooltip="Загрузить выбранный XLSX и сохранить записи ESN-маппинга по настроенным колонкам.">📤 Загрузить Excel</button>
     </form>
     <form method="post">
         <input type="hidden" name="export" value="1">
-        <button type="submit" class="secondary-btn">📥 Экспортировать Excel</button>
+        <button type="submit" class="secondary-btn" data-tooltip="Выгрузить текущий ESN-маппинг в Excel-файл сетевого хранилища.">📥 Экспортировать Excel</button>
     </form>
     <form method="post" action="/{{ current_operator }}/apply_mapping">
         <input type="hidden" name="apply" value="1">
-        <button type="submit" class="btn-warning">📝 Применить маппинг к лицензиям</button>
+        <button type="submit" class="btn-warning" data-tooltip="Обновить поля существующих лицензий по ESN-маппингу. Перед запуском рекомендуется бэкап базы.">📝 Применить маппинг к лицензиям</button>
     </form>
 </div>
 

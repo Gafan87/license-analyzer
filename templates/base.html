@@ -8,6 +8,9 @@
     <link href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,400;14..32,500;14..32,600;14..32,700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <link rel="stylesheet" href="/static/css/huawei.css">
+    {% if debug_settings.show_tooltips %}
+    <link rel="stylesheet" href="/static/css/contextual_help.css">
+    {% endif %}
     <script src="https://cdn.sheetjs.com/xlsx-0.20.2/package/dist/xlsx.full.min.js"></script>
     
     {% block extra_css %}{% endblock %}
@@ -38,32 +41,32 @@
     <!-- Правая панель с компактными кнопками -->
     <div class="top-bar-actions">
         {% if request.endpoint != 'settings' and request.endpoint != 'web.settings' %}
-        <button id="scanBtn" class="top-action-btn primary" title="Сканировать">
+        <button id="scanBtn" class="top-action-btn primary" data-tooltip="Сканировать локальную папку оператора и обновить локальную базу по DAT/XML-файлам.">
             <i class="fas fa-sync-alt"></i>
             <span>Скан</span>
         </button>
-<button id="syncBtn" class="top-action-btn success" title="Синхронизировать">
-    <i class="fas fa-cloud-upload-alt"></i>
-    <span>Синхр</span>
-    <span id="syncBadge" class="sync-badge hidden"></span>
-</button>
-        <button id="downloadBtn" class="top-action-btn" title="Загрузить БД">
+        <button id="syncBtn" class="top-action-btn success" data-tooltip="Синхронизировать обработанные лицензии и базу данных с сетевым хранилищем.">
+            <i class="fas fa-cloud-upload-alt"></i>
+            <span>Синхр</span>
+            <span id="syncBadge" class="sync-badge hidden"></span>
+        </button>
+        <button id="downloadBtn" class="top-action-btn" data-tooltip="Загрузить базу лицензий из сетевого хранилища в локальную копию.">
             <i class="fas fa-download"></i>
             <span>БД</span>
         </button>
-        <a href="/settings" class="top-action-btn" title="Настройки">
+        <a href="/settings" class="top-action-btn" data-tooltip="Открыть пути, хранилище, системные действия, тесты и режим подсказок.">
             <i class="fas fa-cog"></i>
             <span>Настр</span>
         </a>
         {% else %}
-        <a href="/{{ current_operator }}/" class="top-action-btn primary" title="Назад">
+        <a href="/{{ current_operator }}/" class="top-action-btn primary" data-tooltip="Вернуться к списку лицензий текущего оператора.">
             <i class="fas fa-arrow-left"></i>
             <span>Назад</span>
         </a>
         {% endif %}
         
         <!-- Импорт Excel -->
-        <a href="#" id="importExcelBtn" class="top-action-btn" title="Импорт Excel">
+        <a href="#" id="importExcelBtn" class="top-action-btn" data-tooltip="Импортировать лицензии из XLSX/XLS-файла.">
             <i class="fas fa-file-excel"></i>
             <span>Excel</span>
         </a>
@@ -100,28 +103,28 @@
         {% if request.endpoint != 'settings' and request.endpoint != 'web.settings' and current_operator %}
         <div class="action-panels">
             <div class="main-actions">
-                <a href="/{{ current_operator }}/" class="action-card {% if request.endpoint == 'web.license_list' %}active{% endif %}">
+                <a href="/{{ current_operator }}/" class="action-card {% if request.endpoint == 'web.license_list' %}active{% endif %}" data-tooltip="Показать лицензии оператора с фильтрами, тегами, групповыми действиями и экспортом.">
                     <i class="fas fa-list-ul"></i>
                     <div class="action-info">
                         <span class="action-title">Список лицензий</span>
                         <span class="action-desc">Просмотр всех лицензий</span>
                     </div>
                 </a>
-                <a href="/{{ current_operator }}/reports" class="action-card {% if request.endpoint == 'web.reports' %}active{% endif %}">
+                <a href="/{{ current_operator }}/reports" class="action-card {% if request.endpoint == 'web.reports' %}active{% endif %}" data-tooltip="Сравнить фактические ресурсы сайта с сохранёнными целевыми значениями.">
                     <i class="fas fa-chart-line"></i>
                     <div class="action-info">
                         <span class="action-title">Отчёты</span>
                         <span class="action-desc">Сравнение с эталоном</span>
                     </div>
                 </a>
-                <a href="/{{ current_operator }}/base_targets" class="action-card {% if request.endpoint == 'web.base_targets' %}active{% endif %}">
+                <a href="/{{ current_operator }}/base_targets" class="action-card {% if request.endpoint == 'web.base_targets' %}active{% endif %}" data-tooltip="Загрузить и вычислить базовые цели по типам оборудования и CapacityKey.">
                     <i class="fas fa-bullseye"></i>
                     <div class="action-info">
                         <span class="action-title">Сравнение лицензий</span>
                         <span class="action-desc">тест</span>
                     </div>
                 </a>
-                <a href="/{{ current_operator }}/excel_mapping" class="action-card {% if request.endpoint == 'web.excel_mapping' %}active{% endif %}">
+                <a href="/{{ current_operator }}/excel_mapping" class="action-card {% if request.endpoint == 'web.excel_mapping' %}active{% endif %}" data-tooltip="Настроить Targets, Sharing, ESN-маппинг и файлы License Details.">
                     <i class="fas fa-file-excel"></i>
                     <div class="action-info">
                         <span class="action-title">📊 Excel маппинг</span>
@@ -130,27 +133,27 @@
                 </a>
             </div>
             <div class="secondary-actions">
-                <a href="/{{ current_operator }}/history" class="secondary-btn">
+                <a href="/{{ current_operator }}/history" class="secondary-btn" data-tooltip="Показать последние изменения лицензий и связанных данных.">
                     <i class="fas fa-history"></i>
                     <span>История</span>
                 </a>
-                <a href="/{{ current_operator }}/expiring" class="secondary-btn">
+                <a href="/{{ current_operator }}/expiring" class="secondary-btn" data-tooltip="Показать лицензии, срок действия которых истекает в выбранный период.">
                     <i class="fas fa-exclamation-triangle"></i>
                     <span>Истекающие</span>
                 </a>
-                <a href="/{{ current_operator }}/rename_files" class="secondary-btn">
+                <a href="/{{ current_operator }}/rename_files" class="secondary-btn" data-tooltip="Сформировать новые имена файлов по ESN-маппингу и настройкам программы.">
                     <i class="fas fa-tag"></i>
                     <span>Переименовать</span>
                 </a>
-                <a href="/dashboard" class="secondary-btn">
+                <a href="/dashboard" class="secondary-btn" data-tooltip="Открыть сводную статистику по всем настроенным операторам.">
                     <i class="fas fa-chart-pie"></i>
                     <span>Дашборд</span>
                 </a>
-                <a href="/{{ current_operator }}/report_templates" class="secondary-btn">
+                <a href="/{{ current_operator }}/report_templates" class="secondary-btn" data-tooltip="Сохранить и применить шаблоны параметров отчётов.">
                     <i class="fas fa-template"></i>
                     <span>Шаблоны</span>
                 </a>
-                <a href="/{{ current_operator }}/dynamic_fields" class="secondary-btn">
+                <a href="/{{ current_operator }}/dynamic_fields" class="secondary-btn" data-tooltip="Управлять дополнительными колонками и правилами извлечения полей.">
                     <i class="fas fa-puzzle-piece"></i>
                     <span>Динамика</span>
                 </a>
@@ -174,7 +177,9 @@
         {% block content %}{% endblock %}
     </div>
     
-    <script>        
+    <script>
+const baseOperator = {{ current_operator|default('')|tojson }};
+
 // ========== УПРАВЛЕНИЕ ТЕМОЙ ==========
 
 // Определение системной темы
@@ -187,8 +192,8 @@ function getSystemTheme() {
 
 // Проверка наличия отсканированных лицензий при загрузке страницы
 async function checkPendingSync() {
-    const operator = '{{ current_operator }}';
-    const resp = await fetch(`/${operator}/scan_status`);
+    if (!baseOperator) return;
+    const resp = await fetch(`/${baseOperator}/scan_status`);
     const data = await resp.json();
     const syncBadge = document.getElementById('syncBadge');
     if (syncBadge && data.count > 0) {
@@ -284,7 +289,7 @@ document.getElementById('scanBtn')?.addEventListener('click', async function() {
     this.innerHTML = '<i class="fas fa-spinner fa-pulse"></i><span>Сканирование...</span>';
     this.disabled = true;
     try {
-        const resp = await fetch(`/${operator}/scan`, { method: 'POST' });
+        const resp = await fetch(`/${baseOperator}/scan`, { method: 'POST' });
         const result = await resp.json();
         
         if (result.success) {
@@ -309,7 +314,7 @@ document.getElementById('scanBtn')?.addEventListener('click', async function() {
             this.innerHTML = '<i class="fas fa-spinner fa-pulse"></i><span>Синхронизация...</span>';
             this.disabled = true;
             try {
-                const resp = await fetch(`/${operator}/sync`, { method: 'POST' });
+                const resp = await fetch(`/${baseOperator}/sync`, { method: 'POST' });
                 const result = await resp.json();
                 alert(result.message);
                 if (result.success) {
@@ -331,7 +336,7 @@ document.getElementById('scanBtn')?.addEventListener('click', async function() {
             this.innerHTML = '<i class="fas fa-spinner fa-pulse"></i><span>Загрузка...</span>';
             this.disabled = true;
             try {
-                const resp = await fetch(`/${operator}/download_db`, { method: 'POST' });
+                const resp = await fetch(`/${baseOperator}/download_db`, { method: 'POST' });
                 const result = await resp.json();
                 alert(result.message);
                 if (result.success) location.reload();
@@ -357,7 +362,7 @@ document.getElementById('scanBtn')?.addEventListener('click', async function() {
                 btn.innerHTML = '<i class="fas fa-spinner fa-pulse"></i><span>Импорт...</span>';
                 
                 try {
-                    const resp = await fetch(`/${operator}/import_excel`, { method: 'POST', body: formData });
+                    const resp = await fetch(`/${baseOperator}/import_excel`, { method: 'POST', body: formData });
                     const result = await resp.json();
                     if (result.success) {
                         alert(`✅ Импортировано: ${result.imported} лицензий\n❌ Ошибок: ${result.errors?.length || 0}`);
@@ -376,5 +381,8 @@ document.getElementById('scanBtn')?.addEventListener('click', async function() {
     </script>
     
     {% block extra_js %}{% endblock %}
+    {% if debug_settings.show_tooltips %}
+    <script src="/static/js/contextual_help.js"></script>
+    {% endif %}
 </body>
 </html>
