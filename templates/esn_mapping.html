@@ -1,0 +1,10 @@
+{% extends "base.html" %}
+
+{% block title %}ESN-маппинг — {{ current_operator_title }}{% endblock %}
+
+{% block content %}
+<div class="card">
+    <h1>ESN-маппинг — {{ current_operator_title }}</h1>
+    {% include "mapping_esn.html" %}
+</div>
+{% endblock %}
