@@ -7,12 +7,10 @@
 import sys
 import os
 import json
-import sqlite3
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from modules.database import get_connection
-from modules.parser_xml import parse_xml_license
 
 def update_hierarchy():
     conn = get_connection()

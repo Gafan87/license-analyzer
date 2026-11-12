@@ -12,7 +12,7 @@ from datetime import datetime
 
 # Добавляем путь к проекту
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from modules.database import get_connection, get_db_path
+from modules.database import get_connection
 
 def migrate():
     """Выполняет миграцию БД"""
