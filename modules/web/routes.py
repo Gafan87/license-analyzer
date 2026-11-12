@@ -1121,7 +1121,6 @@ def api_get_license_resources(license_id):
         permanent_value = row[2]
         dated_values_str = row[3]
         latest_date = row[4]
-        latest_value = row[5]
 
         dated_values = []
         if dated_values_str:
@@ -1193,8 +1192,6 @@ def api_get_license_resources(license_id):
 @web_bp.route('/api/license/<int:license_id>/hierarchy', methods=['GET'])
 def api_get_license_hierarchy(license_id):
     from modules.database import get_connection
-    from modules.capacity_mapper import load_full_capacity_list
-    from flask import current_app
 
     mode = request.args.get('mode', 'total')
     domain = request.args.get('domain', '')
@@ -2103,7 +2100,6 @@ def api_check_license_details_files():
 def api_open_folder():
     """Открыть папку с файлом лицензии (сначала на сервере, потом локально)"""
     import subprocess
-    import urllib.parse
     
     license_id = request.args.get('license_id', type=int)
     if not license_id:
@@ -2560,7 +2556,7 @@ def api_smart_search(operator):
 @web_bp.route('/api/bulk_add_tag', methods=['POST'])
 def api_bulk_add_tag():
     """Массовое добавление тега к лицензиям"""
-    from modules.database import add_tag, add_tag_to_license, get_connection
+    from modules.database import add_tag, add_tag_to_license
     
     data = request.get_json()
     license_ids = data.get('license_ids', [])
@@ -2581,7 +2577,7 @@ def api_bulk_add_tag():
         try:
             add_tag_to_license(int(lic_id), tag_id)
             added += 1
-        except Exception as e:
+        except Exception:
             pass
     
     return jsonify({
@@ -2595,7 +2591,7 @@ def api_bulk_add_tag():
 @web_bp.route('/api/bulk_remove_tag', methods=['POST'])
 def api_bulk_remove_tag():
     """Массовое удаление тега с лицензий"""
-    from modules.database import remove_tag_from_license, get_connection
+    from modules.database import remove_tag_from_license
     
     data = request.get_json()
     license_ids = data.get('license_ids', [])
@@ -2612,7 +2608,7 @@ def api_bulk_remove_tag():
         try:
             remove_tag_from_license(int(lic_id), int(tag_id))
             removed += 1
-        except Exception as e:
+        except Exception:
             pass
     
     return jsonify({
@@ -2643,7 +2639,7 @@ def api_list_dynamic_columns():
 @web_bp.route('/api/dynamic_columns', methods=['POST'])
 def api_create_dynamic_column():
     """Добавить динамическую колонку"""
-    from modules.database import add_dynamic_column, get_dynamic_columns
+    from modules.database import add_dynamic_column
     
     data = request.get_json()
     column_name = data.get('column_name')
@@ -2665,7 +2661,7 @@ def api_create_dynamic_column():
         
         return jsonify({
             'id': column_id,
-            'message': f'Колонка добавлена'
+            'message': 'Колонка добавлена'
         })
     except ValueError as e:
         return jsonify({'error': str(e)}), 400
