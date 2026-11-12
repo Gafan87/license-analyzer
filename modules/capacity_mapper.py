@@ -1055,7 +1055,6 @@ def compute_license_targets(targets, sharing_map, capacity_list, operator_name=N
             return None, None
 
         formula_str = str(formula).strip()
-        name = item['name']
         ne_type = item.get('ne_type', ne_type_current)
         is_spart = item.get('type') == 'spart'
         
