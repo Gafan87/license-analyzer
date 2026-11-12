@@ -15,6 +15,15 @@ from modules.database import set_db_path, init_local_db
 app = Flask(__name__, static_folder='static', template_folder='templates')
 app.secret_key = os.environ.get('SECRET_KEY', 'license-analyzer-secret-key-2024')
 
+
+@app.context_processor
+def inject_interface_settings():
+    """Передаёт настройки подсказок во все шаблоны, включая маршруты вне blueprint."""
+    interface_settings = {'show_tooltips': True}
+    interface_settings.update(app.config.get('debug_settings') or {})
+    return {'debug_settings': interface_settings}
+
+
 # ========== ЗАГРУЗКА КОНФИГУРАЦИИ ==========
 
 CONFIG_PATH = os.environ.get('CONFIG_PATH', 'config.json')

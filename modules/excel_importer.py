@@ -1,3 +1,5 @@
+from datetime import datetime
+
 import openpyxl
 import pandas as pd
 from modules.database import save_license
