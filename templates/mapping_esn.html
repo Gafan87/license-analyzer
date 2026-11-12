@@ -1,0 +1,185 @@
+<h3>🗺️ Настройка загрузки <code>esn_mapping.xlsx</code></h3>
+
+<div class="info-card">
+    <p class="text-muted" style="font-size:0.75rem;">
+        Укажите, в каких колонках Excel-файла находятся поля.
+        Настройки сохраняются в <code>config.json</code> и применяются
+        при нажатии «Загрузить Excel» ниже.
+        Экспорт всегда пишет фиксированные 7 колонок (ESN, LSN, Оператор, Домен, NE тип, Город, Сайт).
+    </p>
+</div>
+
+<form id="esnConfigForm">
+    <div style="display:grid; grid-template-columns:repeat(4, 1fr); gap:0.75rem; margin-bottom:1rem;">
+        <div class="filter-group">
+            <label>Колонка ESN *</label>
+            <input type="text" id="col_esn" class="filter-select" maxlength="2"
+                   value="{{ esn_config.columns.esn }}" required>
+        </div>
+        <div class="filter-group">
+            <label>Колонка LSN</label>
+            <input type="text" id="col_lsn" class="filter-select" maxlength="2"
+                   value="{{ esn_config.columns.lsn }}">
+        </div>
+        <div class="filter-group">
+            <label>Колонка Оператор</label>
+            <input type="text" id="col_operator" class="filter-select" maxlength="2"
+                   value="{{ esn_config.columns.operator }}">
+        </div>
+        <div class="filter-group">
+            <label>Колонка Домен</label>
+            <input type="text" id="col_domain" class="filter-select" maxlength="2"
+                   value="{{ esn_config.columns.domain }}">
+        </div>
+        <div class="filter-group">
+            <label>Колонка NE тип</label>
+            <input type="text" id="col_ne_type" class="filter-select" maxlength="2"
+                   value="{{ esn_config.columns.ne_type }}">
+        </div>
+        <div class="filter-group">
+            <label>Колонка Город</label>
+            <input type="text" id="col_city" class="filter-select" maxlength="2"
+                   value="{{ esn_config.columns.city }}">
+        </div>
+        <div class="filter-group">
+            <label>Колонка Сайт</label>
+            <input type="text" id="col_site" class="filter-select" maxlength="2"
+                   value="{{ esn_config.columns.site }}">
+        </div>
+        <div class="filter-group" style="display:flex; align-items:flex-end;">
+            <label style="display:flex; gap:0.4rem; align-items:center; cursor:pointer;">
+                <input type="checkbox" id="has_header"
+                       {% if esn_config.has_header %}checked{% endif %}>
+                Первая строка — заголовки
+            </label>
+        </div>
+    </div>
+
+    <div style="display:flex; gap:0.5rem; flex-wrap:wrap; margin-bottom:1rem;">
+        <button type="submit" class="btn-primary">💾 Сохранить настройки</button>
+        <button type="button" id="resetEsnDefaultsBtn" class="secondary-btn">↺ Сбросить к A–G</button>
+        <button type="button" id="checkEsnFilesBtn" class="secondary-btn">🔍 Проверить файлы</button>
+    </div>
+    <div id="esnConfigResult"></div>
+</form>
+
+<h3 style="margin-top:2rem;">📥 Загрузка / экспорт</h3>
+<div style="display:flex; gap:0.75rem; flex-wrap:wrap; margin-bottom:1rem; align-items:center;">
+    <form method="post" enctype="multipart/form-data" style="display:flex; gap:0.5rem; align-items:center;">
+        <input type="file" name="upload_file" accept=".xlsx">
+        <button type="submit" class="btn-primary">📤 Загрузить Excel</button>
+    </form>
+    <form method="post">
+        <input type="hidden" name="export" value="1">
+        <button type="submit" class="secondary-btn">📥 Экспортировать Excel</button>
+    </form>
+    <form method="post" action="/{{ current_operator }}/apply_mapping">
+        <input type="hidden" name="apply" value="1">
+        <button type="submit" class="btn-warning">📝 Применить маппинг к лицензиям</button>
+    </form>
+</div>
+
+<h3>📋 Текущий маппинг (первые 100 записей)</h3>
+<div style="overflow-x:auto;">
+    <table class="excel-table">
+        <thead>
+            <tr>
+                <th>ESN</th>
+                <th>LSN</th>
+                <th>Оператор</th>
+                <th>Домен</th>
+                <th>NE тип</th>
+                <th>Город</th>
+                <th>Сайт</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for m in mappings %}
+            <tr>
+                <td><code>{{ m[0][:30] }}{% if m[0]|length > 30 %}...{% endif %}</code></td>
+                <td>{{ m[1] or '-' }}</td>
+                <td>{{ m[2] or '-' }}</td>
+                <td>{{ m[3] or '-' }}</td>
+                <td>{{ m[4] or '-' }}</td>
+                <td>{{ m[5] or '-' }}</td>
+                <td>{{ m[6] or '-' }}</td>
+            </tr>
+            {% else %}
+            <tr>
+                <td colspan="7" class="text-center text-muted">
+                    Нет данных. Загрузите Excel файл с маппингом.
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+
+<style>
+/* Стили для таблицы текущего маппинга — минимальные, локальные */
+.mapping_esn_table { width: auto; border-collapse: collapse; font-size: 0.8rem; }
+</style>
+
+<script>
+// ========== Сохранение конфига колонок ==========
+document.getElementById('esnConfigForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const columns = {};
+    for (const k of ['esn','lsn','operator','domain','ne_type','city','site']) {
+        const v = document.getElementById('col_' + k).value.trim().toUpperCase();
+        if (v) columns[k] = v;
+    }
+    const resp = await fetch('/api/esn_mapping_config', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({
+            columns,
+            has_header: document.getElementById('has_header').checked,
+        }),
+    });
+    const out = document.getElementById('esnConfigResult');
+    const data = await resp.json().catch(() => ({}));
+    out.innerHTML = resp.ok
+        ? '<div class="test-summary success" style="margin-top:.75rem;">✅ Настройки сохранены</div>'
+        : `<div class="test-summary failed" style="margin-top:.75rem;">❌ ${data.error || 'Ошибка'}</div>`;
+});
+
+// ========== Сброс к A–G ==========
+document.getElementById('resetEsnDefaultsBtn').addEventListener('click', () => {
+    const defaults = {esn:'A', lsn:'B', operator:'C', domain:'D', ne_type:'E', city:'F', site:'G'};
+    for (const [k,v] of Object.entries(defaults)) {
+        document.getElementById('col_' + k).value = v;
+    }
+    document.getElementById('has_header').checked = true;
+});
+
+// ========== Проверка файлов ==========
+document.getElementById('checkEsnFilesBtn').addEventListener('click', async () => {
+    const out = document.getElementById('esnConfigResult');
+    out.innerHTML = '<div class="text-muted" style="margin-top:.75rem;">⏳ Проверка файлов...</div>';
+    try {
+        const resp = await fetch('/api/check_esn_mapping_files');
+        const data = await resp.json();
+        if (!data.success) {
+            out.innerHTML = `<div class="test-summary failed" style="margin-top:.75rem;">❌ ${data.error || 'Ошибка'}</div>`;
+            return;
+        }
+        let html = `<div class="info-card" style="margin-top:.75rem;">
+            <p><strong>Папка:</strong> <code>${data.mapping_path}</code></p>
+            <table class="excel-table"><thead><tr><th>Файл</th><th>Статус</th></tr></thead><tbody>`;
+        for (const f of data.files) {
+            html += `<tr><td><code>${f.name}</code></td><td>${f.exists ? '✅ Найден' : '❌ Не найден'}</td></tr>`;
+        }
+        html += '</tbody></table>';
+        if (data.missing_count > 0) {
+            html += `<p style="color:var(--huawei-red);">⚠️ Отсутствует ${data.missing_count} файлов</p>`;
+        } else {
+            html += `<p style="color:#10B981;">✅ Все файлы найдены</p>`;
+        }
+        html += '</div>';
+        out.innerHTML = html;
+    } catch (e) {
+        out.innerHTML = `<div class="test-summary failed" style="margin-top:.75rem;">❌ ${e.message}</div>`;
+    }
+});
+</script>

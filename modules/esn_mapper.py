@@ -1,38 +1,79 @@
+# modules/esn_mapper.py
 import openpyxl
 import os
 import json
 from modules.logger import get_logger
 from modules.database import get_connection, add_change_history
+from modules.config_store import get_esn_mapping_config, col_letter_to_index
 
 logger = get_logger(__name__)
 
+
 def load_esn_mapping_from_excel(file_path):
-    """Загружает маппинг ESN из Excel файла"""
+    """
+    Загружает маппинг ESN из Excel файла.
+    Колонки берутся из config.json → esn_mapping_config.columns.
+    При отсутствии конфига — дефолт A-G (идентично старому поведению).
+    """
     if not os.path.exists(file_path):
         logger.warning(f"Файл маппинга не найден: {file_path}")
         return []
-    
+
+    cfg = get_esn_mapping_config()
+    cols = cfg.get('columns') or {}
+    has_header = cfg.get('has_header', True)
+
+    try:
+        idx = {
+            'esn':      col_letter_to_index(cols.get('esn', 'A')) - 1,
+            'lsn':      col_letter_to_index(cols.get('lsn', 'B')) - 1,
+            'operator': col_letter_to_index(cols.get('operator', 'C')) - 1,
+            'domain':   col_letter_to_index(cols.get('domain', 'D')) - 1,
+            'ne_type':  col_letter_to_index(cols.get('ne_type', 'E')) - 1,
+            'city':     col_letter_to_index(cols.get('city', 'F')) - 1,
+            'site':     col_letter_to_index(cols.get('site', 'G')) - 1,
+        }
+    except ValueError as e:
+        logger.error(f"Некорректный конфиг колонок ESN-маппинга: {e}")
+        return []
+
+    def cell(row, key):
+        i = idx[key]
+        if i < 0 or i >= len(row):
+            return None
+        return row[i]
+
     wb = openpyxl.load_workbook(file_path, data_only=True)
     sheet = wb.active
-    
+
+    start_row = 2 if has_header else 1
     mappings = []
-    for row in sheet.iter_rows(min_row=2, values_only=True):
-        if not row[0]:  # Пропускаем если ESN пустой
+    for row in sheet.iter_rows(min_row=start_row, values_only=True):
+        esn_raw = cell(row, 'esn')
+        if not esn_raw:
             continue
-        
-        mapping = {
-            'esn': str(row[0]).strip() if row[0] else None,     # Колонка A
-            'lsn': str(row[1]).strip() if row[1] else None,     # Колонка B
-            'operator': str(row[2]).strip().lower() if row[2] else None,  # Колонка C
-            'domain': str(row[3]).strip() if row[3] else None,  # Колонка D (НОВОЕ)
-            'ne_type': str(row[4]).strip() if row[4] else None, # Колонка E
-            'city': str(row[5]).strip() if row[5] else None,    # Колонка F
-            'site': str(row[6]).strip() if row[6] else None     # Колонка G
-        }
-        mappings.append(mapping)
-    
+        lsn_raw = cell(row, 'lsn')
+        op_raw = cell(row, 'operator')
+        dom_raw = cell(row, 'domain')
+        ne_raw = cell(row, 'ne_type')
+        city_raw = cell(row, 'city')
+        site_raw = cell(row, 'site')
+
+        mappings.append({
+            'esn': str(esn_raw).strip() if esn_raw else None,
+            'lsn': str(lsn_raw).strip() if lsn_raw else None,
+            'operator': str(op_raw).strip().lower() if op_raw else None,
+            'domain': str(dom_raw).strip() if dom_raw else None,
+            'ne_type': str(ne_raw).strip() if ne_raw else None,
+            'city': str(city_raw).strip() if city_raw else None,
+            'site': str(site_raw).strip() if site_raw else None,
+        })
+
     logger.info(f"Загружено {len(mappings)} записей маппинга из {file_path}")
     return mappings
+
+
+# ========== НИЖЕ — БЕЗ ИЗМЕНЕНИЙ (save_esn_mapping_to_db, get_mapping_by_esn, ...) ==========
 
 def save_esn_mapping_to_db(mappings, modified_by='system'):
     """Сохраняет маппинг ESN в БД (7 колонок)"""

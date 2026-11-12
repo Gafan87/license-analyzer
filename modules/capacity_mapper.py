@@ -1068,29 +1068,70 @@ def compute_license_targets(targets, sharing_map, capacity_list, operator_name=N
         is_spart = item.get('type') == 'spart'
         
         
-        # ========== 6.0.4 max_by_type(var, type1, type2, ...) ==========
+        # ========== 6.0.4 max_by_type(var, type1, type2, ...) [+ /N или *N] ==========
         if formula_str.lower().startswith('max_by_type('):
             try:
-                inner = formula_str[len('max_by_type('):-1]
+                # 1. Находим закрывающую скобку (с учётом вложенности)
+                depth = 0
+                close_pos = None
+                for i, ch in enumerate(formula_str):
+                    if ch == '(':
+                        depth += 1
+                    elif ch == ')':
+                        depth -= 1
+                        if depth == 0:
+                            close_pos = i
+                            break
+                if close_pos is None:
+                    return None, None
+
+                inner = formula_str[len('max_by_type('):close_pos]
+                rest = formula_str[close_pos+1:].strip()  # например '/1000' или '*1000'
+
                 parts = [p.strip() for p in inner.split(',')]
-                if len(parts) >= 2:
-                    var_name = parts[0]
-                    type_names = parts[1:]
+                if len(parts) < 2:
+                    return None, None
 
-                    vals = {}
-                    for city in ne_cities:
-                        max_val = None
-                        for type_name in type_names:
-                            type_values = extra_values.get(type_name, {})
-                            v = type_values.get((var_name, city))
-                            if v is not None:
-                                if max_val is None or v > max_val:
-                                    max_val = v
-                        if max_val is not None:
-                            vals[city] = roundup(max_val, 0)
+                var_name = parts[0]
+                type_names = parts[1:]
 
-                    if vals:
-                        return vals, 'variable'
+                # 2. Парсим множитель/делитель
+                factor = 1.0
+                factor_set = False
+                if rest:
+                    if rest.startswith('/'):
+                        try:
+                            factor = 1.0 / float(rest[1:].strip())
+                            factor_set = True
+                        except (ValueError, TypeError):
+                            factor_set = False
+                    elif rest.startswith('*'):
+                        try:
+                            factor = float(rest[1:].strip())
+                            factor_set = True
+                        except (ValueError, TypeError):
+                            factor_set = False
+
+                # 3. Вычисляем
+                vals = {}
+                for city in ne_cities:
+                    max_val = None
+                    for type_name in type_names:
+                        type_values = extra_values.get(type_name, {})
+                        v = type_values.get((var_name, city))
+                        if v is not None:
+                            if max_val is None or v > max_val:
+                                max_val = v
+
+                    if max_val is not None:
+                        if factor_set:
+                            result = max_val * factor
+                        else:
+                            result = max_val
+                        vals[city] = roundup(result, 0)
+
+                if vals:
+                    return vals, 'variable'
                 return None, None
             except Exception as e:
                 logger_local.error(f"Ошибка max_by_type '{formula_str}': {e}")

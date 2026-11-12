@@ -85,22 +85,24 @@ def index():
 
 @web_bp.route('/<operator>/')
 def license_list(operator):
-    """Список лицензий (уникальные ESN)"""
     op_config = get_operator_config(operator)
     if not op_config:
         abort(404)
-    
+
     visible_columns = session.get(f'visible_columns_{operator}', 
                                    ['ne_type', 'city', 'site', 'year', 'lsn', 'product', 'version', 'esn', 'tags', 'comments_count'])
-    
+
     licenses = get_unique_esn_licenses(operator)
-    
-    # Добавляем теги и комментарии
+
+    # Один запрос вместо N+1
+    from modules.database import get_aggregated_for_operator
+    agg_map = get_aggregated_for_operator(operator)
+    default_agg = {'tags': [], 'comments_count': 0}
     for lic in licenses:
-        agg = get_license_aggregated_data(lic['id'])
+        agg = agg_map.get(lic['id'], default_agg)
         lic['tags'] = agg['tags']
         lic['comments_count'] = agg['comments_count']
-    
+
     ne_types = list(set([l.get('ne_type') for l in licenses if l.get('ne_type')]))
     cities = list(set([l.get('city') for l in licenses if l.get('city')]))
     
@@ -1070,6 +1072,7 @@ def api_get_license_resources(license_id):
         FROM capacity_aggregated WHERE license_id = ?
     ''', (license_id,))
     agg_rows = cursor.fetchall()
+    
     conn.close()
 
     resources = []
@@ -1131,9 +1134,15 @@ def api_get_license_resources(license_id):
         })
 
     # ========== ОБОГАЩАЕМ ОПИСАНИЯМИ ==========
+    # Узнаём ne_type лицензии, чтобы выбрать правильный лист справочника
+    conn_lic = get_connection()
+    row_ne = conn_lic.execute('SELECT ne_type FROM licenses WHERE id = ?', (license_id,)).fetchone()
+    conn_lic.close()
+    ne_type = row_ne[0] if row_ne else None
+
     for res in resources:
         if res['name']:
-            desc = get_capacity_description(res['name'], domain, network_storage_path)
+            desc = get_capacity_description(res['name'], domain, network_storage_path, ne_type)
             if desc:
                 res['description'] = desc.get('description', '')
                 res['unit'] = desc.get('unit', '')
@@ -2970,18 +2979,55 @@ def excel_mapping(operator):
         }
         sharing_groups.setdefault(domain_norm, []).append(item)
 
-    return render_template('excel_mapping.html',
+    # ESN-маппинг для новой вкладки
+    from modules.config_store import get_esn_mapping_config
+    esn_config = get_esn_mapping_config()
+
+    return render_template('mapping_container.html',
                           operators=current_app.config['OPERATORS'],
                           current_operator=operator,
                           current_operator_title=op_config.get('title', operator),
                           domain_targets=domain_targets,
                           variable_targets=variable_targets,
                           spart_targets=spart_targets,
-                          sharing_groups=sharing_groups,       # ← новое
-                          sharing_cities=sharing_cities,       # ← новое
+                          sharing_groups=sharing_groups,
+                          sharing_cities=sharing_cities,
                           mappings=mappings,
                           targets_file=targets_file,
-                          message=message)
+                          message=message,
+                          esn_config=esn_config)
+    
+# ========== EXCEL MAPPING SETTINGS (ESN) ==========
+
+from modules.config_store import get_esn_mapping_config, set_esn_mapping_config
+
+@web_bp.route('/api/esn_mapping_config', methods=['GET'])
+def api_get_esn_mapping_config():
+    return jsonify(get_esn_mapping_config())
+
+
+@web_bp.route('/api/esn_mapping_config', methods=['POST'])
+def api_set_esn_mapping_config():
+    data = request.get_json() or {}
+    raw_columns = data.get('columns') or {}
+    allowed = {'esn', 'lsn', 'operator', 'domain', 'ne_type', 'city', 'site'}
+
+    clean = {}
+    for k, v in raw_columns.items():
+        if k not in allowed:
+            continue
+        v = (str(v) or '').strip().upper()
+        if not v:
+            continue
+        if not all('A' <= ch <= 'Z' for ch in v):
+            return jsonify({'error': f'Некорректная колонка для {k}: {v}'}), 400
+        clean[k] = v
+
+    if 'esn' not in clean:
+        return jsonify({'error': 'Колонка ESN обязательна'}), 400
+
+    set_esn_mapping_config(clean, data.get('has_header', True))
+    return jsonify({'success': True, 'config': get_esn_mapping_config()})
     
 @web_bp.route('/<operator>/base_targets', methods=['GET', 'POST'])
 def base_targets(operator):
@@ -3016,6 +3062,181 @@ def api_license_details_status():
         })
     
     return jsonify({'success': True, 'items': items})
+
+# ========== STORAGE / NAMING CONFIG ==========
+
+import modules.config_store as _cfg_store
+
+DEFAULT_STRUCTURE = ['operator', 'ne_type', 'city', 'site', 'year']
+ALLOWED_FOLDERS = {'operator', 'domain', 'ne_type', 'city', 'site', 'year',
+                   'version', 'lsn', 'esn'}
+
+
+def _normalize_structure_config(cfg):
+    """Возвращает {domain: [levels]} с гарантированным 'default'."""
+    fs = cfg.get('folder_structure')
+    if isinstance(fs, list):
+        # старая схема (глобальный список) → оборачиваем в default
+        return {'default': fs or DEFAULT_STRUCTURE}
+    if isinstance(fs, dict):
+        out = {k: [f for f in v if f in ALLOWED_FOLDERS] for k, v in fs.items() if isinstance(v, list)}
+        out.setdefault('default', DEFAULT_STRUCTURE)
+        return out
+    return {'default': DEFAULT_STRUCTURE}
+
+
+@web_bp.route('/api/storage_config', methods=['GET'])
+def api_get_storage_config():
+    cfg = _cfg_store.load_config()
+    structures = _normalize_structure_config(cfg)
+    return jsonify({
+        'folder_structure': structures,
+        'domains': sorted(structures.keys()),
+        'license_name_template': cfg.get('license_name_template',
+            'LIC{ne_type}_{version}_{city}_{site}_{year}'),
+        'available_folders': sorted(ALLOWED_FOLDERS),
+        'available_placeholders': [
+            'operator', 'domain', 'ne_type', 'city', 'site', 'year',
+            'version', 'lsn', 'esn',
+            'create_date', 'create_year', 'create_month', 'create_month_short', 'create_day',
+        ],
+    })
+
+
+@web_bp.route('/api/storage_config', methods=['POST'])
+def api_set_storage_config():
+    data = request.get_json() or {}
+    structures = data.get('folder_structure') or {}
+    template = (data.get('license_name_template') or '').strip()
+
+    # --- валидация структур ---
+    if not isinstance(structures, dict) or 'default' not in structures:
+        return jsonify({'error': 'Нужен хотя бы default-домен'}), 400
+    clean = {}
+    for domain, levels in structures.items():
+        if not isinstance(levels, list) or not levels:
+            return jsonify({'error': f'Пустая структура для домена {domain}'}), 400
+        filtered = [f for f in levels if f in ALLOWED_FOLDERS]
+        if len(filtered) != len(levels):
+            return jsonify({'error': f'Недопустимый уровень для домена {domain}'}), 400
+        clean[domain] = filtered
+
+    # --- валидация шаблона ---
+    if not template:
+        return jsonify({'error': 'Шаблон имени не может быть пустым'}), 400
+    if '.' in template:
+        return jsonify({'error': 'Шаблон не должен содержать расширение (.dat/.xml) — оно добавляется автоматически'}), 400
+    if '{ne_type}' not in template and '{lsn}' not in template:
+        return jsonify({'error': 'Шаблон должен содержать {ne_type} или {lsn}'}), 400
+
+    _cfg_store.save_config_section('folder_structure', clean)
+    _cfg_store.save_config_section('license_name_template', template)
+    return jsonify({
+        'success': True,
+        'folder_structure': clean,
+        'license_name_template': template,
+    })
+    
+    
+# ========== REORGANIZE + BACKUP (для UI в настройках) ==========
+
+from modules import bulk_reorganizer
+import shutil as _shutil
+import time as _time
+
+
+@web_bp.route('/<operator>/reorganize/preview', methods=['POST'])
+def reorganize_preview(operator):
+    op_config = get_operator_config(operator)
+    if not op_config:
+        return jsonify({'error': 'Оператор не найден'}), 404
+
+    remote_base = current_app.config.get('network_storage_path', '')
+    if not remote_base:
+        return jsonify({'error': 'Не указан network_storage_path'}), 400
+
+    payload = request.get_json(silent=True) or {}
+    operation = payload.get('operation', 'both')
+    if operation not in ('rename', 'move', 'both'):
+        return jsonify({'error': f'Неизвестная операция: {operation}'}), 400
+
+    items = bulk_reorganizer.preview(operator, remote_base, operation=operation)
+    stats = {
+        'total': len(items),
+        'ok': sum(1 for i in items if i['status'] == 'ok'),
+        'skip': sum(1 for i in items if i['status'] == 'skip'),
+        'conflict': sum(1 for i in items if i['status'] == 'conflict'),
+        'error': sum(1 for i in items if i['status'] == 'error'),
+    }
+    return jsonify({
+        'success': True, 'operation': operation,
+        'stats': stats, 'items': items,
+    })
+
+
+@web_bp.route('/<operator>/reorganize/apply', methods=['POST'])
+def reorganize_apply(operator):
+    op_config = get_operator_config(operator)
+    if not op_config:
+        return jsonify({'error': 'Оператор не найден'}), 404
+
+    remote_base = current_app.config.get('network_storage_path', '')
+    if not remote_base:
+        return jsonify({'error': 'Не указан network_storage_path'}), 400
+
+    payload = request.get_json(silent=True) or {}
+    operation = payload.get('operation', 'both')
+    copy_mode = bool(payload.get('copy_mode', False))
+    if operation not in ('rename', 'move', 'both'):
+        return jsonify({'error': f'Неизвестная операция: {operation}'}), 400
+
+    result = bulk_reorganizer.apply(
+        operator, remote_base, operation=operation, copy_mode=copy_mode
+    )
+    return jsonify(result)
+
+@web_bp.route('/<operator>/backup/operator_folder', methods=['POST'])
+def backup_operator_folder(operator):
+    """
+    Копирует <remote_base>/<operator>/ в <remote_base>/_backup/<operator>_<timestamp>/
+    Возвращает путь бэкапа и размер.
+    """
+    op_config = get_operator_config(operator)
+    if not op_config:
+        return jsonify({'error': 'Оператор не найден'}), 404
+
+    remote_base = current_app.config.get('network_storage_path', '')
+    if not remote_base:
+        return jsonify({'error': 'Не указан network_storage_path'}), 400
+
+    src = os.path.join(remote_base, operator)
+    if not os.path.isdir(src):
+        return jsonify({'success': False, 'error': f'Папка не найдена: {src}'}), 400
+
+    timestamp = _time.strftime('%Y%m%d_%H%M%S')
+    backup_dir = os.path.join(remote_base, '_backup', f'{operator}_{timestamp}')
+    os.makedirs(backup_dir, exist_ok=True)
+
+    try:
+        # Считаем файлы для прогресса в логе
+        copied = 0
+        for root, _dirs, files in os.walk(src):
+            rel = os.path.relpath(root, src)
+            dest_root = os.path.join(backup_dir, rel) if rel != '.' else backup_dir
+            os.makedirs(dest_root, exist_ok=True)
+            for f in files:
+                _shutil.copy2(os.path.join(root, f), os.path.join(dest_root, f))
+                copied += 1
+
+        logger.info(f"Бэкап папки {operator}: {copied} файлов → {backup_dir}")
+        return jsonify({
+            'success': True,
+            'backup_path': backup_dir,
+            'files_copied': copied,
+        })
+    except Exception as e:
+        logger.error(f"Ошибка бэкапа папки {operator}: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
     
 
 

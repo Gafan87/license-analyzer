@@ -1492,56 +1492,6 @@ def get_parsed_cache(license_id):
 
 # ========== АГРЕГИРОВАННЫЕ ДАННЫЕ ДЛЯ ЛИЦЕНЗИЙ ==========
 
-def get_license_aggregated_data(license_id):
-    """
-    Получает агрегированные данные для лицензии (теги, комментарии, динамические поля)
-    
-    Args:
-        license_id: int - ID лицензии
-    
-    Returns:
-        dict - с ключами 'tags', 'comments_count', 'dynamic_values'
-    """
-    conn = get_connection()
-    cursor = conn.cursor()
-    
-    result = {
-        'tags': [],
-        'comments_count': 0,
-        'dynamic_values': {}
-    }
-    
-    # Получаем теги
-    cursor.execute('''
-        SELECT t.id, t.name, t.color 
-        FROM tags t
-        JOIN license_tags lt ON lt.tag_id = t.id
-        WHERE lt.license_id = ?
-    ''', (license_id,))
-    result['tags'] = [{'id': r[0], 'name': r[1], 'color': r[2]} for r in cursor.fetchall()]
-    
-    # Получаем количество комментариев
-    cursor.execute('SELECT COUNT(*) FROM comments WHERE license_id = ?', (license_id,))
-    result['comments_count'] = cursor.fetchone()[0]
-    
-    # Получаем динамические значения
-    cursor.execute('''
-        SELECT dc.column_name, dc.display_name, dv.value
-        FROM dynamic_values dv
-        JOIN dynamic_columns dc ON dv.column_id = dc.id
-        WHERE dv.license_id = ? AND dc.is_active = 1
-    ''', (license_id,))
-    
-    for row in cursor.fetchall():
-        result['dynamic_values'][row[0]] = {
-            'display_name': row[1],
-            'value': row[2]
-        }
-    
-    conn.close()
-    return result
-
-
 def get_licenses_aggregated_data_batch(license_ids):
     """
     Получает агрегированные данные для нескольких лицензий (для списка)
@@ -2067,3 +2017,31 @@ def refresh_all_targets(operator_name, network_storage_path):
                 logger.info(f"Сохранено {len(results)} целей для {ne_type}")
     
     return total_results
+
+
+def get_aggregated_for_operator(operator):
+    """
+    Возвращает {license_id: {'tags': [str, ...], 'comments_count': int}}
+    для всех лицензий оператора — одним SQL-запросом.
+    Замена N+1 цикла из license_list.
+    """
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute('''
+        SELECT l.id,
+               GROUP_CONCAT(DISTINCT t.name) AS tags_concat,
+               (SELECT COUNT(*) FROM comments c WHERE c.license_id = l.id) AS comments_count
+        FROM licenses l
+        LEFT JOIN license_tags lt ON lt.license_id = l.id
+        LEFT JOIN tags t ON lt.tag_id = t.id
+        WHERE l.operator = ?
+        GROUP BY l.id
+    ''', (operator,))
+    result = {}
+    for row in cursor.fetchall():
+        lid = row[0]
+        tags_concat = row[1] or ''
+        tags = [t for t in tags_concat.split(',') if t]
+        result[lid] = {'tags': tags, 'comments_count': row[2] or 0}
+    conn.close()
+    return result

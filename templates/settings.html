@@ -23,7 +23,7 @@
         <i class="fas fa-database"></i>
         <div class="card-info">
             <span class="card-title">💾 Хранилище</span>
-            <span class="card-desc">Сетевая папка и структура</span>
+            <span class="card-desc">Структура, имена, бэкап, переезд</span>
         </div>
     </div>
     <div class="settings-nav-card" data-tab="system">
@@ -40,14 +40,13 @@
             <span class="card-desc">Запуск и результаты тестов</span>
         </div>
     </div>
-
 </div>
 
-<!-- Вкладка: Общие (включая бэкапы) -->
+<!-- ========== Вкладка: Общие ========== -->
 <div id="tab-general" class="tab-content active">
     <div class="card">
         <h1>Общие настройки</h1>
-        
+
         <h3>🎨 Интерфейс</h3>
         <div style="display: flex; gap: 1rem; align-items: center; flex-wrap: wrap; margin-bottom: 1.5rem;">
             <button id="themeToggleBtn" class="secondary-btn">🌓 Переключить тему</button>
@@ -56,7 +55,7 @@
                 <i class="fas fa-palette"></i> 📖 Гайдлайн стилей
             </a>
         </div>
-        
+
         <h3>📝 Логирование</h3>
         <form method="post" action="/settings/log_level" style="margin-bottom: 1.5rem;">
             <div style="display: flex; gap: 1rem; align-items: flex-end; flex-wrap: wrap;">
@@ -72,20 +71,20 @@
                 <button type="submit" class="btn-primary">Сохранить</button>
             </div>
         </form>
-        
-        <h3>📀 Резервное копирование</h3>
+
+        <h3>📀 Резервное копирование БД</h3>
         <div style="display: flex; gap: 1rem; margin-bottom: 1rem; flex-wrap: wrap;">
             <button id="createBackupBtn" class="btn-primary">📀 Создать бэкап сейчас</button>
             <button id="restoreBackupBtn" class="btn-secondary">🔄 Восстановить из бэкапа</button>
         </div>
-        
+
         <div id="backupResult" class="hidden" style="margin-bottom: 1rem;"></div>
-        
+
         <h3>📋 Список бэкапов</h3>
         <div id="backupList" class="info-card">
             <div class="text-muted">Загрузка...</div>
         </div>
-        
+
         <div class="info-row" style="margin-top: 1rem;">
             <span class="info-label">Авто-бэкап:</span>
             <span class="badge enabled">Включён (каждые 7 дней)</span>
@@ -93,11 +92,11 @@
     </div>
 </div>
 
-<!-- Вкладка: Операторы -->
+<!-- ========== Вкладка: Операторы ========== -->
 <div id="tab-operators" class="tab-content">
     <div class="card">
         <h1>Настройки операторов</h1>
-        
+
         <form method="post" action="/settings/update_paths">
             {% for op in operators %}
             <div class="operator-card">
@@ -122,7 +121,7 @@
     </div>
 </div>
 
-<!-- Вкладка: Хранилище -->
+<!-- ========== Вкладка: Хранилище ========== -->
 <div id="tab-storage" class="tab-content">
     <div class="card">
         <h1>Сетевое хранилище</h1>
@@ -154,57 +153,181 @@
             <div style="margin-left: 3rem;">└── 📁 {ne_type}/ → 📁 {city}/ → 📁 {site}/ → 📁 {year}/</div>
         </div>
 
-        <h3>📋 Настройка маппинга Excel файлов</h3>
+        <!-- ============ НАСТРОЙКА СТРУКТУРЫ И ИМЁН ============ -->
+        <h3 style="margin-top: 2rem;">⚙️ Настройка структуры и имён</h3>
+        <p class="text-muted" style="font-size: 0.75rem;">
+            Структура папок задаётся <strong>для каждого домена</strong> отдельно.
+            Если для домена нет своей структуры — используется <code>default</code>.
+            Расширение файла (.dat / .xml) добавляется автоматически.
+        </p>
 
-        <!-- ESN маппинг -->
-        <div class="info-card" style="margin-bottom: 1rem;">
-            <div class="info-row" style="margin-bottom: 0.75rem;">
-                <span class="info-label">ESN маппинг:</span>
-                <span class="badge" style="background: var(--huawei-red);">esn_mapping.xlsx</span>
-                <button id="checkEsnMappingBtn" class="secondary-btn" style="margin-left: auto;">🔍 Проверить файлы</button>
-                <button id="saveEsnMappingConfigBtn" class="secondary-btn">💾 Сохранить настройки</button>
+        <div id="storageConfigResult" style="margin-bottom: 1rem;"></div>
+
+        <form id="storageConfigForm">
+            <!-- === Выбор домена === -->
+            <div class="info-card" style="margin-bottom: 1rem;">
+                <div style="display:flex; gap:0.5rem; align-items:flex-end; flex-wrap:wrap;">
+                    <div class="filter-group" style="flex:1; min-width:200px;">
+                        <label>Домен</label>
+                        <select id="structureDomainSelect" class="filter-select" style="width:100%;"></select>
+                    </div>
+                    <button type="button" id="addDomainBtn" class="secondary-btn">➕ Добавить домен</button>
+                    <button type="button" id="removeDomainBtn" class="secondary-btn" style="color:var(--huawei-red);">🗑 Удалить домен</button>
+                </div>
             </div>
-            <div id="esnMappingColumnsContainer" style="display: grid; grid-template-columns: repeat(7, 1fr); gap: 0.5rem; font-size: 0.7rem;">
-                <!-- Сюда будет сгенерирован список колонок динамически -->
+
+            <!-- === Структура папок для выбранного домена === -->
+            <div class="info-card" style="margin-bottom: 1rem;">
+                <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:0.5rem; margin-bottom:0.75rem;">
+                    <strong>📂 Структура папок для «<span id="currentDomainLabel">default</span>»</strong>
+                </div>
+                <div id="folderStructureList" style="display:flex; flex-direction:column; gap:0.4rem;"></div>
+                <div style="display:flex; gap:0.5rem; margin-top:0.75rem; flex-wrap:wrap;">
+                    <select id="newFolderLevel" class="filter-select" style="width:auto;">
+                        <option value="">— Добавить уровень —</option>
+                        <option value="operator">operator</option>
+                        <option value="domain">domain</option>
+                        <option value="ne_type">ne_type</option>
+                        <option value="city">city</option>
+                        <option value="site">site</option>
+                        <option value="year">year</option>
+                        <option value="version">version</option>
+                        <option value="lsn">lsn</option>
+                        <option value="esn">esn</option>
+                    </select>
+                    <button type="button" id="addFolderLevelBtn" class="secondary-btn">➕ Добавить уровень</button>
+                    <button type="button" id="resetFolderStructureBtn" class="secondary-btn">↺ По умолчанию для этого домена</button>
+                </div>
             </div>
-            <div style="display: flex; gap: 0.5rem; margin-top: 0.75rem;">
-                <button id="configureEsnMappingBtn" class="secondary-btn" style="width: auto;">📂 Перейти к маппингу</button>
+
+            <!-- === Шаблон имени (без расширения) === -->
+            <div class="info-card">
+                <strong>📄 Шаблон имени лицензии (без расширения)</strong>
+                <p class="text-muted" style="font-size: 0.7rem; margin: 0.5rem 0;">
+                    Подстановки: <code>{operator}</code> <code>{domain}</code> <code>{ne_type}</code>
+                    <code>{city}</code> <code>{site}</code> <code>{year}</code>
+                    <code>{version}</code> <code>{lsn}</code> <code>{esn}</code>.
+                    <br>
+                    <strong>Дата создания лицензии (из файла):</strong>
+                    <code>{create_date}</code> (YYYY-MM-DD), <code>{create_year}</code> (YYYY),
+                    <code>{create_month}</code> (MM), <code>{create_month_short}</code> (jan..dec),
+                    <code>{create_day}</code> (DD).
+                    <br>
+                    <strong>Не указывайте</strong> .dat / .xml — расширение берётся из исходного файла.
+                </p>
+                <input type="text" id="licenseNameTemplate" class="filter-select"
+                       style="width:100%; font-family: monospace;"
+                       placeholder="LIC{ne_type}_{version}_{city}_{site}_{year}">
+                <div style="display:flex; gap:0.5rem; margin-top:0.5rem; flex-wrap:wrap;">
+                    <button type="button" class="secondary-btn" data-insert="{operator}">{operator}</button>
+                    <button type="button" class="secondary-btn" data-insert="{domain}">{domain}</button>
+                    <button type="button" class="secondary-btn" data-insert="{ne_type}">{ne_type}</button>
+                    <button type="button" class="secondary-btn" data-insert="{city}">{city}</button>
+                    <button type="button" class="secondary-btn" data-insert="{site}">{site}</button>
+                    <button type="button" class="secondary-btn" data-insert="{year}">{year}</button>
+                    <button type="button" class="secondary-btn" data-insert="{version}">{version}</button>
+                    <button type="button" class="secondary-btn" data-insert="{lsn}">{lsn}</button>
+                    <button type="button" class="secondary-btn" data-insert="{esn}">{esn}</button>
+                    <button type="button" class="secondary-btn" data-insert="{create_date}">{create_date}</button>
+                    <button type="button" class="secondary-btn" data-insert="{create_year}">{create_year}</button>
+                    <button type="button" class="secondary-btn" data-insert="{create_month}">{create_month}</button>
+                    <button type="button" class="secondary-btn" data-insert="{create_month_short}">{create_month_short}</button>
+                    <button type="button" class="secondary-btn" data-insert="{create_day}">{create_day}</button>
+                </div>
+                <div style="margin-top:0.75rem;">
+                    <label class="text-muted" style="font-size:0.7rem;">Предпросмотр (расширение берётся из исходного файла):</label>
+                    <div id="templatePreview" style="font-family: monospace; font-size:0.8rem; background:var(--bg-tertiary); padding:0.5rem; border-radius:var(--radius-md); margin-top:0.25rem;">
+                        .dat → —<br>.xml → —
+                    </div>
+                </div>
             </div>
+
+            <div style="display:flex; gap:0.5rem; margin-top:1rem; flex-wrap:wrap;">
+                <button type="submit" class="btn-primary">💾 Сохранить настройки</button>
+            </div>
+        </form>
+
+        <!-- ============ БЭКАП + ПЕРЕЕЗД ============ -->
+        <h3 style="margin-top: 2.5rem;">🛠 Действия с лицензиями</h3>
+        <p class="text-muted" style="font-size: 0.75rem;">
+            Все действия выполняются для текущего оператора <strong>{{ current_operator_title }}</strong>.
+            Перед переездом рекомендуется сделать <strong>бэкап папки оператора</strong> на шаре.
+        </p>
+
+        <div id="actionsResult" style="margin-bottom:1rem;"></div>
+
+        <div class="info-card" style="margin-bottom:1rem;">
+            <strong>💾 Бэкап</strong>
+            <div style="display:flex; gap:0.5rem; flex-wrap:wrap; margin-top:0.5rem;">
+                <button type="button" id="backupOperatorFolderBtn" class="secondary-btn">
+                    📀 Бэкап папки оператора на шаре
+                </button>
+                <button type="button" id="backupDbBtn" class="secondary-btn">
+                    💾 Бэкап локальной БД
+                </button>
+            </div>
+            <p class="text-muted" style="font-size:0.7rem; margin-top:0.5rem;">
+                Бэкап папки оператора: копирует <code>{{ network_storage }}/{{ current_operator }}/</code>
+                в <code>{{ network_storage }}/_backup/{{ current_operator }}_&lt;timestamp&gt;/</code>.
+            </p>
         </div>
 
-        <!-- Описания CapacityKey -->
         <div class="info-card">
-            <div class="info-row" style="margin-bottom: 0.75rem;">
-                <span class="info-label">Описания CapacityKey:</span>
-                <span class="badge" style="background: var(--huawei-red);">license_details/{NE_type}_license_details.xlsx</span>
-                <button id="checkLicenseDetailsBtn" class="secondary-btn" style="margin-left: auto;">🔍 Проверить файлы</button>
-                <button id="saveCapacityMappingConfigBtn" class="secondary-btn">💾 Сохранить настройки</button>
+            <strong>📦 Переименовать и разложить</strong>
+            <p class="text-muted" style="font-size:0.75rem; margin:0.5rem 0;">
+                Можно выполнить <strong>только переименование</strong>, <strong>только раскладку по папкам</strong>
+                или <strong>оба действия сразу</strong>. Перед перемещением/раскладкой рекомендуется бэкап.
+            </p>
+
+            <div style="display:flex; gap:0.5rem; flex-wrap:wrap; margin-bottom:0.75rem;">
+                <button type="button" id="previewRenameBtn" class="secondary-btn">
+                    🔤 Предпросмотр: переименовать
+                </button>
+                <button type="button" id="previewMoveBtn" class="secondary-btn">
+                    📦 Предпросмотр: разложить
+                </button>
+                <button type="button" id="previewBothBtn" class="btn-primary">
+                    🔍 Предпросмотр: переименовать + разложить
+                </button>
             </div>
-            <div id="capacityMappingColumnsContainer" style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.5rem; font-size: 0.7rem;">
-                <!-- Сюда будет сгенерирован список колонок динамически -->
+
+            <div style="display:flex; gap:0.5rem; flex-wrap:wrap; align-items:center; margin-bottom:0.75rem;">
+                <button type="button" id="applyRenameBtn" class="btn-warning" disabled>
+                    ⚠️ Применить: только переименовать
+                </button>
+                <button type="button" id="applyMoveBtn" class="btn-warning" disabled>
+                    ⚠️ Применить: только разложить
+                </button>
+                <button type="button" id="applyBothBtn" class="btn-warning" disabled>
+                    ⚠️ Применить: переименовать + разложить
+                </button>
             </div>
-            <div style="display: flex; gap: 0.5rem; margin-top: 0.75rem;">
-                <button id="configureLicenseDetailsBtn" class="secondary-btn" style="width: auto;">📂 Перейти к описаниям</button>
+
+            <label style="display:flex; gap:0.35rem; align-items:center; cursor:pointer; margin-bottom:0.75rem;">
+                <input type="checkbox" id="copyModeCheckbox" checked>
+                Копировать (не перемещать) — безопасный первый прогон
+            </label>
+
+            <div id="reorganizeStats" style="margin-top:0.75rem;"></div>
+            <div id="reorganizeTableWrapper" class="hidden" style="max-height:500px; overflow:auto; margin-top:0.75rem;">
+                <table class="excel-table" style="width:100%; font-size:0.75rem;">
+                    <thead>
+                        <tr>
+                            <th style="width:50px;">#</th>
+                            <th>LSN</th>
+                            <th>Старый путь</th>
+                            <th>Новый путь</th>
+                            <th style="width:120px;">Статус</th>
+                        </tr>
+                    </thead>
+                    <tbody id="reorganizeTableBody"></tbody>
+                </table>
             </div>
         </div>
     </div>
 </div>
 
-<!-- Модальное окно для отображения списка файлов -->
-<div id="fileCheckModal" class="modal" style="display: none;">
-    <div class="modal-content" style="max-width: 500px;">
-        <span class="modal-close">&times;</span>
-        <h3 id="modalTitle">📋 Проверка файлов</h3>
-        <div id="fileCheckResult" style="max-height: 400px; overflow-y: auto;">
-            <div class="text-muted">Загрузка...</div>
-        </div>
-        <div style="margin-top: 1rem; text-align: right;">
-            <button id="modalCloseBtn" class="btn-secondary">Закрыть</button>
-        </div>
-    </div>
-</div>
-
-<!-- Вкладка: Система -->
+<!-- ========== Вкладка: Система ========== -->
 <div id="tab-system" class="tab-content">
     <div class="card">
         <h1>Системная информация</h1>
@@ -256,7 +379,7 @@
     </div>
 </div>
 
-<!-- Вкладка: Тестирование -->
+<!-- ========== Вкладка: Тестирование ========== -->
 <div id="tab-testing" class="tab-content">
     <div class="card">
         <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 1rem; margin-bottom: 1.5rem;">
@@ -268,7 +391,6 @@
             </div>
         </div>
 
-        <!-- Прогресс-бар -->
         <div id="testProgressContainer" class="hidden" style="margin-bottom: 1rem;">
             <div style="display: flex; justify-content: space-between; margin-bottom: 0.25rem;">
                 <span id="testProgressLabel" class="text-muted">Прогресс: 0/0</span>
@@ -279,15 +401,12 @@
             </div>
         </div>
 
-        <!-- Сводка -->
         <div id="testSummary" class="hidden" style="margin-bottom: 1.5rem;"></div>
 
-        <!-- Категории тестов -->
         <div id="testCategories">
             <div class="text-muted" style="text-align: center; padding: 2rem;">⏳ Загрузка списка тестов...</div>
         </div>
 
-        <!-- Детальные результаты -->
         <div id="testDetailResults" class="hidden" style="margin-top: 1.5rem;">
             <h3>📋 Результаты</h3>
             <div id="testDetailContent"></div>
@@ -297,8 +416,8 @@
 
 <script>
     window.operator = '{{ current_operator }}';
-    
-    // Переключение вкладок настроек
+
+    // ============ ПЕРЕКЛЮЧЕНИЕ ВКЛАДОК ============
     document.querySelectorAll('.settings-nav-card').forEach(card => {
         card.addEventListener('click', () => {
             document.querySelectorAll('.settings-nav-card').forEach(c => c.classList.remove('active'));
@@ -307,8 +426,8 @@
             document.getElementById(`tab-${card.dataset.tab}`).classList.add('active');
         });
     });
-    
-    // Тема
+
+    // ============ ТЕМА ============
     const themeBtn = document.getElementById('themeToggleBtn');
     if (themeBtn) {
         themeBtn.addEventListener('click', () => {
@@ -317,13 +436,12 @@
             document.getElementById('currentTheme').innerText = document.body.classList.contains('dark') ? 'тёмная' : 'светлая';
         });
     }
-    
     if (localStorage.getItem('theme') === 'dark') {
         document.body.classList.add('dark');
         document.getElementById('currentTheme').innerText = 'тёмная';
     }
-        
-    // Проверка хранилища
+
+    // ============ ПРОВЕРКА ХРАНИЛИЩА ============
     fetch('/settings/check_storage')
         .then(r => r.json())
         .then(data => {
@@ -341,29 +459,17 @@
             statusEl.innerHTML = '⚠️ Ошибка проверки';
             statusEl.className = 'status-badge offline';
         });
-    
-    // Настройка ESN маппинга
-    document.getElementById('configureEsnMappingBtn')?.addEventListener('click', () => {
-        const operator = window.operator || 'mts';
-        window.location.href = `/${operator}/esn_mapping`;
-    });
-    
-    // Настройка описаний лицензий
-    document.getElementById('configureLicenseDetailsBtn')?.addEventListener('click', () => {
-        // Переход на страницу управления описаниями CapacityKey
-        window.location.href = '/capacity_keys_mapping';
-    });
-    
-    // Бэкапы
+
+    // ============ БЭКАПЫ БД (общие) ============
     document.getElementById('createBackupBtn')?.addEventListener('click', async () => {
         const resultDiv = document.getElementById('backupResult');
         resultDiv.className = 'test-summary';
         resultDiv.innerHTML = '⏳ Создание бэкапа...';
         resultDiv.classList.remove('hidden');
-        
+
         const resp = await fetch('/backup_db', { method: 'POST' });
         const data = await resp.json();
-        
+
         if (data.success) {
             resultDiv.className = 'test-summary success';
             resultDiv.innerHTML = `✅ ${data.message}`;
@@ -374,7 +480,7 @@
         }
         setTimeout(() => resultDiv.classList.add('hidden'), 5000);
     });
-    
+
     async function loadBackupList() {
         const resp = await fetch('/settings/backup_list');
         const data = await resp.json();
@@ -387,7 +493,6 @@
                     <button class="backup-restore" data-file="${b.name}" style="background: none; border: none; color: var(--huawei-red); cursor: pointer;">Восстановить</button>
                 </div>
             `).join('');
-            
             document.querySelectorAll('.backup-restore').forEach(btn => {
                 btn.addEventListener('click', async () => {
                     const resp = await fetch(`/settings/restore_backup?file=${btn.dataset.file}`, { method: 'POST' });
@@ -401,15 +506,15 @@
         }
     }
     loadBackupList();
-    
-    // Python версия
+
+    // ============ PYTHON VERSION ============
     fetch('/settings/system_info')
         .then(r => r.json())
         .then(data => {
             document.getElementById('pythonVersion').innerText = data.python_version;
         });
-    
-    // Очистка логов
+
+    // ============ ОЧИСТКА ЛОГОВ / СБРОС БД ============
     document.getElementById('clearLogsBtn')?.addEventListener('click', async () => {
         if (confirm('Удалить все логи? Это действие необратимо.')) {
             const resp = await fetch('/settings/clear_logs', { method: 'POST' });
@@ -417,8 +522,7 @@
             alert(result.message);
         }
     });
-    
-    // Сброс БД
+
     document.getElementById('resetDbBtn')?.addEventListener('click', async () => {
         if (confirm('⚠️ ВНИМАНИЕ! Это удалит всю локальную БД. Данные на сервере не пострадают. Продолжить?')) {
             const resp = await fetch('/settings/reset_db', { method: 'POST' });
@@ -428,638 +532,662 @@
         }
     });
 
-// ========== НАСТРОЙКИ МАППИНГА КОЛОНОК (ДИНАМИЧЕСКИЕ) ==========
+    // ============ СТРУКТУРА И ИМЕНА (config) ============
+    let folderStructures = { default: ['operator', 'ne_type', 'city', 'site', 'year'] };
+    let currentDomain = 'default';
 
-// Поля для ESN маппинга (из БД)
-const ESN_MAPPING_FIELDS = [
-    { value: 'esn', label: 'ESN' },
-    { value: 'lsn', label: 'LSN' },
-    { value: 'operator', label: 'Оператор' },
-    { value: 'domain', label: 'Домен' },
-    { value: 'ne_type', label: 'NE тип' },
-    { value: 'city', label: 'Город' },
-    { value: 'site', label: 'Сайт' },
-    { value: 'ignore', label: 'Игнорировать' }
-];
+    const DEFAULT_STRUCTURE = ['operator', 'ne_type', 'city', 'site', 'year'];
 
-// Поля для CapacityKey маппинга
-const CAPACITY_MAPPING_FIELDS = [
-    { value: 'capacity_key', label: 'CapacityKey' },
-    { value: 'description', label: 'Description' },
-    { value: 'unit', label: 'Unit' },
-    { value: 'ignore', label: 'Игнорировать' }
-];
+    function renderDomainSelect() {
+        const sel = document.getElementById('structureDomainSelect');
+        if (!sel) return;
+        const domains = Object.keys(folderStructures).sort((a, b) => {
+            if (a === 'default') return -1;
+            if (b === 'default') return 1;
+            return a.localeCompare(b);
+        });
+        sel.innerHTML = domains.map(d => `<option value="${d}" ${d === currentDomain ? 'selected' : ''}>${d}</option>`).join('');
+        sel.value = currentDomain;
+    }
 
-// Генерация выпадающего списка
-function generateSelect(options, selectedValue) {
-    return `<select class="filter-select" style="width: 100%; margin-top: 4px;">
-        ${options.map(opt => `<option value="${opt.value}" ${selectedValue === opt.value ? 'selected' : ''}>${opt.label}</option>`).join('')}
-    </select>`;
-}
+    function renderFolderStructure() {
+        const container = document.getElementById('folderStructureList');
+        const label = document.getElementById('currentDomainLabel');
+        if (!container) return;
+        if (label) label.textContent = currentDomain;
 
-// Генерация колонок для ESN маппинга
-function renderEsnMappingColumns() {
-    const container = document.getElementById('esnMappingColumnsContainer');
-    if (!container) return;
-    
-    const savedConfig = localStorage.getItem('esn_mapping_columns');
-    const defaultConfig = ['esn', 'lsn', 'operator', 'domain', 'ne_type', 'city', 'site'];
-    const config = savedConfig ? JSON.parse(savedConfig) : defaultConfig;
-    
-    const columns = ['A', 'B', 'C', 'D', 'E', 'F', 'G'];
-    
-    container.innerHTML = columns.map((col, idx) => `
-        <div>
-            <strong>Колонка ${col}</strong>
-            ${generateSelect(ESN_MAPPING_FIELDS, config[idx] || 'ignore')}
-        </div>
-    `).join('');
-    
-    // Сохраняем при изменении
-    container.querySelectorAll('select').forEach((select, idx) => {
-        select.addEventListener('change', () => {
-            const newConfig = [];
-            container.querySelectorAll('select').forEach(s => newConfig.push(s.value));
-            localStorage.setItem('esn_mapping_columns', JSON.stringify(newConfig));
+        const levels = folderStructures[currentDomain] || [];
+        if (!levels.length) {
+            container.innerHTML = '<div class="text-muted" style="font-size:0.75rem;">Пусто — добавьте уровень</div>';
+            return;
+        }
+        container.innerHTML = levels.map((level, idx) => `
+            <div style="display:flex; align-items:center; gap:0.5rem; background:var(--bg-tertiary); padding:0.4rem 0.6rem; border-radius:var(--radius-sm);">
+                <span style="min-width:28px; text-align:right; color:var(--text-muted); font-size:0.7rem;">${idx + 1}.</span>
+                <code style="flex:1;">${level}</code>
+                <button type="button" class="secondary-btn" style="padding:0.2rem 0.5rem; font-size:0.7rem;" data-action="up" data-idx="${idx}" ${idx === 0 ? 'disabled' : ''}>↑</button>
+                <button type="button" class="secondary-btn" style="padding:0.2rem 0.5rem; font-size:0.7rem;" data-action="down" data-idx="${idx}" ${idx === levels.length - 1 ? 'disabled' : ''}>↓</button>
+                <button type="button" class="secondary-btn" style="padding:0.2rem 0.5rem; font-size:0.7rem; color:var(--huawei-red);" data-action="remove" data-idx="${idx}">✕</button>
+            </div>
+        `).join('');
+
+        container.querySelectorAll('button[data-action]').forEach(btn => {
+            btn.addEventListener('click', () => {
+                const idx = parseInt(btn.dataset.idx, 10);
+                const act = btn.dataset.action;
+                const arr = folderStructures[currentDomain];
+                if (!arr) return;
+                if (act === 'up' && idx > 0) [arr[idx - 1], arr[idx]] = [arr[idx], arr[idx - 1]];
+                else if (act === 'down' && idx < arr.length - 1) [arr[idx + 1], arr[idx]] = [arr[idx], arr[idx + 1]];
+                else if (act === 'remove') arr.splice(idx, 1);
+                renderFolderStructure();
+            });
+        });
+    }
+
+    function updateTemplatePreview() {
+        const tpl = document.getElementById('licenseNameTemplate');
+        const prev = document.getElementById('templatePreview');
+        if (!tpl || !prev) return;
+        const sample = {
+            operator: 'beeline', domain: 'PS', ne_type: 'CG9812',
+            city: 'MSK', site: '15', year: '2027', version: 'R12',
+            lsn: 'LIC20220325V90860', esn: '3ADDD457...',
+            create_date: '2025-09-23',
+            create_year: '2025',
+            create_month: '09',
+            create_month_short: 'sep',
+            create_day: '23',
+        };
+        let base = tpl.value || '';
+        for (const [k, v] of Object.entries(sample)) {
+            base = base.replaceAll('{' + k + '}', v);
+        }
+        prev.innerHTML = `.dat → ${base || '—'}.dat<br>.xml → ${base || '—'}.xml`;
+    }
+
+    async function loadStorageConfig() {
+        try {
+            const resp = await fetch('/api/storage_config');
+            const data = await resp.json();
+            folderStructures = data.folder_structure || { default: DEFAULT_STRUCTURE };
+            if (!folderStructures.default) folderStructures.default = DEFAULT_STRUCTURE;
+            currentDomain = 'default';
+            renderDomainSelect();
+            renderFolderStructure();
+            const tplInput = document.getElementById('licenseNameTemplate');
+            if (tplInput) {
+                tplInput.value = (data.license_name_template || '').replace(/\.(dat|xml)$/i, '');
+                updateTemplatePreview();
+            }
+        } catch (e) {
+            const out = document.getElementById('storageConfigResult');
+            if (out) out.innerHTML = `<div class="test-summary failed">❌ ${e.message}</div>`;
+        }
+    }
+    loadStorageConfig();
+
+    document.getElementById('structureDomainSelect')?.addEventListener('change', (e) => {
+        currentDomain = e.target.value;
+        renderFolderStructure();
+    });
+
+    document.getElementById('addDomainBtn')?.addEventListener('click', () => {
+        const name = prompt('Имя домена (например, IMS, vEPC, PS):');
+        if (!name) return;
+        const trimmed = name.trim();
+        if (!trimmed) return;
+        if (folderStructures[trimmed]) { alert('Такой домен уже есть'); return; }
+        folderStructures[trimmed] = [...DEFAULT_STRUCTURE];
+        currentDomain = trimmed;
+        renderDomainSelect();
+        renderFolderStructure();
+    });
+
+    document.getElementById('removeDomainBtn')?.addEventListener('click', () => {
+        if (currentDomain === 'default') { alert('default удалить нельзя'); return; }
+        if (!confirm(`Удалить структуру для домена «${currentDomain}»?`)) return;
+        delete folderStructures[currentDomain];
+        currentDomain = 'default';
+        renderDomainSelect();
+        renderFolderStructure();
+    });
+
+    document.getElementById('licenseNameTemplate')?.addEventListener('input', updateTemplatePreview);
+
+    document.getElementById('addFolderLevelBtn')?.addEventListener('click', () => {
+        const sel = document.getElementById('newFolderLevel');
+        const val = sel.value;
+        if (!val) return;
+        if (!folderStructures[currentDomain]) folderStructures[currentDomain] = [];
+        folderStructures[currentDomain].push(val);
+        sel.value = '';
+        renderFolderStructure();
+    });
+
+    document.getElementById('resetFolderStructureBtn')?.addEventListener('click', () => {
+        folderStructures[currentDomain] = [...DEFAULT_STRUCTURE];
+        renderFolderStructure();
+    });
+
+    document.querySelectorAll('#storageConfigForm button[data-insert]').forEach(btn => {
+        btn.addEventListener('click', () => {
+            const tpl = document.getElementById('licenseNameTemplate');
+            if (!tpl) return;
+            const pos = tpl.selectionStart ?? tpl.value.length;
+            tpl.value = tpl.value.slice(0, pos) + btn.dataset.insert + tpl.value.slice(pos);
+            tpl.focus();
+            tpl.setSelectionRange(pos + btn.dataset.insert.length, pos + btn.dataset.insert.length);
+            updateTemplatePreview();
         });
     });
-}
 
-// Генерация колонок для CapacityKey маппинга
-function renderCapacityMappingColumns() {
-    const container = document.getElementById('capacityMappingColumnsContainer');
-    if (!container) return;
-    
-    const savedConfig = localStorage.getItem('capacity_mapping_columns');
-    const defaultConfig = ['capacity_key', 'description', 'unit'];
-    const config = savedConfig ? JSON.parse(savedConfig) : defaultConfig;
-    
-    const columns = ['A', 'B', 'C'];
-    
-    container.innerHTML = columns.map((col, idx) => `
-        <div>
-            <strong>Колонка ${col}</strong>
-            ${generateSelect(CAPACITY_MAPPING_FIELDS, config[idx] || 'ignore')}
-        </div>
-    `).join('');
-    
-    // Сохраняем при изменении
-    container.querySelectorAll('select').forEach((select, idx) => {
-        select.addEventListener('change', () => {
-            const newConfig = [];
-            container.querySelectorAll('select').forEach(s => newConfig.push(s.value));
-            localStorage.setItem('capacity_mapping_columns', JSON.stringify(newConfig));
-        });
+    document.getElementById('storageConfigForm')?.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const out = document.getElementById('storageConfigResult');
+        const tpl = document.getElementById('licenseNameTemplate').value.trim().replace(/\.(dat|xml)$/i, '');
+
+        if (!Object.keys(folderStructures).length || !folderStructures.default) {
+            out.innerHTML = '<div class="test-summary failed">❌ Нужна структура хотя бы для default</div>';
+            return;
+        }
+        if (!tpl) {
+            out.innerHTML = '<div class="test-summary failed">❌ Шаблон имени пуст</div>';
+            return;
+        }
+        if (tpl.includes('.')) {
+            out.innerHTML = '<div class="test-summary failed">❌ Шаблон не должен содержать расширение</div>';
+            return;
+        }
+        out.innerHTML = '<div class="text-muted">⏳ Сохранение...</div>';
+        try {
+            const resp = await fetch('/api/storage_config', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    folder_structure: folderStructures,
+                    license_name_template: tpl
+                })
+            });
+            const data = await resp.json();
+            if (resp.ok) {
+                out.innerHTML = '<div class="test-summary success">✅ Настройки сохранены</div>';
+            } else {
+                out.innerHTML = `<div class="test-summary failed">❌ ${data.error || 'Ошибка'}</div>`;
+            }
+        } catch (err) {
+            out.innerHTML = `<div class="test-summary failed">❌ ${err.message}</div>`;
+        }
     });
-}
 
-// Функции сохранения (можно оставить для явного сохранения)
-function saveEsnMappingConfig() {
-    const container = document.getElementById('esnMappingColumnsContainer');
-    if (!container) return;
-    const config = [];
-    container.querySelectorAll('select').forEach(s => config.push(s.value));
-    localStorage.setItem('esn_mapping_columns', JSON.stringify(config));
-    alert('Настройки маппинга ESN сохранены');
-}
+    // ============ БЭКАП ПАПКИ ОПЕРАТОРА / БД ============
 
-function saveCapacityMappingConfig() {
-    const container = document.getElementById('capacityMappingColumnsContainer');
-    if (!container) return;
-    const config = [];
-    container.querySelectorAll('select').forEach(s => config.push(s.value));
-    localStorage.setItem('capacity_mapping_columns', JSON.stringify(config));
-    alert('Настройки маппинга CapacityKey сохранены');
-}
+    document.getElementById('backupOperatorFolderBtn')?.addEventListener('click', async () => {
+        const out = document.getElementById('actionsResult');
+        if (!confirm(`Скопировать папку оператора ${window.operator} в _backup на шаре? Это может занять время.`)) return;
 
-// ========== ПРОВЕРКА ФАЙЛОВ МАППИНГА ==========
-
-// Проверка файлов ESN маппинга
-document.getElementById('checkEsnMappingBtn')?.addEventListener('click', async () => {
-    const modal = document.getElementById('fileCheckModal');
-    const modalTitle = document.getElementById('modalTitle');
-    const modalContent = document.getElementById('fileCheckResult');
-    
-    modalTitle.innerHTML = '📋 Проверка ESN маппинга';
-    modalContent.innerHTML = '<div class="text-muted">⏳ Проверка файлов...</div>';
-    modal.style.display = 'flex';
-    
-    try {
-        const response = await fetch('/api/check_esn_mapping_files');
-        const data = await response.json();
-        
-        if (data.success && data.files) {
-            let html = '<div style="font-size: 0.8rem;">';
-            html += `<p><strong>Путь к папке:</strong> <code>${data.mapping_path}</code></p>`;
-            html += '<table style="width: 100%; border-collapse: collapse; margin-top: 0.5rem;">';
-            html += '<tr><th style="text-align: left; padding: 0.3rem;">Файл</th><th style="text-align: left; padding: 0.3rem;">Статус</th></tr>';
-            
-            for (const file of data.files) {
-                const statusClass = file.exists ? '✅' : '❌';
-                const statusText = file.exists ? 'Найден' : 'Не найден';
-                html += `<tr>
-                    <td style="padding: 0.3rem; border-bottom: 1px solid var(--border-light);"><code>${file.name}</code></td>
-                    <td style="padding: 0.3rem; border-bottom: 1px solid var(--border-light);">${statusClass} ${statusText}</td>
-                </tr>`;
-            }
-            html += '</table>';
-            
-            if (data.missing_count > 0) {
-                html += `<p style="margin-top: 1rem; color: var(--huawei-red);">⚠️ Отсутствует ${data.missing_count} файлов</p>`;
+        out.innerHTML = '<div class="text-muted">⏳ Копирование папки...</div>';
+        try {
+            const resp = await fetch(`/${window.operator}/backup/operator_folder`, { method: 'POST' });
+            const data = await resp.json();
+            if (data.success) {
+                out.innerHTML = `<div class="test-summary success">✅ Скопировано ${data.files_copied} файлов в <code>${data.backup_path}</code></div>`;
             } else {
-                html += `<p style="margin-top: 1rem; color: #10B981;">✅ Все файлы найдены</p>`;
+                out.innerHTML = `<div class="test-summary failed">❌ ${data.error || 'Ошибка'}</div>`;
             }
-            html += '</div>';
-            modalContent.innerHTML = html;
-        } else {
-            modalContent.innerHTML = `<div class="test-summary failed">❌ Ошибка: ${data.error || 'Неизвестная ошибка'}</div>`;
+        } catch (e) {
+            out.innerHTML = `<div class="test-summary failed">❌ ${e.message}</div>`;
         }
-    } catch (error) {
-        modalContent.innerHTML = `<div class="test-summary failed">❌ Ошибка: ${error.message}</div>`;
-    }
-});
+    });
 
-// Проверка файлов описаний CapacityKey
-document.getElementById('checkLicenseDetailsBtn')?.addEventListener('click', async () => {
-    const modal = document.getElementById('fileCheckModal');
-    const modalTitle = document.getElementById('modalTitle');
-    const modalContent = document.getElementById('fileCheckResult');
-    
-    modalTitle.innerHTML = '📋 Проверка файлов описаний CapacityKey';
-    modalContent.innerHTML = '<div class="text-muted">⏳ Проверка файлов...</div>';
-    modal.style.display = 'flex';
-    
-    try {
-        const response = await fetch('/api/check_license_details_files');
-        const data = await response.json();
-        
-        if (data.success && data.files) {
-            let html = '<div style="font-size: 0.8rem;">';
-            html += `<p><strong>Путь к папке:</strong> <code>${data.details_path}</code></p>`;
-            html += '<table style="width: 100%; border-collapse: collapse; margin-top: 0.5rem;">';
-            html += '<tr><th style="text-align: left; padding: 0.3rem;">Файл</th><th style="text-align: left; padding: 0.3rem;">Статус</th></tr>';
-            
-            for (const file of data.files) {
-                const statusClass = file.exists ? '✅' : '❌';
-                const statusText = file.exists ? 'Найден' : 'Не найден';
-                html += `<tr>
-                    <td style="padding: 0.3rem; border-bottom: 1px solid var(--border-light);"><code>${file.name}</code></td>
-                    <td style="padding: 0.3rem; border-bottom: 1px solid var(--border-light);">${statusClass} ${statusText}</td>
-                </tr>`;
+    document.getElementById('backupDbBtn')?.addEventListener('click', async () => {
+        const out = document.getElementById('actionsResult');
+        out.innerHTML = '<div class="text-muted">⏳ Создание бэкапа БД...</div>';
+        try {
+            const resp = await fetch('/backup_db', { method: 'POST' });
+            const data = await resp.json();
+            out.innerHTML = data.success
+                ? `<div class="test-summary success">✅ ${data.message}</div>`
+                : `<div class="test-summary failed">❌ ${data.message || 'Ошибка'}</div>`;
+        } catch (e) {
+            out.innerHTML = `<div class="test-summary failed">❌ ${e.message}</div>`;
+        }
+    });
+
+    // ============ ПЕРЕИМЕНОВАТЬ / РАЗЛОЖИТЬ (3 операции) ============
+
+    let previewState = {
+        'rename': { loaded: false, ok: 0 },
+        'move':   { loaded: false, ok: 0 },
+        'both':   { loaded: false, ok: 0 },
+    };
+
+    function cap(s) { return s.charAt(0).toUpperCase() + s.slice(1); }
+
+    async function runPreview(operation) {
+        const out = document.getElementById('actionsResult');
+        out.innerHTML = `<div class="text-muted">⏳ Расчёт (${operation})...</div>`;
+        document.getElementById(`apply${cap(operation)}Btn`).disabled = true;
+
+        try {
+            const resp = await fetch(`/${window.operator}/reorganize/preview`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ operation }),
+            });
+            const data = await resp.json();
+            if (!data.success) {
+                out.innerHTML = `<div class="test-summary failed">❌ ${data.error || 'Ошибка'}</div>`;
+                return;
             }
-            html += '</table>';
-            
-            if (data.missing_count > 0) {
-                html += `<p style="margin-top: 1rem; color: var(--huawei-red);">⚠️ Отсутствует ${data.missing_count} файлов</p>`;
-            } else {
-                html += `<p style="margin-top: 1rem; color: #10B981;">✅ Все файлы найдены</p>`;
-            }
-            html += '</div>';
-            modalContent.innerHTML = html;
-        } else {
-            modalContent.innerHTML = `<div class="test-summary failed">❌ Ошибка: ${data.error || 'Неизвестная ошибка'}</div>`;
+            out.innerHTML = '';
+            renderReorganizeStats(operation, data.stats);
+            renderReorganizeTable(data.items);
+            previewState[operation] = { loaded: true, ok: data.stats.ok };
+            document.getElementById(`apply${cap(operation)}Btn`).disabled = (data.stats.ok === 0);
+        } catch (e) {
+            out.innerHTML = `<div class="test-summary failed">❌ ${e.message}</div>`;
         }
-    } catch (error) {
-        modalContent.innerHTML = `<div class="test-summary failed">❌ Ошибка: ${error.message}</div>`;
     }
-});
 
-// Закрытие модального окна
-document.getElementById('modalCloseBtn')?.addEventListener('click', () => {
-    document.getElementById('fileCheckModal').style.display = 'none';
-});
-
-// Инициализация
-renderEsnMappingColumns();
-renderCapacityMappingColumns();
-
-// Обработчики кнопок сохранения
-document.getElementById('saveEsnMappingConfigBtn')?.addEventListener('click', saveEsnMappingConfig);
-document.getElementById('saveCapacityMappingConfigBtn')?.addEventListener('click', saveCapacityMappingConfig);
-
-// Переход к страницам
-document.getElementById('configureEsnMappingBtn')?.addEventListener('click', () => {
-    const operator = window.operator || 'mts';
-    window.location.href = `/${operator}/esn_mapping`;
-});
-
-document.getElementById('configureLicenseDetailsBtn')?.addEventListener('click', () => {
-    window.location.href = '/capacity_keys_mapping';
-});
-
-
-// ========== НОВАЯ СИСТЕМА ТЕСТИРОВАНИЯ ==========
-
-let allCategories = [];
-let currentResults = {}; // { testId: { status: true/false, message: '...' } }
-
-// Загрузка списка тестов
-async function loadTestList() {
-    const container = document.getElementById('testCategories');
-    container.innerHTML = '<div class="text-muted" style="text-align: center; padding: 2rem;">⏳ Загрузка списка тестов...</div>';
-    
-    try {
-        const resp = await fetch('/api/tests/list');
-        const data = await resp.json();
-        
-        if (data.success && data.categories) {
-            allCategories = data.categories;
-            currentResults = {};
-            renderTestCategories(data.categories);
-        } else {
-            container.innerHTML = '<div class="test-summary failed">❌ Ошибка загрузки списка тестов</div>';
-        }
-    } catch (e) {
-        container.innerHTML = `<div class="test-summary failed">❌ Ошибка: ${e.message}</div>`;
-    }
-}
-
-// Отрисовка категорий тестов
-function renderTestCategories(categories) {
-    const container = document.getElementById('testCategories');
-    
-    let html = '';
-    categories.forEach(cat => {
-        const testCount = cat.tests.length;
-        const catId = cat.id;
-        
-        html += `
-            <div class="test-category-card" style="margin-bottom: 0.75rem; border: 1px solid var(--border-light); border-radius: var(--radius-md); overflow: hidden;">
-                <!-- Заголовок категории -->
-                <div class="test-category-header" style="display: flex; justify-content: space-between; align-items: center; padding: 0.6rem 1rem; background: var(--bg-secondary); cursor: pointer;" onclick="toggleCategory('${catId}')">
-                    <div style="display: flex; align-items: center; gap: 0.5rem;">
-                        <span>${cat.icon}</span>
-                        <strong>${cat.name}</strong>
-                        <span class="badge" style="background: var(--bg-tertiary);">${testCount}</span>
-                        <span id="cat-result-${catId}" style="font-size: 0.75rem; display: none;"></span>
-                    </div>
-                    <div style="display: flex; gap: 0.5rem; align-items: center;">
-                        <button class="secondary-btn" style="font-size: 0.7rem; padding: 0.25rem 0.5rem;" onclick="event.stopPropagation(); runCategoryTests('${catId}')">▶️ Запустить</button>
-                        <span id="cat-arrow-${catId}" style="transition: transform 0.2s;">▶</span>
-                    </div>
-                </div>
-                
-                <!-- Тело категории (скрыто по умолчанию) -->
-                <div id="cat-body-${catId}" class="test-category-body" style="display: none;">
-                    ${cat.tests.map(test => `
-                        <div class="test-row" id="test-row-${test.id}" style="display: flex; justify-content: space-between; align-items: center; padding: 0.4rem 1rem; border-bottom: 1px solid var(--border-light); transition: background 0.2s;">
-                            <div style="flex: 1; display: flex; align-items: center; gap: 0.5rem;">
-                                <span id="test-icon-${test.id}" style="font-size: 0.9rem; width: 20px; text-align: center;">⬜</span>
-                                <span style="font-size: 0.8rem;">${test.name}</span>
-                                <span id="test-msg-${test.id}" style="font-size: 0.7rem; color: var(--text-muted); display: none;"></span>
-                            </div>
-                            <div style="display: flex; gap: 0.5rem; align-items: center;">
-                                <span id="test-time-${test.id}" style="font-size: 0.65rem; color: var(--text-muted); min-width: 40px; text-align: right;"></span>
-                                <button class="secondary-btn" style="font-size: 0.65rem; padding: 0.2rem 0.5rem;" onclick="event.stopPropagation(); runSingleTest('${test.id}')">▶️</button>
-                            </div>
-                        </div>
-                    `).join('')}
-                </div>
+    function renderReorganizeStats(operation, stats) {
+        const el = document.getElementById('reorganizeStats');
+        el.innerHTML = `
+            <div class="info-card" style="font-size:0.8rem;">
+                Операция: <strong>${operation}</strong> &nbsp;|&nbsp;
+                Всего: <strong>${stats.total}</strong> &nbsp;|&nbsp;
+                Готово: <strong style="color:#10B981;">${stats.ok}</strong> &nbsp;|&nbsp;
+                Пропущено: <strong style="color:var(--text-muted);">${stats.skip}</strong> &nbsp;|&nbsp;
+                Конфликты: <strong style="color:#F59E0B;">${stats.conflict}</strong> &nbsp;|&nbsp;
+                Ошибки: <strong style="color:var(--huawei-red);">${stats.error}</strong>
             </div>
         `;
-    });
-    
-    container.innerHTML = html;
-}
-
-// Сворачивание/разворачивание категории
-function toggleCategory(catId) {
-    const body = document.getElementById(`cat-body-${catId}`);
-    const arrow = document.getElementById(`cat-arrow-${catId}`);
-    
-    if (!body || !arrow) return;
-    
-    if (body.style.display === 'none') {
-        body.style.display = 'block';
-        arrow.textContent = '▼';
-    } else {
-        body.style.display = 'none';
-        arrow.textContent = '▶';
     }
-}
 
-// Обновление статуса одного теста в строке
-function updateTestRow(testId, status, message, time) {
-    const row = document.getElementById(`test-row-${testId}`);
-    const icon = document.getElementById(`test-icon-${testId}`);
-    const msg = document.getElementById(`test-msg-${testId}`);
-    const timeEl = document.getElementById(`test-time-${testId}`);
-    
-    if (!row || !icon) return;
-    
-    currentResults[testId] = { status, message, time };
-    
-    if (status) {
-        icon.textContent = '✅';
-        row.style.background = '#f0fff4';
-    } else {
-        icon.textContent = '❌';
-        row.style.background = '#fff5f5';
+    function renderReorganizeTable(items) {
+        const wrap = document.getElementById('reorganizeTableWrapper');
+        const body = document.getElementById('reorganizeTableBody');
+        wrap.classList.remove('hidden');
+        const colorByStatus = {
+            ok: '#10B981', skip: 'var(--text-muted)',
+            conflict: '#F59E0B', error: 'var(--huawei-red)',
+        };
+        body.innerHTML = items.map((it, idx) => `
+            <tr>
+                <td>${idx + 1}</td>
+                <td><code>${it.lsn || '—'}</code></td>
+                <td style="word-break:break-all; font-size:0.7rem;">${it.old_path || '—'}</td>
+                <td style="word-break:break-all; font-size:0.7rem;">${it.new_path || '—'}</td>
+                <td style="color:${colorByStatus[it.status] || 'inherit'};">${it.status}${it.reason ? ': ' + it.reason : ''}</td>
+            </tr>
+        `).join('');
     }
-    
-    // Показываем сообщение всегда (и для успеха, и для ошибки)
-    if (msg && message) {
-        const shortMsg = message.length > 100 ? message.substring(0, 100) + '...' : message;
-        msg.textContent = shortMsg;
-        msg.style.display = 'inline';
-        msg.style.color = status ? 'var(--text-muted)' : 'var(--huawei-red)';
-    }
-    
-    if (timeEl && time !== undefined) {
-        timeEl.textContent = time.toFixed(2) + 'с';
-    }
-}
 
-// Обновление сводки категории
-function updateCategorySummary(catId) {
-    const cat = allCategories.find(c => c.id === catId);
-    if (!cat) return;
-    
-    const resultEl = document.getElementById(`cat-result-${catId}`);
-    if (!resultEl) return;
-    
-    let passed = 0;
-    let failed = 0;
-    let total = 0;
-    
-    cat.tests.forEach(test => {
-        const r = currentResults[test.id];
-        if (r) {
-            total++;
-            if (r.status) passed++;
-            else failed++;
-        }
-    });
-    
-    if (total > 0) {
-        resultEl.style.display = 'inline';
-        if (failed === 0) {
-            resultEl.innerHTML = `<span style="color: #10B981;">✅ ${passed}/${cat.tests.length}</span>`;
-        } else {
-            resultEl.innerHTML = `<span style="color: var(--huawei-red);">❌ ${passed}/${cat.tests.length} (${failed} ошибок)</span>`;
-        }
-    } else {
-        resultEl.style.display = 'none';
-    }
-}
+    async function runApply(operation) {
+        if (!previewState[operation].loaded) return;
 
-// Сброс всех статусов
-function resetAllStatuses() {
-    currentResults = {};
-    
-    document.querySelectorAll('[id^="test-icon-"]').forEach(el => {
-        el.textContent = '⬜';
-    });
-    document.querySelectorAll('[id^="test-msg-"]').forEach(el => {
-        el.style.display = 'none';
-    });
-    document.querySelectorAll('[id^="test-time-"]').forEach(el => {
-        el.textContent = '';
-    });
-    document.querySelectorAll('[id^="test-row-"]').forEach(el => {
-        el.style.background = '';
-    });
-    document.querySelectorAll('[id^="cat-result-"]').forEach(el => {
-        el.style.display = 'none';
-    });
-    
-    document.getElementById('testSummary')?.classList.add('hidden');
-}
+        const copyMode = document.getElementById('copyModeCheckbox').checked;
+        const verb = copyMode ? 'СКОПИРОВАТЬ' : 'ПЕРЕМЕСТИТЬ';
+        const label = { rename: 'переименовать', move: 'разложить', both: 'переименовать и разложить' }[operation];
+        if (!confirm(`${verb} файлы (${label})? Это займёт время.`)) return;
 
-// Прогресс-бар
-function showProgress(current, total) {
-    const container = document.getElementById('testProgressContainer');
-    if (!container) return;
-    container.classList.remove('hidden');
-    const pct = total > 0 ? Math.round((current / total) * 100) : 0;
-    document.getElementById('testProgressBar').style.width = pct + '%';
-    document.getElementById('testProgressLabel').textContent = `Прогресс: ${current}/${total}`;
-    document.getElementById('testProgressPercent').textContent = pct + '%';
-}
+        const out = document.getElementById('actionsResult');
+        out.innerHTML = `<div class="text-muted">⏳ ${verb} (${label})...</div>`;
+        document.getElementById(`apply${cap(operation)}Btn`).disabled = true;
 
-function hideProgress() {
-    const container = document.getElementById('testProgressContainer');
-    if (container) container.classList.add('hidden');
-}
-
-// Сводка вверху
-function showSummary(passed, total, failed, duration) {
-    const container = document.getElementById('testSummary');
-    if (!container) return;
-    container.classList.remove('hidden');
-    container.className = failed === 0 ? 'test-summary success' : 'test-summary failed';
-    container.innerHTML = failed === 0 
-        ? `✅ Все тесты пройдены! (${passed}/${total}) за ${duration} сек.`
-        : `❌ Пройдено ${passed}/${total}. Ошибок: ${failed} за ${duration} сек.`;
-}
-
-// Запуск одного теста
-async function runSingleTest(testId) {
-    const btn = event?.target;
-    if (btn) { btn.disabled = true; btn.textContent = '⏳'; }
-    
-    const startTime = performance.now();
-    
-    // Показываем что тест выполняется
-    const icon = document.getElementById(`test-icon-${testId}`);
-    if (icon) icon.textContent = '⏳';
-    
-    try {
-        const resp = await fetch('/api/tests/run', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ test_name: testId })
-        });
-        const data = await resp.json();
-        const elapsed = (performance.now() - startTime) / 1000;
-        
-        if (data.results && data.results.length > 0) {
-            const r = data.results[0];
-            updateTestRow(testId, r.status, r.message, elapsed);
-        } else {
-            updateTestRow(testId, false, 'Нет результата', elapsed);
-        }
-        
-        // Обновляем сводку категории
-        for (const cat of allCategories) {
-            if (cat.tests.some(t => t.id === testId)) {
-                updateCategorySummary(cat.id);
-                // Автоматически раскрываем категорию
-                const body = document.getElementById(`cat-body-${cat.id}`);
-                if (body) body.style.display = 'block';
-                const arrow = document.getElementById(`cat-arrow-${cat.id}`);
-                if (arrow) arrow.textContent = '▼';
-                break;
+        try {
+            const resp = await fetch(`/${window.operator}/reorganize/apply`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ operation, copy_mode: copyMode }),
+            });
+            const data = await resp.json();
+            if (!data.success) {
+                out.innerHTML = `<div class="test-summary failed">❌ ${data.error || 'Ошибка'}</div>`;
+                return;
             }
+            const verbDone = data.copy_mode ? 'скопировано' : 'перемещено';
+            out.innerHTML = `<div class="test-summary success">
+                ✅ Готово (${data.operation}): ${verbDone} <strong>${data.moved}</strong>,
+                пропущено <strong>${data.skipped}</strong>,
+                конфликтов <strong>${data.conflicts}</strong>,
+                ошибок <strong>${data.errors}</strong>.
+            </div>`;
+            previewState[operation] = { loaded: false, ok: 0 };
+        } catch (e) {
+            out.innerHTML = `<div class="test-summary failed">❌ ${e.message}</div>`;
         }
-        
-    } catch (e) {
-        const elapsed = (performance.now() - startTime) / 1000;
-        updateTestRow(testId, false, e.message, elapsed);
-    } finally {
-        if (btn) { btn.disabled = false; btn.textContent = '▶️'; }
     }
-}
 
-// Запуск категории тестов
-async function runCategoryTests(catId) {
-    const category = allCategories.find(c => c.id === catId);
-    if (!category) return;
-    
-    // Раскрываем категорию
-    const body = document.getElementById(`cat-body-${catId}`);
-    if (body) body.style.display = 'block';
-    const arrow = document.getElementById(`cat-arrow-${catId}`);
-    if (arrow) arrow.textContent = '▼';
-    
-    // Сбрасываем статусы в категории
-    category.tests.forEach(test => {
-        const icon = document.getElementById(`test-icon-${test.id}`);
-        if (icon) icon.textContent = '⏳';
-        const msg = document.getElementById(`test-msg-${test.id}`);
-        if (msg) msg.style.display = 'none';
-        const row = document.getElementById(`test-row-${test.id}`);
-        if (row) row.style.background = '';
-    });
-    const catResult = document.getElementById(`cat-result-${catId}`);
-    if (catResult) catResult.style.display = 'none';
-    
-    // Очищаем старые результаты
-    category.tests.forEach(t => delete currentResults[t.id]);
-    
-    const total = category.tests.length;
-    let passed = 0;
-    let failed = 0;
-    showProgress(0, total);
-    
-    for (let i = 0; i < category.tests.length; i++) {
-        const test = category.tests[i];
+    document.getElementById('previewRenameBtn')?.addEventListener('click', () => runPreview('rename'));
+    document.getElementById('previewMoveBtn')?.addEventListener('click', () => runPreview('move'));
+    document.getElementById('previewBothBtn')?.addEventListener('click', () => runPreview('both'));
+
+    document.getElementById('applyRenameBtn')?.addEventListener('click', () => runApply('rename'));
+    document.getElementById('applyMoveBtn')?.addEventListener('click', () => runApply('move'));
+    document.getElementById('applyBothBtn')?.addEventListener('click', () => runApply('both'));
+
+    // ============ СИСТЕМА ТЕСТИРОВАНИЯ ============
+    let allCategories = [];
+    let currentResults = {};
+
+    async function loadTestList() {
+        const container = document.getElementById('testCategories');
+        container.innerHTML = '<div class="text-muted" style="text-align: center; padding: 2rem;">⏳ Загрузка списка тестов...</div>';
+        try {
+            const resp = await fetch('/api/tests/list');
+            const data = await resp.json();
+            if (data.success && data.categories) {
+                allCategories = data.categories;
+                currentResults = {};
+                renderTestCategories(data.categories);
+            } else {
+                container.innerHTML = '<div class="test-summary failed">❌ Ошибка загрузки списка тестов</div>';
+            }
+        } catch (e) {
+            container.innerHTML = `<div class="test-summary failed">❌ Ошибка: ${e.message}</div>`;
+        }
+    }
+
+    function renderTestCategories(categories) {
+        const container = document.getElementById('testCategories');
+        let html = '';
+        categories.forEach(cat => {
+            const testCount = cat.tests.length;
+            const catId = cat.id;
+            html += `
+                <div class="test-category-card" style="margin-bottom: 0.75rem; border: 1px solid var(--border-light); border-radius: var(--radius-md); overflow: hidden;">
+                    <div class="test-category-header" style="display: flex; justify-content: space-between; align-items: center; padding: 0.6rem 1rem; background: var(--bg-secondary); cursor: pointer;" onclick="toggleCategory('${catId}')">
+                        <div style="display: flex; align-items: center; gap: 0.5rem;">
+                            <span>${cat.icon}</span>
+                            <strong>${cat.name}</strong>
+                            <span class="badge" style="background: var(--bg-tertiary);">${testCount}</span>
+                            <span id="cat-result-${catId}" style="font-size: 0.75rem; display: none;"></span>
+                        </div>
+                        <div style="display: flex; gap: 0.5rem; align-items: center;">
+                            <button class="secondary-btn" style="font-size: 0.7rem; padding: 0.25rem 0.5rem;" onclick="event.stopPropagation(); runCategoryTests('${catId}')">▶️ Запустить</button>
+                            <span id="cat-arrow-${catId}" style="transition: transform 0.2s;">▶</span>
+                        </div>
+                    </div>
+                    <div id="cat-body-${catId}" class="test-category-body" style="display: none;">
+                        ${cat.tests.map(test => `
+                            <div class="test-row" id="test-row-${test.id}" style="display: flex; justify-content: space-between; align-items: center; padding: 0.4rem 1rem; border-bottom: 1px solid var(--border-light); transition: background 0.2s;">
+                                <div style="flex: 1; display: flex; align-items: center; gap: 0.5rem;">
+                                    <span id="test-icon-${test.id}" style="font-size: 0.9rem; width: 20px; text-align: center;">⬜</span>
+                                    <span style="font-size: 0.8rem;">${test.name}</span>
+                                    <span id="test-msg-${test.id}" style="font-size: 0.7rem; color: var(--text-muted); display: none;"></span>
+                                </div>
+                                <div style="display: flex; gap: 0.5rem; align-items: center;">
+                                    <span id="test-time-${test.id}" style="font-size: 0.65rem; color: var(--text-muted); min-width: 40px; text-align: right;"></span>
+                                    <button class="secondary-btn" style="font-size: 0.65rem; padding: 0.2rem 0.5rem;" onclick="event.stopPropagation(); runSingleTest('${test.id}')">▶️</button>
+                                </div>
+                            </div>
+                        `).join('')}
+                    </div>
+                </div>
+            `;
+        });
+        container.innerHTML = html;
+    }
+
+    function toggleCategory(catId) {
+        const body = document.getElementById(`cat-body-${catId}`);
+        const arrow = document.getElementById(`cat-arrow-${catId}`);
+        if (!body || !arrow) return;
+        if (body.style.display === 'none') {
+            body.style.display = 'block';
+            arrow.textContent = '▼';
+        } else {
+            body.style.display = 'none';
+            arrow.textContent = '▶';
+        }
+    }
+
+    function updateTestRow(testId, status, message, time) {
+        const row = document.getElementById(`test-row-${testId}`);
+        const icon = document.getElementById(`test-icon-${testId}`);
+        const msg = document.getElementById(`test-msg-${testId}`);
+        const timeEl = document.getElementById(`test-time-${testId}`);
+        if (!row || !icon) return;
+        currentResults[testId] = { status, message, time };
+        if (status) {
+            icon.textContent = '✅';
+            row.style.background = '#f0fff4';
+        } else {
+            icon.textContent = '❌';
+            row.style.background = '#fff5f5';
+        }
+        if (msg && message) {
+            const shortMsg = message.length > 100 ? message.substring(0, 100) + '...' : message;
+            msg.textContent = shortMsg;
+            msg.style.display = 'inline';
+            msg.style.color = status ? 'var(--text-muted)' : 'var(--huawei-red)';
+        }
+        if (timeEl && time !== undefined) {
+            timeEl.textContent = time.toFixed(2) + 'с';
+        }
+    }
+
+    function updateCategorySummary(catId) {
+        const cat = allCategories.find(c => c.id === catId);
+        if (!cat) return;
+        const resultEl = document.getElementById(`cat-result-${catId}`);
+        if (!resultEl) return;
+        let passed = 0, failed = 0, total = 0;
+        cat.tests.forEach(test => {
+            const r = currentResults[test.id];
+            if (r) {
+                total++;
+                if (r.status) passed++;
+                else failed++;
+            }
+        });
+        if (total > 0) {
+            resultEl.style.display = 'inline';
+            if (failed === 0) {
+                resultEl.innerHTML = `<span style="color: #10B981;">✅ ${passed}/${cat.tests.length}</span>`;
+            } else {
+                resultEl.innerHTML = `<span style="color: var(--huawei-red);">❌ ${passed}/${cat.tests.length} (${failed} ошибок)</span>`;
+            }
+        } else {
+            resultEl.style.display = 'none';
+        }
+    }
+
+    function resetAllStatuses() {
+        currentResults = {};
+        document.querySelectorAll('[id^="test-icon-"]').forEach(el => el.textContent = '⬜');
+        document.querySelectorAll('[id^="test-msg-"]').forEach(el => el.style.display = 'none');
+        document.querySelectorAll('[id^="test-time-"]').forEach(el => el.textContent = '');
+        document.querySelectorAll('[id^="test-row-"]').forEach(el => el.style.background = '');
+        document.querySelectorAll('[id^="cat-result-"]').forEach(el => el.style.display = 'none');
+        document.getElementById('testSummary')?.classList.add('hidden');
+    }
+
+    function showProgress(current, total) {
+        const container = document.getElementById('testProgressContainer');
+        if (!container) return;
+        container.classList.remove('hidden');
+        const pct = total > 0 ? Math.round((current / total) * 100) : 0;
+        document.getElementById('testProgressBar').style.width = pct + '%';
+        document.getElementById('testProgressLabel').textContent = `Прогресс: ${current}/${total}`;
+        document.getElementById('testProgressPercent').textContent = pct + '%';
+    }
+
+    function hideProgress() {
+        const container = document.getElementById('testProgressContainer');
+        if (container) container.classList.add('hidden');
+    }
+
+    function showSummary(passed, total, failed, duration) {
+        const container = document.getElementById('testSummary');
+        if (!container) return;
+        container.classList.remove('hidden');
+        container.className = failed === 0 ? 'test-summary success' : 'test-summary failed';
+        container.innerHTML = failed === 0
+            ? `✅ Все тесты пройдены! (${passed}/${total}) за ${duration} сек.`
+            : `❌ Пройдено ${passed}/${total}. Ошибок: ${failed} за ${duration} сек.`;
+    }
+
+    async function runSingleTest(testId) {
+        const btn = event?.target;
+        if (btn) { btn.disabled = true; btn.textContent = '⏳'; }
         const startTime = performance.now();
-        
+        const icon = document.getElementById(`test-icon-${testId}`);
+        if (icon) icon.textContent = '⏳';
         try {
             const resp = await fetch('/api/tests/run', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ test_name: test.id })
+                body: JSON.stringify({ test_name: testId })
             });
             const data = await resp.json();
             const elapsed = (performance.now() - startTime) / 1000;
-            
             if (data.results && data.results.length > 0) {
                 const r = data.results[0];
-                updateTestRow(test.id, r.status, r.message, elapsed);
-                r.status ? passed++ : failed++;
+                updateTestRow(testId, r.status, r.message, elapsed);
             } else {
-                updateTestRow(test.id, false, 'Нет результата', elapsed);
-                failed++;
+                updateTestRow(testId, false, 'Нет результата', elapsed);
+            }
+            for (const cat of allCategories) {
+                if (cat.tests.some(t => t.id === testId)) {
+                    updateCategorySummary(cat.id);
+                    const body = document.getElementById(`cat-body-${cat.id}`);
+                    if (body) body.style.display = 'block';
+                    const arrow = document.getElementById(`cat-arrow-${cat.id}`);
+                    if (arrow) arrow.textContent = '▼';
+                    break;
+                }
             }
         } catch (e) {
             const elapsed = (performance.now() - startTime) / 1000;
-            updateTestRow(test.id, false, e.message, elapsed);
-            failed++;
+            updateTestRow(testId, false, e.message, elapsed);
+        } finally {
+            if (btn) { btn.disabled = false; btn.textContent = '▶️'; }
         }
-        
-        showProgress(i + 1, total);
     }
-    
-    updateCategorySummary(catId);
-    hideProgress();
-    showSummary(passed, total, failed, 0);
-}
 
-// Запуск всех тестов
-document.getElementById('runAllTestsBtn')?.addEventListener('click', async function() {
-    const btn = this;
-    btn.disabled = true;
-    btn.textContent = '⏳ Выполнение всех тестов...';
-    
-    resetAllStatuses();
-    
-    // Раскрываем все категории
-    allCategories.forEach(cat => {
-        const body = document.getElementById(`cat-body-${cat.id}`);
+    async function runCategoryTests(catId) {
+        const category = allCategories.find(c => c.id === catId);
+        if (!category) return;
+        const body = document.getElementById(`cat-body-${catId}`);
         if (body) body.style.display = 'block';
-        const arrow = document.getElementById(`cat-arrow-${cat.id}`);
+        const arrow = document.getElementById(`cat-arrow-${catId}`);
         if (arrow) arrow.textContent = '▼';
-        // Ставим ⏳ всем тестам
-        cat.tests.forEach(test => {
+        category.tests.forEach(test => {
             const icon = document.getElementById(`test-icon-${test.id}`);
             if (icon) icon.textContent = '⏳';
+            const msg = document.getElementById(`test-msg-${test.id}`);
+            if (msg) msg.style.display = 'none';
+            const row = document.getElementById(`test-row-${test.id}`);
+            if (row) row.style.background = '';
         });
-    });
-    
-    hideProgress();
-    
-    try {
-        const resp = await fetch('/run_tests', { 
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' }
-        });
-        const data = await resp.json();
-        
-        showSummary(data.passed, data.total, data.failed, data.duration);
-        
-        if (data.results) {
-            data.results.forEach(r => {
-                // Ищем testId по имени
-                for (const cat of allCategories) {
-                    const test = cat.tests.find(t => t.name === r.name);
-                    if (test) {
-                        updateTestRow(test.id, r.status, r.message, data.duration);
-                        break;
-                    }
+        const catResult = document.getElementById(`cat-result-${catId}`);
+        if (catResult) catResult.style.display = 'none';
+        category.tests.forEach(t => delete currentResults[t.id]);
+        const total = category.tests.length;
+        let passed = 0, failed = 0;
+        showProgress(0, total);
+        for (let i = 0; i < category.tests.length; i++) {
+            const test = category.tests[i];
+            const startTime = performance.now();
+            try {
+                const resp = await fetch('/api/tests/run', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ test_name: test.id })
+                });
+                const data = await resp.json();
+                const elapsed = (performance.now() - startTime) / 1000;
+                if (data.results && data.results.length > 0) {
+                    const r = data.results[0];
+                    updateTestRow(test.id, r.status, r.message, elapsed);
+                    r.status ? passed++ : failed++;
+                } else {
+                    updateTestRow(test.id, false, 'Нет результата', elapsed);
+                    failed++;
                 }
-            });
-            
-            // Обновляем сводки всех категорий
-            allCategories.forEach(cat => updateCategorySummary(cat.id));
+            } catch (e) {
+                const elapsed = (performance.now() - startTime) / 1000;
+                updateTestRow(test.id, false, e.message, elapsed);
+                failed++;
+            }
+            showProgress(i + 1, total);
         }
-        
-    } catch(e) {
-        showSummary(0, 0, 1, 0);
-        document.getElementById('testSummary').innerHTML = `<div class="test-summary failed">❌ ${e.message}</div>`;
-    } finally {
-        btn.disabled = false;
-        btn.textContent = '▶️ Запустить все тесты';
+        updateCategorySummary(catId);
+        hideProgress();
+        showSummary(passed, total, failed, 0);
     }
-});
 
-// Обновление списка
-document.getElementById('refreshTestListBtn')?.addEventListener('click', () => {
-    resetAllStatuses();
-    hideProgress();
-    loadTestList();
-});
-
-// Загрузка списка при открытии вкладки
-document.querySelector('[data-tab="testing"]')?.addEventListener('click', () => {
-    if (allCategories.length === 0) loadTestList();
-});
-
-// Автозагрузка если вкладка активна по умолчанию
-if (document.getElementById('tab-testing')?.classList.contains('active')) {
-    loadTestList();
-}
-
-// Кнопка раскрытия/скрытия всех категорий
-let allExpanded = false;
-
-document.getElementById('toggleAllBtn')?.addEventListener('click', function() {
-    allExpanded = !allExpanded;
-    this.textContent = allExpanded ? '📁 Скрыть всё' : '📂 Раскрыть всё';
-    
-    allCategories.forEach(cat => {
-        const body = document.getElementById(`cat-body-${cat.id}`);
-        const arrow = document.getElementById(`cat-arrow-${cat.id}`);
-        
-        if (body) {
-            body.style.display = allExpanded ? 'block' : 'none';
-        }
-        if (arrow) {
-            arrow.textContent = allExpanded ? '▼' : '▶';
+    document.getElementById('runAllTestsBtn')?.addEventListener('click', async function() {
+        const btn = this;
+        btn.disabled = true;
+        btn.textContent = '⏳ Выполнение всех тестов...';
+        resetAllStatuses();
+        allCategories.forEach(cat => {
+            const body = document.getElementById(`cat-body-${cat.id}`);
+            if (body) body.style.display = 'block';
+            const arrow = document.getElementById(`cat-arrow-${cat.id}`);
+            if (arrow) arrow.textContent = '▼';
+            cat.tests.forEach(test => {
+                const icon = document.getElementById(`test-icon-${test.id}`);
+                if (icon) icon.textContent = '⏳';
+            });
+        });
+        hideProgress();
+        try {
+            const resp = await fetch('/run_tests', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' }
+            });
+            const data = await resp.json();
+            showSummary(data.passed, data.total, data.failed, data.duration);
+            if (data.results) {
+                data.results.forEach(r => {
+                    for (const cat of allCategories) {
+                        const test = cat.tests.find(t => t.name === r.name);
+                        if (test) {
+                            updateTestRow(test.id, r.status, r.message, data.duration);
+                            break;
+                        }
+                    }
+                });
+                allCategories.forEach(cat => updateCategorySummary(cat.id));
+            }
+        } catch(e) {
+            showSummary(0, 0, 1, 0);
+            document.getElementById('testSummary').innerHTML = `<div class="test-summary failed">❌ ${e.message}</div>`;
+        } finally {
+            btn.disabled = false;
+            btn.textContent = '▶️ Запустить все тесты';
         }
     });
-});
+
+    document.getElementById('refreshTestListBtn')?.addEventListener('click', () => {
+        resetAllStatuses();
+        hideProgress();
+        loadTestList();
+    });
+
+    document.querySelector('[data-tab="testing"]')?.addEventListener('click', () => {
+        if (allCategories.length === 0) loadTestList();
+    });
+
+    if (document.getElementById('tab-testing')?.classList.contains('active')) {
+        loadTestList();
+    }
+
+    let allExpanded = false;
+    document.getElementById('toggleAllBtn')?.addEventListener('click', function() {
+        allExpanded = !allExpanded;
+        this.textContent = allExpanded ? '📁 Скрыть всё' : '📂 Раскрыть всё';
+        allCategories.forEach(cat => {
+            const body = document.getElementById(`cat-body-${cat.id}`);
+            const arrow = document.getElementById(`cat-arrow-${cat.id}`);
+            if (body) body.style.display = allExpanded ? 'block' : 'none';
+            if (arrow) arrow.textContent = allExpanded ? '▼' : '▶';
+        });
+    });
 
 </script>
 {% endblock %}

@@ -17,7 +17,12 @@
       "local_scan_path": "D:\\_Beeline\\_Licenses\\_All Licenses",
       "incoming_folder": "D:/Incoming/MTS",
       "mapping_file": "mts_esn_mapping.xlsx",
-      "folder_structure": ["ne_type", "city", "site", "year"]
+      "folder_structure": [
+        "ne_type",
+        "city",
+        "site",
+        "year"
+      ]
     },
     {
       "name": "beeline",
@@ -25,8 +30,34 @@
       "local_scan_path": "D:\\_Beeline\\_Licenses\\_All Licenses",
       "incoming_folder": "D:/Incoming/Beeline",
       "mapping_file": "beeline_esn_mapping.xlsx",
-      "folder_structure": ["ne_type", "city", "site", "year"]
+      "folder_structure": [
+        "ne_type",
+        "city",
+        "site",
+        "year"
+      ]
     }
   ],
-  "folder_structure": ["operator", "ne_type", "city", "site", "year"]
+  "folder_structure": {
+    "default": [
+      "operator",
+      "ne_type",
+      "city",
+      "site",
+      "year"
+    ]
+  },
+  "esn_mapping_config": {
+    "columns": {
+      "esn": "A",
+      "lsn": "B",
+      "operator": "C",
+      "domain": "D",
+      "ne_type": "E",
+      "city": "F",
+      "site": "G"
+    },
+    "has_header": true
+  },
+  "license_name_template": "LIC{ne_type}_{version}_{city}_{site}_{year}{operator}{year}"
 }

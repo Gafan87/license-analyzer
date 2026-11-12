@@ -1,0 +1,96 @@
+{% extends "base.html" %}
+
+{% block title %}Маппинг — {{ current_operator_title }}{% endblock %}
+
+{% block extra_css %}
+{{ super() }}
+<style>
+/* ========== ВЕРХНИЕ ВКЛАДКИ (закладки) ========== */
+.mapping-top-tabs {
+    display: flex;
+    gap: 0;
+    border-bottom: 2px solid var(--border-light);
+    margin-bottom: 1.5rem;
+    flex-wrap: wrap;
+}
+
+.mapping-top-tab {
+    position: relative;
+    background: transparent;
+    border: none;
+    border-bottom: 3px solid transparent;
+    padding: 0.75rem 1.4rem;
+    font-size: 0.9rem;
+    font-weight: 600;
+    cursor: pointer;
+    color: var(--text-muted);
+    transition: var(--transition);
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin-bottom: -2px;          /* прижимаем к нижней полосе */
+    border-radius: 0;
+    white-space: nowrap;
+}
+
+.mapping-top-tab:hover {
+    color: var(--text-primary);
+    background: var(--bg-secondary);
+}
+
+.mapping-top-tab.active {
+    color: var(--huawei-red);
+    border-bottom-color: var(--huawei-red);
+    background: transparent;
+}
+
+.mapping-top-tab.active::after {
+    content: '';
+    position: absolute;
+    left: 0; right: 0; bottom: -2px;
+    height: 2px;
+    background: var(--huawei-red);
+}
+
+/* Контент вкладок */
+.mapping-top-pane { display: none; }
+.mapping-top-pane.active { display: block; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="card">
+    <h1>🗂️ Маппинг — {{ current_operator_title }}</h1>
+
+    <div class="mapping-top-tabs" role="tablist">
+        <button class="mapping-top-tab active" data-top-tab="targets" role="tab">
+            📊 Цели и Sharing
+        </button>
+        <button class="mapping-top-tab" data-top-tab="esn" role="tab">
+            🗺️ ESN_mapping
+        </button>
+    </div>
+
+    <div class="mapping-top-pane active" id="top-pane-targets">
+        {% include "mapping_targets.html" %}
+    </div>
+
+    <div class="mapping-top-pane" id="top-pane-esn">
+        {% include "mapping_esn.html" %}
+    </div>
+</div>
+
+<script>
+document.querySelectorAll('.mapping-top-tab').forEach(btn => {
+    btn.addEventListener('click', () => {
+        document.querySelectorAll('.mapping-top-tab').forEach(b => b.classList.remove('active'));
+        document.querySelectorAll('.mapping-top-pane').forEach(p => p.classList.remove('active'));
+        btn.classList.add('active');
+        document.getElementById('top-pane-' + btn.dataset.topTab).classList.add('active');
+        location.hash = 'top-' + btn.dataset.topTab;
+    });
+});
+const h = location.hash.replace('#top-', '');
+if (h) document.querySelector(`.mapping-top-tab[data-top-tab="${h}"]`)?.click();
+</script>
+{% endblock %}
