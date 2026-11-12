@@ -561,12 +561,6 @@ def clear_cache():
     _ne_type_mapping_cache = None
 
 
-def reload_mapping():
-    """Принудительная перезагрузка маппинга NE Type"""
-    global _ne_type_mapping_cache
-    _ne_type_mapping_cache = None
-    return load_ne_type_mapping()
-
 def load_targets_from_excel(file_path, operator_name=None):
     """
     Загружает вкладку 'Targets' из targets.xlsx.

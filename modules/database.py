@@ -17,8 +17,10 @@ def set_db_path(path):
     _DB_PATH = path
     logger.info(f"Путь к БД установлен: {path}")
 
-def get_db_path():
-    """Возвращает текущий путь к файлу БД"""
+def get_db_path(operator=None):
+    """Возвращает текущий путь к БД или legacy-путь для конкретного оператора"""
+    if operator and operator not in ('test', 'all'):
+        return f'operators/{operator}/licenses.db'
     return _DB_PATH
 
 # ========== ПОДКЛЮЧЕНИЕ К БД ==========
@@ -1056,7 +1058,7 @@ def add_tag_to_license(license_id, tag_id):
     conn.close()
 
 def remove_tag_from_license(license_id, tag_id):
-    """Удаляет тег с лицензии"""
+    """Удаляет тег лицензии"""
     conn = get_connection()
     cursor = conn.cursor()
     cursor.execute('DELETE FROM license_tags WHERE license_id = ? AND tag_id = ?',
@@ -1159,12 +1161,6 @@ def get_filter_options(operator):
     
     conn.close()
     return {'ne_types': ne_types, 'cities': cities, 'years': years}
-
-def get_db_path(operator=None):
-    """Возвращает путь к БД"""
-    if operator and operator != 'test':
-        return f'operators/{operator}/licenses.db'
-    return 'local_licenses.db'
 
 def backup_database(operator):
     """Создаёт резервную копию БД оператора"""
