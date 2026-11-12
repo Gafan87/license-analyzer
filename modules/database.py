@@ -1545,7 +1545,7 @@ def update_license_aggregated_cache(license_id):
     Args:
         license_id: int - ID лицензии
     """
-    data = get_license_aggregated_data(license_id)
+    data = get_licenses_aggregated_data_batch([license_id]).get(license_id, {})
     
     # Обновляем поле tags_agg в licenses (если добавим)
     # Пока оставим заглушку
@@ -1587,7 +1587,7 @@ def search_licenses_by_text(operator, search_text, limit=100):
             domain LIKE ?
         )
         LIMIT ?
-    ''', (operator, search_pattern, search_pattern, search_pattern, 
+    ''', (operator, search_pattern, search_pattern, search_pattern, search_pattern, 
           search_pattern, search_pattern, search_pattern, search_pattern, 
           search_pattern, limit))
     
