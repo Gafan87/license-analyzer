@@ -1,6 +1,7 @@
 # modules/esn_mapper.py
 import openpyxl
 import os
+import json
 from modules.logger import get_logger
 from modules.database import get_connection, add_change_history
 from modules.config_store import get_esn_mapping_config, col_letter_to_index
