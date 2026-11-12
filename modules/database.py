@@ -1587,7 +1587,7 @@ def search_licenses_by_text(operator, search_text, limit=100):
             domain LIKE ?
         )
         LIMIT ?
-    ''', (operator, search_pattern, search_pattern, search_pattern, search_pattern, 
+    ''', (operator, search_pattern, search_pattern, search_pattern, 
           search_pattern, search_pattern, search_pattern, search_pattern, 
           search_pattern, limit))
     
