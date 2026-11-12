@@ -82,21 +82,21 @@
 <div class="action-buttons" style="display:flex; gap:1rem; margin-bottom:1.5rem;">
     <form method="post">
         <input type="hidden" name="action" value="load">
-        <button type="submit" class="btn-primary">📥 Загрузить из Excel</button>
+        <button type="submit" class="btn-primary" data-tooltip="Прочитать Targets, формулы и Sharing из настроенного Excel-файла.">📥 Загрузить из Excel</button>
     </form>
     <form method="post">
         <input type="hidden" name="action" value="compute">
-        <button type="submit" class="btn-primary">🔄 Вычислить цели</button>
+        <button type="submit" class="btn-primary" data-tooltip="Пересчитать целевые значения на основе загруженных целей, формул и структуры лицензий.">🔄 Вычислить цели</button>
     </form>
 </div>
 
 <p class="text-muted">Файл целей: <code>{{ targets_file }}</code></p>
 
 <div class="excel-tabs-bar">
-    <button class="excel-tab-btn active" data-tab="targets">🎯 Базовые цели (Targets)</button>
-    <button class="excel-tab-btn" data-tab="variables">🔢 Вычисленные переменные</button>
-    <button class="excel-tab-btn" data-tab="spart">📦 SPart цели (Feature Field)</button>
-    <button class="excel-tab-btn" data-tab="sharing">🔗 Sharing</button>
+    <button class="excel-tab-btn active" data-tab="targets" data-tooltip="Показать исходные целевые значения из листа Targets.">🎯 Базовые цели (Targets)</button>
+    <button class="excel-tab-btn" data-tab="variables" data-tooltip="Показать переменные и формулы, вычисленные по структуре лицензий.">🔢 Вычисленные переменные</button>
+    <button class="excel-tab-btn" data-tab="spart" data-tooltip="Показать цели на уровне SPart и Feature Field.">📦 SPart цели (Feature Field)</button>
+    <button class="excel-tab-btn" data-tab="sharing" data-tooltip="Показать правила Sharing, загруженные из Excel.">🔗 Sharing</button>
 </div>
 
 <!-- ============ ВКЛАДКА 1: TARGETS ============ -->
