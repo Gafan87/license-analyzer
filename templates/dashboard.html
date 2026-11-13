@@ -1,0 +1,58 @@
+{% extends "base.html" %}
+
+{% block title %}Дашборд — License Analyzer{% endblock %}
+
+{% block content %}
+<div class="card">
+    <h1>Общая статистика</h1>
+    <div class="stats-grid">
+        <div class="stat-card-mini">
+            <div class="value">{{ total_licenses }}</div>
+            <div class="label">Всего лицензий</div>
+        </div>
+        <div class="stat-card-mini">
+            <div class="value">{{ total_expiring }}</div>
+            <div class="label">Истекают в ближайшие 30 дней</div>
+        </div>
+        <div class="stat-card-mini">
+            <div class="value">{{ operators|length }}</div>
+            <div class="label">Операторов</div>
+        </div>
+    </div>
+</div>
+
+<div class="card">
+    <h1>Статистика по операторам</h1>
+    <div class="table-wrapper">
+        <table>
+            <thead>
+                <tr>
+                    <th>Оператор</th>
+                    <th>Лицензии</th>
+                    <th>Истекают</th>
+                    <th>Типы NE</th>
+                    <th>Города</th>
+                    <th>Действие</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for item in stats %}
+                <tr>
+                    <td><strong>{{ item.name }}</strong></td>
+                    <td>{{ item.licenses_count }}</td>
+                    <td>{{ item.expiring_count }}</td>
+                    <td>{{ item.ne_types }}</td>
+                    <td>{{ item.cities }}</td>
+                    <td>
+                        <a href="/{{ item.id }}/" class="secondary-btn"
+                           data-tooltip="Открыть полный список лицензий оператора {{ item.name }}.">Открыть список</a>
+                    </td>
+                </tr>
+                {% else %}
+                <tr><td colspan="6" class="text-muted">Операторы не настроены.</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}

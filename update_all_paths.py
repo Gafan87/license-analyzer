@@ -2,8 +2,6 @@ from app import app
 with app.app_context():
     import sqlite3
     import os
-    from modules.scanner import get_esn_mapping_cached
-    from modules.database import get_connection
     
     operator_name = "beeline"
     db_path = "local_licenses.db"

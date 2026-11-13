@@ -21,8 +21,6 @@ def get_esn_mapping_cached(operator_name):
     from modules.esn_mapper import load_esn_mapping_from_excel
     from flask import current_app
     
-    cache_key = f'mapping_{operator_name}'
-    
     if _mapping_cache is not None and (time.time() - _mapping_cache_time) < 60:
         return _mapping_cache
     
@@ -62,7 +60,6 @@ def get_file_hash(filepath):
 def extract_from_filename(filename):
     """Извлекает информацию из имени файла"""
     # Формат: {product}_{version}_{city}_{site}_{year}.xml
-    import re
     result = {'product': None, 'version': None, 'city': None, 'site': None, 'year': None}
     
     # Пробуем извлечь информацию
@@ -269,7 +266,7 @@ def extract_dynamic_values_from_license(license_data, extraction_rules):
                             elif strategy == 'join':
                                 separator = rule.get('join_separator', ', ')
                                 value = separator.join(values)
-                except Exception as e:
+                except Exception:
                     pass
         
         # Для обычных полей с Regex (для DAT)
@@ -287,7 +284,7 @@ def extract_dynamic_values_from_license(license_data, extraction_rules):
                     match = re.search(pattern, content, re.IGNORECASE)
                     if match:
                         value = match.group(1) if match.groups() else match.group(0)
-                except Exception as e:
+                except Exception:
                     pass
         
         if value:
@@ -301,7 +298,7 @@ def update_dynamic_values_for_all_licenses(operator, extraction_rules, column_id
     Обновляет динамические значения для всех лицензий оператора
     Используется при добавлении новой колонки
     """
-    from modules.database import get_connection, set_dynamic_value, get_dynamic_columns
+    from modules.database import get_connection, set_dynamic_value
     import os
     
     conn = get_connection()

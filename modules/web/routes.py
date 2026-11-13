@@ -2,38 +2,29 @@ from flask import Blueprint, render_template, current_app, abort, request, redir
 import os
 import json
 import shutil
-import re
-from datetime import datetime
 
 import tempfile  # добавь, если нет
 
 from modules.logger import get_logger
 from modules.database import (
-    init_local_db, get_all_licenses, get_license_by_id, get_change_history, 
-    save_base_target, get_base_targets, get_connection, get_filter_options,
-    get_dynamic_columns, add_dynamic_column, update_dynamic_column, delete_dynamic_column,
-    get_dynamic_values_for_license, update_parsed_cache, get_parsed_cache,
-    get_license_aggregated_data, get_all_licenses_with_aggregated,
-    get_unique_esn_licenses, get_all_licenses_for_esn, save_license,
+    get_all_licenses, get_license_by_id, get_change_history,
+    get_connection, get_dynamic_values_for_license,
+    get_unique_esn_licenses, get_all_licenses_for_esn,
     add_tag, get_all_tags, add_tag_to_license, remove_tag_from_license, get_license_tags,
     add_comment, get_comments, save_report_template, get_report_templates, delete_report_template,
-    backup_database as backup_db, get_dynamic_columns, get_dynamic_values_for_license
+    backup_database as backup_db
 )
 from modules.esn_mapper import (
-    load_esn_mapping_from_excel, save_esn_mapping_to_db, 
-    export_esn_mapping_to_excel, get_mapping_by_esn, get_mapping_by_lsn
+    load_esn_mapping_from_excel, save_esn_mapping_to_db,
+    export_esn_mapping_to_excel
 )
 from modules.scanner import scan_local_folder
-from modules.sync_manager import sync_all_licenses, download_db_from_remote, upload_db_to_remote
-from modules.target_manager import compare_with_targets, get_targets_for_site
+from modules.sync_manager import sync_all_licenses, download_db_from_remote
+from modules.target_manager import compare_with_targets
 from modules.file_renamer import batch_rename_files, rename_file_by_esn
 from modules.excel_importer import import_licenses_from_excel
-from modules.tester import run_tests
-from modules.excel_evaluator import ExcelFormulaEvaluator
 from modules.license_service import LicenseService
-from modules.capacity_mapper import get_capacity_description, load_capacity_descriptions, get_description_file_and_sheet
 
-from functools import lru_cache
 from datetime import datetime, timedelta
 import math
 
@@ -384,7 +375,8 @@ def esn_mapping(operator):
                           operators=current_app.config['OPERATORS'],
                           current_operator=operator,
                           current_operator_title=op_config.get('title', operator),
-                          mappings=mappings)
+                          mappings=mappings,
+                          esn_config=get_esn_mapping_config())
 
 
 @web_bp.route('/<operator>/apply_mapping', methods=['POST'])
@@ -676,11 +668,35 @@ def dashboard():
         total_licenses += len(licenses)
         total_expiring += len(expiring)
     
+    current_operator = session.get('current_operator', operators[0]['name'] if operators else '')
+    current_operator_title = next(
+        (op.get('title', op['name']) for op in operators if op['name'] == current_operator),
+        current_operator
+    )
+
     return render_template('dashboard.html',
                           operators=operators,
                           stats=stats,
                           total_licenses=total_licenses,
-                          total_expiring=total_expiring)
+                          total_expiring=total_expiring,
+                          current_operator=current_operator,
+                          current_operator_title=current_operator_title)
+
+
+# ========== СПРАВКА ==========
+
+@web_bp.route('/help')
+def help_page():
+    operators = current_app.config.get('OPERATORS', [])
+    current_operator = session.get('current_operator', operators[0]['name'] if operators else '')
+    current_operator_title = next(
+        (op.get('title', op['name']) for op in operators if op['name'] == current_operator),
+        current_operator
+    )
+    return render_template('help.html',
+                          operators=operators,
+                          current_operator=current_operator,
+                          current_operator_title=current_operator_title)
 
 
 # ========== НАСТРОЙКИ ==========
@@ -702,6 +718,10 @@ def settings():
     }
     
     current_operator = session.get('current_operator', operators[0]['name'] if operators else 'mts')
+    current_operator_title = next(
+        (op.get('title', op['name']) for op in operators if op['name'] == current_operator),
+        current_operator
+    )
     
     return render_template('settings.html',
                           operators=operators,
@@ -711,7 +731,8 @@ def settings():
                           backup_interval_days=backup_interval_days,
                           app_path=app_path,
                           stats=stats,
-                          current_operator=current_operator)
+                          current_operator=current_operator,
+                          current_operator_title=current_operator_title)
 
 
 @web_bp.route('/settings/update_paths', methods=['POST'])
@@ -775,7 +796,10 @@ def backup_list():
 
 @web_bp.route('/settings/restore_backup', methods=['POST'])
 def restore_backup():
-    filename = request.args.get('file')
+    filename = request.args.get('file', '')
+    if not filename or os.path.basename(filename) != filename or not filename.endswith('.db'):
+        return jsonify({'success': False, 'message': 'Некорректное имя файла бэкапа'}), 400
+
     backup_path = os.path.join('backups', filename)
     local_db = current_app.config.get('local_db_path', 'local_licenses.db')
     
@@ -828,6 +852,20 @@ def set_log_level():
     
     flash(f'✅ Уровень логирования изменён на {level}', 'success')
     return redirect(url_for('web.settings'))
+
+
+@web_bp.route('/settings/debug', methods=['POST'])
+def update_debug_settings():
+    """Сохраняет только режимы интерфейса, не изменяя остальные секции config.json."""
+    from modules.config_store import load_config, save_config_section
+
+    debug_settings = load_config().get('debug_settings') or {}
+    debug_settings['show_tooltips'] = request.form.get('show_tooltips') == '1'
+    save_config_section('debug_settings', debug_settings)
+    current_app.config['debug_settings'] = debug_settings
+
+    flash('Настройки подсказок сохранены', 'success')
+    return redirect(url_for('web.settings') + '#testing')
 
 
 # ========== ТЕСТИРОВАНИЕ ==========
@@ -990,11 +1028,18 @@ def api_export_licenses():
         query = f'''
             SELECT l.id, l.lsn, l.product, l.version, l.ne_type, l.city, l.site, l.year,
                    l.valid_date, l.esn, l.node, l.create_time, l.domain,
-                   GROUP_CONCAT(DISTINCT t.name, ', ') as tags,
+                   tag_data.tags as tags,
                    (SELECT COUNT(*) FROM comments c WHERE c.license_id = l.id) as comments_count
             FROM licenses l
-            LEFT JOIN license_tags lt ON lt.license_id = l.id
-            LEFT JOIN tags t ON lt.tag_id = t.id
+            LEFT JOIN (
+                SELECT license_id, GROUP_CONCAT(name, ', ') as tags
+                FROM (
+                    SELECT DISTINCT lt.license_id AS license_id, t.name AS name
+                    FROM license_tags lt
+                    JOIN tags t ON lt.tag_id = t.id
+                )
+                GROUP BY license_id
+            ) tag_data ON tag_data.license_id = l.id
             WHERE l.id IN ({placeholders})
             GROUP BY l.id
         '''
@@ -1003,11 +1048,18 @@ def api_export_licenses():
         query = '''
             SELECT l.id, l.lsn, l.product, l.version, l.ne_type, l.city, l.site, l.year,
                    l.valid_date, l.esn, l.node, l.create_time, l.domain,
-                   GROUP_CONCAT(DISTINCT t.name, ', ') as tags,
+                   tag_data.tags as tags,
                    (SELECT COUNT(*) FROM comments c WHERE c.license_id = l.id) as comments_count
             FROM licenses l
-            LEFT JOIN license_tags lt ON lt.license_id = l.id
-            LEFT JOIN tags t ON lt.tag_id = t.id
+            LEFT JOIN (
+                SELECT license_id, GROUP_CONCAT(name, ', ') as tags
+                FROM (
+                    SELECT DISTINCT lt.license_id AS license_id, t.name AS name
+                    FROM license_tags lt
+                    JOIN tags t ON lt.tag_id = t.id
+                )
+                GROUP BY license_id
+            ) tag_data ON tag_data.license_id = l.id
         '''
         params = []
         if operator:
@@ -1083,7 +1135,6 @@ def api_get_license_resources(license_id):
         permanent_value = row[2]
         dated_values_str = row[3]
         latest_date = row[4]
-        latest_value = row[5]
 
         dated_values = []
         if dated_values_str:
@@ -1155,8 +1206,6 @@ def api_get_license_resources(license_id):
 @web_bp.route('/api/license/<int:license_id>/hierarchy', methods=['GET'])
 def api_get_license_hierarchy(license_id):
     from modules.database import get_connection
-    from modules.capacity_mapper import load_full_capacity_list
-    from flask import current_app
 
     mode = request.args.get('mode', 'total')
     domain = request.args.get('domain', '')
@@ -2065,7 +2114,6 @@ def api_check_license_details_files():
 def api_open_folder():
     """Открыть папку с файлом лицензии (сначала на сервере, потом локально)"""
     import subprocess
-    import urllib.parse
     
     license_id = request.args.get('license_id', type=int)
     if not license_id:
@@ -2522,7 +2570,7 @@ def api_smart_search(operator):
 @web_bp.route('/api/bulk_add_tag', methods=['POST'])
 def api_bulk_add_tag():
     """Массовое добавление тега к лицензиям"""
-    from modules.database import add_tag, add_tag_to_license, get_connection
+    from modules.database import add_tag, add_tag_to_license
     
     data = request.get_json()
     license_ids = data.get('license_ids', [])
@@ -2543,7 +2591,7 @@ def api_bulk_add_tag():
         try:
             add_tag_to_license(int(lic_id), tag_id)
             added += 1
-        except Exception as e:
+        except Exception:
             pass
     
     return jsonify({
@@ -2557,7 +2605,7 @@ def api_bulk_add_tag():
 @web_bp.route('/api/bulk_remove_tag', methods=['POST'])
 def api_bulk_remove_tag():
     """Массовое удаление тега с лицензий"""
-    from modules.database import remove_tag_from_license, get_connection
+    from modules.database import remove_tag_from_license
     
     data = request.get_json()
     license_ids = data.get('license_ids', [])
@@ -2574,7 +2622,7 @@ def api_bulk_remove_tag():
         try:
             remove_tag_from_license(int(lic_id), int(tag_id))
             removed += 1
-        except Exception as e:
+        except Exception:
             pass
     
     return jsonify({
@@ -2605,7 +2653,7 @@ def api_list_dynamic_columns():
 @web_bp.route('/api/dynamic_columns', methods=['POST'])
 def api_create_dynamic_column():
     """Добавить динамическую колонку"""
-    from modules.database import add_dynamic_column, get_dynamic_columns
+    from modules.database import add_dynamic_column
     
     data = request.get_json()
     column_name = data.get('column_name')
@@ -2627,7 +2675,7 @@ def api_create_dynamic_column():
         
         return jsonify({
             'id': column_id,
-            'message': f'Колонка добавлена'
+            'message': 'Колонка добавлена'
         })
     except ValueError as e:
         return jsonify({'error': str(e)}), 400
@@ -3238,5 +3286,4 @@ def backup_operator_folder(operator):
         logger.error(f"Ошибка бэкапа папки {operator}: {e}")
         return jsonify({'success': False, 'error': str(e)}), 500
     
-
 

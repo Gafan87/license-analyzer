@@ -130,11 +130,11 @@
         <div class="info-block">
         <div class="info-block-header">
             <i class="fas fa-chart-bar"></i> Ресурсы (CapacityKey)
-            <button id="openTableSettingsBtn" class="filter-chip" style="margin-left: auto;" title="Настройки таблицы">⚙️</button>
+            <button id="openTableSettingsBtn" class="filter-chip" style="margin-left: auto;" data-tooltip="Настроить видимые колонки и параметры таблицы ресурсов.">⚙️</button>
             <div class="resource-filters">
-                <button class="filter-chip active" data-mode="total">📊 Суммарные</button>
-                <button class="filter-chip" data-mode="latest">📅 По дате</button>
-                <button class="filter-chip" data-mode="permanent">♾️ Постоянные</button>
+                <button class="filter-chip active" data-mode="total" data-tooltip="Показать суммарные значения ресурсов по всем подходящим записям.">📊 Суммарные</button>
+                <button class="filter-chip" data-mode="latest" data-tooltip="Сгруппировать значения ресурсов по срокам действия лицензий.">📅 По дате</button>
+                <button class="filter-chip" data-mode="permanent" data-tooltip="Показать ресурсы без ограничения срока действия.">♾️ Постоянные</button>
             </div>
             
         </div>
@@ -143,7 +143,7 @@
                     <thead>
                         <tr>
                             <th data-col="capacity_key">
-                                <span class="toggle-all-sparts" ...>▼</span>
+                                <span class="toggle-all-sparts">▼</span>
                                 CapacityKey
                             </th>
                             <th data-col="target">🎯 Цель</th>
@@ -331,7 +331,7 @@
                 <form method="post" action="/{{ current_operator }}/license/{{ license.id }}/comments" class="comment-form">
                     <input type="text" name="comment" placeholder="Написать комментарий..." required>
                     <input type="hidden" name="user_name" value="{{ current_operator_title }}">
-                    <button type="submit" class="btn-primary" style="padding: 0.5rem 1rem;">
+                    <button type="submit" class="btn-primary" style="padding: 0.5rem 1rem;" data-tooltip="Сохранить комментарий к текущей лицензии от имени оператора.">
                         <i class="fas fa-paper-plane"></i> Отправить
                     </button>
                 </form>
@@ -383,7 +383,7 @@
         </div>
         
         <div style="display: flex; gap: 0.5rem; margin-top: 1rem;">
-            <button id="saveTableSettingsBtn" class="btn-primary" style="flex: 1;">Сохранить</button>
+            <button id="saveTableSettingsBtn" class="btn-primary" style="flex: 1;" data-tooltip="Сохранить настройки таблицы в браузере и применить их к текущему списку ресурсов.">Сохранить</button>
             <button id="closeSettingsBtn" class="btn-secondary" style="flex: 1;">Отмена</button>
         </div>
     </div>
@@ -747,7 +747,7 @@ async function loadVersions() {
             tbody.innerHTML = versions.map(lic => `
                 <tr data-license-id="${lic.id}" class="${lic.id === currentLicenseId ? 'selected-version' : ''}">
                     <td>
-                        ${lic.local_path || lic.id ? `<a href="#" onclick="event.stopPropagation(); showPath('${lic.local_path.replace(/\\/g, '\\\\')}', ${lic.id}); return false;" title="Показать путь">📋</a>` : '-'}
+                        ${lic.local_path || lic.id ? `<a href="#" onclick="event.stopPropagation(); showPath('${lic.local_path.replace(/\\/g, '\\\\')}', ${lic.id}); return false;" data-tooltip="Показать локальный путь к этому файлу лицензии.">📋</a>` : '-'}
                     </td>
                     <td>${escapeHtml(lic.lsn || '-')}</td>
                     <td>${escapeHtml(lic.filename || '-')}</td>

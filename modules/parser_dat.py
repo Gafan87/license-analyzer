@@ -96,10 +96,6 @@ def parse_dat_license(file_path):
             if not section.strip():
                 continue
             
-            # Извлекаем Feature
-            feature_match = re.search(r'Feature=(\w+)', section)
-            feature = feature_match.group(1) if feature_match else 'Unknown'
-            
             resources_str = ""
             resource_match = re.search(r'Resource="([^"]+)"', section)
             if resource_match:

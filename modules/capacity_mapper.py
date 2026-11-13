@@ -339,8 +339,6 @@ def load_capacity_descriptions(domain, network_storage_path, ne_type=None, opera
     Returns:
         dict: {capacity_key: {description, unit, part_number, type, parent, formula, sharing, ...}}
     """
-    global _capacity_descriptions_cache
-    
     if not domain:
         logger.warning("Домен не указан, пропускаем загрузку описаний")
         return {}
@@ -560,12 +558,6 @@ def clear_cache():
     _capacity_descriptions_cache = {}
     _ne_type_mapping_cache = None
 
-
-def reload_mapping():
-    """Принудительная перезагрузка маппинга NE Type"""
-    global _ne_type_mapping_cache
-    _ne_type_mapping_cache = None
-    return load_ne_type_mapping()
 
 def load_targets_from_excel(file_path, operator_name=None):
     """
@@ -1063,7 +1055,6 @@ def compute_license_targets(targets, sharing_map, capacity_list, operator_name=N
             return None, None
 
         formula_str = str(formula).strip()
-        name = item['name']
         ne_type = item.get('ne_type', ne_type_current)
         is_spart = item.get('type') == 'spart'
         

@@ -64,7 +64,7 @@
                 <label><input type="checkbox" name="columns" value="valid_date"> Срок действия</label>
             </div>
             
-            <button type="submit" class="btn-primary" style="margin-top: 1rem;">💾 Сохранить шаблон</button>
+            <button type="submit" class="btn-primary" style="margin-top: 1rem;" data-tooltip="Сохранить название, фильтры и набор колонок как шаблон отчёта.">💾 Сохранить шаблон</button>
         </form>
     </div>
     
@@ -82,8 +82,8 @@
                     <td>{{ template.description or '-' }}</td>
                     <td>{{ template.created_by }}<br><small>{{ template.created_at[:16] }}</small></td>
                     <td>
-                        <button class="use-template" data-id="{{ template.id }}" style="background: #10B981;">📊 Применить</button>
-                        <button class="delete-template" data-id="{{ template.id }}" style="background: #dc3545;">🗑️ Удалить</button>
+                        <button class="use-template" data-id="{{ template.id }}" style="background: #10B981;" data-tooltip="Открыть отчёты с фильтрами и колонками из шаблона «{{ template.name }}».">📊 Применить</button>
+                        <button class="delete-template" data-id="{{ template.id }}" style="background: #dc3545;" data-tooltip="Удалить шаблон «{{ template.name }}» после подтверждения. Лицензии не изменяются.">🗑️ Удалить</button>
                     </td>
                 </tr>
                 {% else %}

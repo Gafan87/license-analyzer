@@ -1,16 +1,11 @@
 import os
-import sys
 import sqlite3
 import tempfile
 import json
 import time
 import shutil
-import threading
-import socket
 from datetime import datetime
 from typing import Dict, List, Any, Optional
-import json
-import tempfile
 
 from modules.logger import get_logger
 
@@ -551,7 +546,7 @@ class SystemTester:
         for module_name in modules_to_test:
             try:
                 __import__(module_name)
-            except ImportError as e:
+            except ImportError:
                 failed.append(module_name)
         assert len(failed) == 0, f"Не удалось импортировать: {failed}"
         print(f"✅ Импорт: {len(modules_to_test)} модулей загружено")
@@ -787,7 +782,7 @@ class SystemTester:
             if lic_id:
                 print(f"✅ Сохранён в БД: LSN={lsn} (id={lic_id})")
             else:
-                print(f"⚠️ INSERT OR IGNORE пропустил запись (возможно дубликат)")
+                print("⚠️ INSERT OR IGNORE пропустил запись (возможно дубликат)")
         finally:
             conn.close()
             
@@ -842,7 +837,7 @@ class SystemTester:
         if duplicates:
             print(f"⚠️ Найдено {len(duplicates)} дубликатов")
         else:
-            print(f"✅ Дубликатов нет")
+            print("✅ Дубликатов нет")
 
     def test_duplicate_filenames(self):
         """Тест дубликатов имён файлов"""
@@ -859,7 +854,7 @@ class SystemTester:
         if duplicates:
             print(f"⚠️ {len(duplicates)} дубликатов имён файлов")
         else:
-            print(f"✅ Дубликатов имён нет")
+            print("✅ Дубликатов имён нет")
 
     def test_filename_content_match(self):
         """Тест соответствия LSN в имени файла и содержимом"""
@@ -878,7 +873,7 @@ class SystemTester:
         if mismatches:
             print(f"⚠️ {mismatches} несовпадений LSN в имени и содержимом")
         else:
-            print(f"✅ LSN в именах совпадают с содержимым")
+            print("✅ LSN в именах совпадают с содержимым")
 
     def test_required_fields_in_licenses(self):
         """Тест наличия обязательных полей у лицензий"""
@@ -895,7 +890,7 @@ class SystemTester:
         if issues:
             print(f"⚠️ {', '.join(issues)}")
         else:
-            print(f"✅ Все обязательные поля заполнены")
+            print("✅ Все обязательные поля заполнены")
 
     def test_foreign_key_integrity(self):
         """Тест целостности внешних ключей"""
@@ -907,11 +902,10 @@ class SystemTester:
         if orphan_resources:
             print(f"⚠️ {orphan_resources} ресурсов без лицензии")
         else:
-            print(f"✅ Целостность внешних ключей")
+            print("✅ Целостность внешних ключей")
 
     def test_date_consistency(self):
         """Тест корректности дат"""
-        from datetime import datetime
         conn = self._get_db_connection()
         cursor = conn.cursor()
         cursor.execute("""
@@ -925,7 +919,7 @@ class SystemTester:
         if bad_dates:
             print(f"⚠️ {bad_dates} лицензий с датой действия раньше создания")
         else:
-            print(f"✅ Даты корректны")
+            print("✅ Даты корректны")
 
     def test_data_types(self):
         """Тест типов данных в БД"""
@@ -975,9 +969,9 @@ class SystemTester:
         columns = [c[1] for c in cursor.fetchall()]
         conn.close()
         if 'domain' in columns:
-            print(f"✅ Колонка domain присутствует")
+            print("✅ Колонка domain присутствует")
         else:
-            print(f"⚠️ Колонка domain отсутствует")
+            print("⚠️ Колонка domain отсутствует")
 
     def test_dynamic_columns_crud(self):
         """Тест CRUD динамических колонок"""
@@ -988,7 +982,7 @@ class SystemTester:
             cols = get_dynamic_columns()
             if col_name in cols:
                 delete_dynamic_column(col_name)
-                print(f"✅ Динамические колонки: создание/удаление работает")
+                print("✅ Динамические колонки: создание/удаление работает")
             else:
                 print(f"⚠️ Колонка {col_name} не появилась в списке")
         except Exception as e:
@@ -1003,9 +997,9 @@ class SystemTester:
             set_dynamic_value(1, test_key, test_value)  # для license_id=1
             loaded = get_dynamic_values_for_license(1)
             if loaded and test_key in loaded:
-                print(f"✅ Динамические значения: сохранение/загрузка работает")
+                print("✅ Динамические значения: сохранение/загрузка работает")
             else:
-                print(f"⚠️ Значение не загрузилось")
+                print("⚠️ Значение не загрузилось")
         except Exception as e:
             print(f"⚠️ Динамические значения: {str(e)[:80]}")
 
@@ -1014,7 +1008,7 @@ class SystemTester:
         conn = self._get_db_connection()
         cursor = conn.cursor()
         cursor.execute("PRAGMA index_list(licenses)")
-        indexes = cursor.fetchall()
+        cursor.fetchall()
         # Проверяем наличие составного уникального индекса
         cursor.execute("""
             SELECT sql FROM sqlite_master 
@@ -1025,7 +1019,7 @@ class SystemTester:
         if unique_indexes:
             print(f"✅ Уникальных индексов: {len(unique_indexes)}")
         else:
-            print(f"⚠️ Уникальный индекс не найден")
+            print("⚠️ Уникальный индекс не найден")
 
     def test_filter_performance(self):
         """Тест производительности фильтрации"""
@@ -1099,7 +1093,7 @@ class SystemTester:
         if errors:
             print(f"⚠️ Параллельный доступ: {len(errors)} ошибок")
         else:
-            print(f"✅ Параллельный доступ: 5 потоков без ошибок")
+            print("✅ Параллельный доступ: 5 потоков без ошибок")
 
     def test_connection_pool_exhaustion(self):
         """Тест исчерпания пула соединений"""
@@ -1147,9 +1141,9 @@ class SystemTester:
         conn.close()
         plan_text = str(plan)
         if 'SCAN' in plan_text:
-            print(f"⚠️ Полное сканирование таблицы")
+            print("⚠️ Полное сканирование таблицы")
         else:
-            print(f"✅ Индексы используются")
+            print("✅ Индексы используются")
 
     # ---------- ТЕСТЫ МАППИНГА И ФОРМУЛ ----------
     def test_esn_mapping_empty_database(self):
@@ -1163,7 +1157,8 @@ class SystemTester:
     def test_esn_mapping(self):
         """Тест ESN маппинга"""
         from modules.esn_mapper import get_mapping_by_esn
-        print(f"✅ ESN маппинг: модуль загружен")
+        assert callable(get_mapping_by_esn)
+        print("✅ ESN маппинг: модуль загружен")
 
     def test_esn_mapping_consistency(self):
         """Тест на конфликты в ESN маппинге"""
@@ -1181,7 +1176,7 @@ class SystemTester:
         if conflicts:
             print(f"⚠️ {conflicts} ESN привязаны к разным операторам")
         else:
-            print(f"✅ Конфликтов ESN нет")
+            print("✅ Конфликтов ESN нет")
 
     def test_excel_formulas(self):
         """Тест загрузчика Excel формул"""
@@ -1211,7 +1206,7 @@ class SystemTester:
         if cycles_found:
             print(f"⚠️ Найдено {cycles_found} циклов")
         else:
-            print(f"✅ Циклических зависимостей нет")
+            print("✅ Циклических зависимостей нет")
 
     def test_excel_formula_evaluation(self):
         """Тест вычисления Excel формул"""
@@ -1220,7 +1215,7 @@ class SystemTester:
         if hasattr(evaluator, 'formulas') and evaluator.formulas:
             print(f"✅ Формулы загружены: {len(evaluator.formulas)} шт.")
         else:
-            print(f"ℹ️ Формулы не загружены")
+            print("ℹ️ Формулы не загружены")
 
     def test_excel_formula_error_handling(self):
         """Тест обработки ошибок в формулах Excel"""
@@ -1265,7 +1260,7 @@ class SystemTester:
         """Тест основных функций синхронизации"""
         from modules.sync_manager import file_needs_update
         assert callable(file_needs_update), "Функция file_needs_update не доступна"
-        print(f"✅ Модуль sync_manager загружен")
+        print("✅ Модуль sync_manager загружен")
 
     def test_file_hash_consistency(self):
         """Тест вычисления хеша файлов"""
@@ -1288,7 +1283,7 @@ class SystemTester:
             size = os.path.getsize(backup_path)
             print(f"✅ Бэкап создан: {os.path.basename(backup_path)} ({size} байт)")
         else:
-            print(f"⚠️ Бэкап не создан")
+            print("⚠️ Бэкап не создан")
 
     def test_file_renamer(self):
         """Тест функций переименования файлов"""
@@ -1345,7 +1340,7 @@ class SystemTester:
                 save_license(lic, "tester")
                 print(f"✅ Синхронизация: LSN={lic.get('lsn', '?')[:20]}")
             else:
-                print(f"⚠️ Сканер не нашёл файл (возможно нужна структура папок)")
+                print("⚠️ Сканер не нашёл файл (возможно нужна структура папок)")
         finally:
             shutil.rmtree(test_dir, ignore_errors=True)
 
@@ -1357,7 +1352,7 @@ class SystemTester:
         # Проверяем что функция не падает на спецсимволах
         try:
             for name in special_names:
-                result = generate_new_filename({'product': 'Test', 'version': '1.0', 'file_type': 'xml'}, {'city': 'MSK', 'site': 'SiteA'})
+                generate_new_filename({'product': 'Test', 'version': '1.0', 'file_type': 'xml'}, {'city': 'MSK', 'site': 'SiteA'})
             print(f"✅ Спецсимволы: {len(special_names)} имён обработано")
         except Exception as e:
             print(f"⚠️ Спецсимволы: {str(e)[:80]}")
@@ -1394,9 +1389,9 @@ class SystemTester:
             link_dir = os.path.join(temp_dir, "link_to_folder")
             try:
                 os.symlink(sub_dir, link_dir, target_is_directory=True)
-                print(f"✅ Симлинки: созданы и не вызывают ошибок")
+                print("✅ Симлинки: созданы и не вызывают ошибок")
             except OSError:
-                print(f"ℹ️ Симлинки не поддерживаются (Windows без прав)")
+                print("ℹ️ Симлинки не поддерживаются (Windows без прав)")
         finally:
             shutil.rmtree(temp_dir, ignore_errors=True)
 
@@ -1425,14 +1420,14 @@ class SystemTester:
         from modules.target_manager import get_targets_for_site, compare_with_targets
         assert callable(get_targets_for_site), "get_targets_for_site не доступна"
         assert callable(compare_with_targets), "compare_with_targets не доступна"
-        print(f"✅ Модуль target_manager загружен")
+        print("✅ Модуль target_manager загружен")
 
     def test_year_extraction(self):
         """Тест извлечения года из дат"""
         from modules.parser_xml import extract_year_from_valid_date
         assert extract_year_from_valid_date('2025-12-31') == '2025'
         assert extract_year_from_valid_date('PERMANENT') == 'permanent'
-        print(f"✅ Извлечение года: 2025-12-31 → 2025, PERMANENT → permanent")
+        print("✅ Извлечение года: 2025-12-31 → 2025, PERMANENT → permanent")
 
     def test_target_comparison_flow(self):
         """Тест сравнения с целевыми значениями"""
@@ -1506,7 +1501,7 @@ class SystemTester:
             count = cursor.fetchone()[0]
             
             if count == 1:
-                print(f"✅ Конфликты целей: обновление вместо дублирования")
+                print("✅ Конфликты целей: обновление вместо дублирования")
             else:
                 print(f"⚠️ Найдено {count} записей для {test_key}")
         finally:
@@ -1541,7 +1536,7 @@ class SystemTester:
                 count = cursor.fetchone()[0]
                 print(f"✅ История изменений: таблица есть, {count} записей")
             else:
-                print(f"ℹ️ Таблица change_history не найдена")
+                print("ℹ️ Таблица change_history не найдена")
         finally:
             conn.close()
         
@@ -1551,7 +1546,7 @@ class SystemTester:
         """Тест загрузки веб-маршрутов"""
         from modules.web.routes import web_bp
         assert web_bp is not None, "Blueprint не загружен"
-        print(f"✅ Blueprint web загружен")
+        print("✅ Blueprint web загружен")
 
     def test_template_existence(self):
         """Тест наличия HTML шаблонов"""
@@ -1570,7 +1565,7 @@ class SystemTester:
         from modules.web.routes import web_bp
         assert web_bp is not None, "Blueprint не загружен"
         # view_functions заполняются только в контексте Flask приложения
-        print(f"✅ Blueprint web зарегистрирован (маршруты видны при запуске)")
+        print("✅ Blueprint web зарегистрирован (маршруты видны при запуске)")
 
     def test_web_endpoints_access(self):
         """Тест доступности веб-эндпоинтов"""
@@ -1589,30 +1584,30 @@ class SystemTester:
             city_count = len(filter_opts.get('cities', []))
             print(f"✅ Поиск/фильтры: {len(licenses)} лицензий, {ne_count} NE типов, {city_count} городов")
         else:
-            print(f"ℹ️ БД пуста")
+            print("ℹ️ БД пуста")
 
     def test_session_management(self):
         """Тест управления сессиями"""
         try:
             from flask import session
             session.get('test', None)
-            print(f"✅ Сессии Flask доступны")
+            print("✅ Сессии Flask доступны")
         except RuntimeError:
-            print(f"ℹ️ Вне контекста Flask (нормально для тестов)")
+            print("ℹ️ Вне контекста Flask (нормально для тестов)")
 
     def test_presets_localstorage_format(self):
         """Тест формата предустановок"""
         preset = {"name": "Test", "filters": {"ne_type": "vEPC"}, "columns": ["lsn", "product"]}
         json_str = json.dumps(preset)
         assert json.loads(json_str) == preset
-        print(f"✅ Формат предустановок валиден")
+        print("✅ Формат предустановок валиден")
 
     def test_export_import_presets(self):
         """Тест экспорта/импорта предустановок"""
         preset = {"name": "ExportTest", "filters": {"city": "MSK"}, "columns": ["ne_type"]}
         loaded = json.loads(json.dumps(preset))
         assert loaded['name'] == "ExportTest"
-        print(f"✅ Экспорт/импорт предустановок работает")
+        print("✅ Экспорт/импорт предустановок работает")
 
     def test_smart_search_parsing(self):
         """Тест парсинга умного поиска"""
@@ -1637,7 +1632,7 @@ class SystemTester:
         wb.save(temp_file)
         assert os.path.exists(temp_file), "Excel файл не создан"
         os.unlink(temp_file)
-        print(f"✅ Экспорт Excel: структура валидна")
+        print("✅ Экспорт Excel: структура валидна")
 
     def test_color_grouping_storage(self):
         """Тест хранения настроек цветовой группировки"""
@@ -1665,7 +1660,7 @@ class SystemTester:
             # Проверяем что таблица цела
             cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='licenses'")
             assert cursor.fetchone() is not None, "Таблица licenses пропала!"
-            print(f"✅ SQL-инъекции блокируются")
+            print("✅ SQL-инъекции блокируются")
         finally:
             conn.close()
 
@@ -1676,7 +1671,7 @@ class SystemTester:
         escaped = escape(xss_payload)
         assert '<' not in escaped, "HTML не экранирован"
         assert '&lt;' in escaped, "Теги не заменены"
-        print(f"✅ XSS защита: теги экранируются")
+        print("✅ XSS защита: теги экранируются")
 
     def test_path_traversal_prevention(self):
         """Тест защиты от обхода путей"""
@@ -1691,18 +1686,18 @@ class SystemTester:
                 safe = False
         
         if safe:
-            print(f"✅ Path traversal: os.path.basename блокирует выход")
+            print("✅ Path traversal: os.path.basename блокирует выход")
         else:
-            print(f"⚠️ Path traversal: требуется дополнительная проверка")
+            print("⚠️ Path traversal: требуется дополнительная проверка")
 
     def test_api_rate_limiting(self):
         """Тест ограничения частоты API"""
         try:
             from flask import current_app
             if current_app:
-                print(f"✅ Flask активен, rate limiting на уровне приложения")
+                print("✅ Flask активен, rate limiting на уровне приложения")
         except RuntimeError:
-            print(f"ℹ️ Вне контекста Flask")
+            print("ℹ️ Вне контекста Flask")
 
     def test_api_error_responses(self):
         """Тест формата ошибок API"""
@@ -1728,7 +1723,7 @@ class SystemTester:
         russian_text = "Тест с русским текстом и спецсимволами: < > & \" '"
         cleaned = clean_xml_content(russian_text)
         if 'Тест' in cleaned:
-            print(f"✅ Кодировки: кириллица сохраняется")
+            print("✅ Кодировки: кириллица сохраняется")
         else:
             print(f"⚠️ Кодировки: кириллица потеряна (длина: {len(cleaned)})")
 
@@ -1754,7 +1749,7 @@ class SystemTester:
         from modules.database import get_license_by_id
         result = get_license_by_id(999999)
         assert result is None, "Должен вернуть None"
-        print(f"✅ Обработка ошибок: несуществующий ID → None")
+        print("✅ Обработка ошибок: несуществующий ID → None")
 
     def test_tags_and_comments_aggregation(self):
         """Тест агрегации тегов и комментариев"""
@@ -1791,7 +1786,7 @@ class SystemTester:
             
             result = parse_xml_license(test_file)
             if result is None:
-                print(f"✅ Восстановление: битый файл → None (без падения)")
+                print("✅ Восстановление: битый файл → None (без падения)")
             else:
                 print(f"⚠️ Битый файл вернул: {type(result)}")
         finally:
@@ -1816,7 +1811,7 @@ class SystemTester:
             conn.close()
             
             if result[0] == 'ok':
-                print(f"✅ Целостность БД: ok")
+                print("✅ Целостность БД: ok")
             else:
                 print(f"⚠️ Целостность: {result[0]}")
         finally:
@@ -1848,7 +1843,7 @@ class SystemTester:
                 else:
                     print(f"⚠️ Unicode LSN: ожидалось '{unicode_lsn}', получено '{lsn}'")
             else:
-                print(f"⚠️ Парсер вернул None для Unicode XML")
+                print("⚠️ Парсер вернул None для Unicode XML")
         finally:
             self._remove_temp_file(temp_file)
 
@@ -1875,9 +1870,9 @@ class SystemTester:
                 try:
                     result2 = parse_xml_license(temp_file2)
                     if result2 is not None:
-                        print(f"✅ BOM: после удаления BOM парсится")
+                        print("✅ BOM: после удаления BOM парсится")
                     else:
-                        print(f"⚠️ BOM: не парсится даже после удаления BOM")
+                        print("⚠️ BOM: не парсится даже после удаления BOM")
                 finally:
                     self._remove_temp_file(temp_file2)
         finally:
@@ -1968,7 +1963,7 @@ class SystemTester:
         delete_report_template(tid)
         templates = get_report_templates()
         assert not any(t['name'] == template_name for t in templates), "Шаблон не удалён"
-        print(f"✅ Шаблоны отчётов работают")
+        print("✅ Шаблоны отчётов работают")
 
     def test_template_export(self):
         """Тест экспорта шаблона отчёта"""
@@ -1978,7 +1973,7 @@ class SystemTester:
         templates = get_report_templates()
         found = next((t for t in templates if t['id'] == tid), None)
         assert found is not None and found['filters'].get('ne_type') == 'vEPC', "Фильтры шаблона не совпадают"
-        print(f"✅ Экспорт шаблона работает")
+        print("✅ Экспорт шаблона работает")
 
     # ---------- ИМПОРТ/ЭКСПОРТ ----------
     def test_excel_import(self):
@@ -1993,7 +1988,7 @@ class SystemTester:
             imported, errors = import_licenses_from_excel("nonexistent.xlsx", 'test')
             print(f"✅ Импорт Excel: функция работает (несуществующий файл → {len(errors)} ошибок)")
         except FileNotFoundError:
-            print(f"✅ Импорт Excel: функция работает (FileNotFoundError)")
+            print("✅ Импорт Excel: функция работает (FileNotFoundError)")
         except Exception as e:
             print(f"✅ Импорт Excel: функция работает (ошибка: {str(e)[:60]})")
 
@@ -2098,8 +2093,8 @@ class SystemTester:
         """Тест отслеживания истории изменений"""
         from modules.database import get_change_history
         try:
-            history = get_change_history(1)
-            print(f"✅ История изменений: функция работает")
+            get_change_history(1)
+            print("✅ История изменений: функция работает")
         except Exception as e:
             print(f"ℹ️ История изменений: {str(e)[:60]}")
 
@@ -2125,7 +2120,7 @@ class SystemTester:
         writer.writerow(['TEST', 'TestProduct', 'vEPC'])
         csv_content = output.getvalue()
         assert 'LSN' in csv_content
-        print(f"✅ Экспорт CSV: заголовки и данные пишутся")
+        print("✅ Экспорт CSV: заголовки и данные пишутся")
 
     def test_ne_type_validation(self):
         """Тест валидации NE типов"""
@@ -2146,7 +2141,7 @@ class SystemTester:
         """Тест массового обновления"""
         from modules.database import save_licenses_batch
         assert callable(save_licenses_batch), "save_licenses_batch не найдена"
-        print(f"✅ Массовое обновление: функция save_licenses_batch доступна")
+        print("✅ Массовое обновление: функция save_licenses_batch доступна")
 
     def test_dashboard_statistics(self):
         """Тест сбора статистики для дашборда"""
@@ -2158,7 +2153,7 @@ class SystemTester:
             cities = set(lic.get('city', '?') for lic in licenses if lic.get('city'))
             print(f"✅ Дашборд: {len(licenses)} лицензий, {len(ne_types)} NE типов, {len(cities)} городов")
         else:
-            print(f"ℹ️ Дашборд: БД пуста")
+            print("ℹ️ Дашборд: БД пуста")
 
 def run_tests():
     """

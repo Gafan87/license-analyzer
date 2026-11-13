@@ -319,7 +319,7 @@
 
 <script>
 // ========== ГЛОБАЛЬНЫЕ ПЕРЕМЕННЫЕ (ТОЛЬКО ОДИН РАЗ) ==========
-const operator = '{{ current_operator }}'; 
+const operator = {{ current_operator|tojson }};
 let activeFilters = {};
 let filterValues = {};
 let currentVisibleColumns = {{ visible_columns|tojson }};
@@ -331,51 +331,7 @@ let currentSearchQuery = '';
 let currentSorting = { field: null, direction: 'asc' };
 
 // ========== ФУНКЦИИ ==========
-// ========== КЭШИРОВАНИЕ ДАННЫХ ЛИЦЕНЗИЙ ==========
-// Функция для загрузки данных с сервера
-async function loadLicensesData() {
-    try {
-        const response = await fetch(`/${operator}/api/licenses_data`);
-        if (!response.ok) throw new Error('Ошибка загрузки');
-        const data = await response.json();
-        
-        // Сохраняем в sessionStorage
-        sessionStorage.setItem(`licenses_${operator}`, JSON.stringify(data));
-        
-        // Отображаем таблицу
-        rebuildTable(data);
-        return data;
-    } catch (error) {
-        console.error('Ошибка загрузки лицензий:', error);
-        return null;
-    }
-}
-
-// Функция для восстановления таблицы из данных
-function rebuildTable(licensesData) {
-    // Здесь нужно перестроить таблицу на основе полученных данных
-    // Если эта функция ещё не определена, можно просто вызвать initFilters
-    if (typeof initFilters === 'function') {
-        initFilters();
-    } else {
-        console.warn('initFilters не определена, таблица не перестроена');
-    }
-}
-
-// Загружаем данные при старте (если нет кэша)
-const cachedData = sessionStorage.getItem(`licenses_${operator}`);
-if (cachedData) {
-    try {
-        const data = JSON.parse(cachedData);
-        rebuildTable(data);
-    } catch(e) {
-        console.error('Ошибка парсинга кэша:', e);
-        loadLicensesData();
-    }
-} else {
-    loadLicensesData();
-}
-
+// Таблица уже отрисована сервером; фильтры инициализируются после DOMContentLoaded.
 async function checkPendingSync() {
     try {
         const resp = await fetch(`/${operator}/scan_status`);
@@ -1675,46 +1631,6 @@ function initColumnDragAndDrop() {
     }
 }
 
-function updateColumnOrderFromDOM() {
-    const container = document.getElementById('columnsSortableList');
-    columnOrder = [];
-    container.querySelectorAll('.filter-list-item input:checked').forEach(input => {
-        columnOrder.push(input.value);
-    });
-}
-
-function loadColumnOrder() {
-    const savedOrder = localStorage.getItem(`column_order_${operator}`);
-    if (savedOrder) {
-        try {
-            const saved = JSON.parse(savedOrder);
-            const container = document.getElementById('columnsSortableList');
-            const items = Array.from(container.querySelectorAll('.filter-list-item'));
-            
-            saved.forEach(col => {
-                const item = items.find(i => i.dataset.column === col);
-                if (item) {
-                    container.appendChild(item);
-                }
-            });
-            columnOrder = saved;
-        } catch(e) {
-            console.error('Ошибка загрузки порядка колонок:', e);
-        }
-    } else {
-        // Начальный порядок из видимых колонок
-        const container = document.getElementById('columnsSortableList');
-        const items = Array.from(container.querySelectorAll('.filter-list-item'));
-        columnOrder = items.map(item => item.dataset.column).filter(col => 
-            currentVisibleColumns.includes(col)
-        );
-    }
-}
-
-function saveColumnOrder() {
-    localStorage.setItem(`column_order_${operator}`, JSON.stringify(columnOrder));
-}
-
 // Также добавим на кнопку Сбросить
 const resetBtn = document.getElementById('resetFiltersBtn');
 if (resetBtn) {
@@ -1727,89 +1643,6 @@ if (resetBtn) {
     console.log('✅ Обработчик сброса добавлен');
 }
 
-
-// ========== RESIZABLE COLUMNS (ОПТИМИЗИРОВАННАЯ) ==========
-let resizeTimeout = null;
-
-function initResizableColumns() {
-    const table = document.getElementById('licensesTable');
-    if (!table) return;
-    
-    const headers = table.querySelectorAll('thead th');
-    
-    headers.forEach((th, idx) => {
-        if (idx === 0 || idx === headers.length - 1) return;
-        
-        // Удаляем старый handle
-        const oldHandle = th.querySelector('.resize-handle');
-        if (oldHandle) oldHandle.remove();
-        
-        // Создаём handle
-        const handle = document.createElement('div');
-        handle.className = 'resize-handle';
-        th.style.position = 'relative';
-        th.appendChild(handle);
-        
-        // Восстанавливаем ширину
-        const savedWidth = localStorage.getItem(`col_width_${idx}`);
-        if (savedWidth) {
-            th.style.width = savedWidth + 'px';
-            th.style.minWidth = savedWidth + 'px';
-        }
-        
-        // Добавляем обработчик
-        handle.addEventListener('mousedown', (e) => {
-            e.preventDefault();
-            e.stopPropagation();
-            
-            const startX = e.clientX;
-            const startWidth = th.offsetWidth;
-            
-            function onMouseMove(moveEvent) {
-                const diff = moveEvent.clientX - startX;
-                let newWidth = startWidth + diff;
-                newWidth = Math.max(60, Math.min(400, newWidth));
-                
-                // Меняем ширину без перерисовки таблицы
-                th.style.width = newWidth + 'px';
-                th.style.minWidth = newWidth + 'px';
-                
-                // Используем throttle для сохранения
-                if (resizeTimeout) clearTimeout(resizeTimeout);
-                resizeTimeout = setTimeout(() => {
-                    localStorage.setItem(`col_width_${idx}`, newWidth);
-                }, 100);
-            }
-            
-            function onMouseUp() {
-                document.removeEventListener('mousemove', onMouseMove);
-                document.removeEventListener('mouseup', onMouseUp);
-                document.body.style.cursor = '';
-                document.body.style.userSelect = '';
-            }
-            
-            document.addEventListener('mousemove', onMouseMove);
-            document.addEventListener('mouseup', onMouseUp);
-            document.body.style.cursor = 'col-resize';
-            document.body.style.userSelect = 'none';
-        });
-    });
-}
-
-// Сброс всех ширин колонок
-function resetColumnWidths() {
-    const table = document.getElementById('licensesTable');
-    if (!table) return;
-    
-    const headers = table.querySelectorAll('thead th');
-    headers.forEach((th, idx) => {
-        if (idx === 0 || idx === headers.length - 1) return;
-        th.style.width = '';
-        th.style.minWidth = '';
-        localStorage.removeItem(`col_width_${idx}`);
-    });
-    initResizableColumns();
-}
 
 // ========== ГЕНЕРАЦИЯ СПИСКА КОЛОНОК ИЗ БД ==========
 // Фиксированные колонки (всегда есть)

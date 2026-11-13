@@ -8,7 +8,7 @@ from modules.database import (
     get_connection, save_license, get_license_by_id, get_all_licenses,
     get_unique_esn_licenses, get_all_licenses_for_esn, get_filter_options
 )
-from modules.esn_mapper import get_mapping_by_esn, get_mapping_by_lsn
+from modules.esn_mapper import get_mapping_by_esn
 from modules.logger import get_logger
 import time
 import sqlite3

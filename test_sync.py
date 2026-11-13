@@ -1,7 +1,6 @@
 from app import app
 with app.app_context():
     import sqlite3
-    import json
     from datetime import datetime
     import os
     import traceback

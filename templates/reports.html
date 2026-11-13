@@ -26,7 +26,7 @@
             {% endfor %}
         </select>
         <input type="text" name="year" placeholder="Год (2028)" value="{{ selected_year or '' }}">
-        <button type="submit">Сравнить</button>
+        <button type="submit" data-tooltip="Сопоставить фактические ресурсы выбранного сайта с целевыми значениями и показать отклонения.">Сравнить</button>
     </form>
     
     {% if comparison %}
