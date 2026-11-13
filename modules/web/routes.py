@@ -1028,11 +1028,18 @@ def api_export_licenses():
         query = f'''
             SELECT l.id, l.lsn, l.product, l.version, l.ne_type, l.city, l.site, l.year,
                    l.valid_date, l.esn, l.node, l.create_time, l.domain,
-                   GROUP_CONCAT(DISTINCT t.name, ', ') as tags,
+                   tag_data.tags as tags,
                    (SELECT COUNT(*) FROM comments c WHERE c.license_id = l.id) as comments_count
             FROM licenses l
-            LEFT JOIN license_tags lt ON lt.license_id = l.id
-            LEFT JOIN tags t ON lt.tag_id = t.id
+            LEFT JOIN (
+                SELECT license_id, GROUP_CONCAT(name, ', ') as tags
+                FROM (
+                    SELECT DISTINCT lt.license_id AS license_id, t.name AS name
+                    FROM license_tags lt
+                    JOIN tags t ON lt.tag_id = t.id
+                )
+                GROUP BY license_id
+            ) tag_data ON tag_data.license_id = l.id
             WHERE l.id IN ({placeholders})
             GROUP BY l.id
         '''
@@ -1041,11 +1048,18 @@ def api_export_licenses():
         query = '''
             SELECT l.id, l.lsn, l.product, l.version, l.ne_type, l.city, l.site, l.year,
                    l.valid_date, l.esn, l.node, l.create_time, l.domain,
-                   GROUP_CONCAT(DISTINCT t.name, ', ') as tags,
+                   tag_data.tags as tags,
                    (SELECT COUNT(*) FROM comments c WHERE c.license_id = l.id) as comments_count
             FROM licenses l
-            LEFT JOIN license_tags lt ON lt.license_id = l.id
-            LEFT JOIN tags t ON lt.tag_id = t.id
+            LEFT JOIN (
+                SELECT license_id, GROUP_CONCAT(name, ', ') as tags
+                FROM (
+                    SELECT DISTINCT lt.license_id AS license_id, t.name AS name
+                    FROM license_tags lt
+                    JOIN tags t ON lt.tag_id = t.id
+                )
+                GROUP BY license_id
+            ) tag_data ON tag_data.license_id = l.id
         '''
         params = []
         if operator:
