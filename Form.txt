@@ -1,0 +1,259 @@
+﻿
+Private Sub CopyOutput_Click()
+    Dim userInput As String
+    Dim columnLetter As String
+    Dim columnNumber As Long
+    Dim firstCellValue As Variant
+    Dim tempRange As Range
+    
+        Dim selectedColor As Long
+        Dim ColorCell1 As Range
+
+
+        On Error GoTo 0
+
+        If Not tempRange Is Nothing Then
+            Set OutputRange1 = tempRange
+        End If
+    userInput = InputBox("Please input Column ""letter"" reference:")
+
+    If userInput Like "[A-Za-z]*" Then
+ '       Ïðåîáðàçóåì áóêâó â íîìåð ñòîëáöà
+        columnLetter = UCase(userInput) ' Ïðèâîäèì ê âåðõíåìó ðåãèñòðó
+       columnNumber = Range(columnLetter & "1").Column ' Ïîëó÷àåì íîìåð ñòîëáöà ïî áóêâå
+
+'         Ïîëó÷àåì çíà÷åíèå èç ïåðâîé ÿ÷åéêè ýòîãî ñòîëáöà
+
+        FileP_TextBox.Value = Cells(1, columnNumber).Value
+        FileN_TextBox.Value = Cells(2, columnNumber).Value
+
+       ORng_TextBox.Value = Range(columnLetter & "1:" & columnLetter & SearchRange1.Rows.Count).Address
+       ORng_TextBox.Value = OutputRange1.Offset(0, columnNumber - OutputRange1.Column).Address
+               Set tempRange = Range(ORng_TextBox.Value)
+'MsgBox ORng_TextBox.Value
+       Set OutputRange1 = Range(ORng_TextBox.Value)
+        FolderPath1 = FileP_TextBox.Value
+        DataFileName1 = FileN_TextBox.Value
+    Else
+        MsgBox userInput & " - this isn't Column ""letter"" reference."
+    End If
+    
+End Sub
+
+Private Sub Pack_search_Change()
+    PackSearch = Pack_search.Value
+End Sub
+
+Private Sub ColorIndicator_Click()
+        On Error Resume Next
+        Set ColorCell1 = Application.InputBox("Select a cell with the desired fill color.", Type:=8)
+        If ColorCell1 Is Nothing Then Exit Sub
+        selectedColor = ColorCell1.Interior.Color
+        ColorIndicator.BackColor = selectedColor
+        Color_Cell.Value = True
+        On Error GoTo 0
+End Sub
+
+Private Sub Color_Cell_Click()
+    colorCell = Color_Cell.Value
+    If Color_Cell.Value = True And ColorIndicator.BackColor = &H8000000F Then
+        ColorIndicator_Click
+        If ColorIndicator.BackColor = &H8000000F Then Color_Cell.Value = False
+    ElseIf Color_Cell.Value = False Then
+        ColorIndicator.BackColor = &H8000000F
+    Else
+    End If
+End Sub
+
+Private Sub Start_button_Click()
+    Start = True
+    Call Click
+    Start = False
+    Me.Hide
+End Sub
+
+
+Private Sub OutputP_list_AfterUpdate()
+        OutputFormat1 = OutputP_list.ListIndex
+End Sub
+
+Private Sub SRng_TextBox_AfterUpdate() ' SearchRange1.Address
+        Dim tempRange As Range
+        On Error Resume Next
+        Set tempRange = Range(SRng_TextBox.Value)
+        On Error GoTo 0
+
+        If Not tempRange Is Nothing Then
+            Set SearchRange1 = tempRange         ' Valid range, so set it to SelectedRange
+        Else
+            If SRng_TextBox.Value = "No range selected" Then
+                Exit Sub
+            ElseIf Not SearchRange1 Is Nothing Then
+                SRng_TextBox.Value = SearchRange1.Address
+                MsgBox "The entered text is not a valid range.", vbExclamation
+            Else
+                SRng_TextBox.Value = "No range selected"
+                MsgBox "The entered text is not a valid range.", vbExclamation
+            End If
+    End If
+
+End Sub
+
+Private Sub ORng_TextBox_AfterUpdate() ' OutputRange1.Address
+        Dim tempRange As Range
+        On Error Resume Next
+        Set tempRange = Range(ORng_TextBox.Value)
+        On Error GoTo 0
+
+        If Not tempRange Is Nothing Then
+            Set OutputRange1 = tempRange         ' Valid range, so set it to SelectedRange
+        Else
+            If ORng_TextBox.Value = "No range selected" Then
+                Exit Sub
+            ElseIf Not OutputRange1 Is Nothing Then
+                ORng_TextBox.Value = OutputRange1.Address
+                MsgBox "The entered text is not a valid range.", vbExclamation
+            Else
+                ORng_TextBox.Value = "No range selected"
+                MsgBox "The entered text is not a valid range.", vbExclamation
+            End If
+    End If
+End Sub
+
+Private Sub FileN_TextBox_AfterUpdate() ' DataFileName1 text
+        DataFileName1 = FileN_TextBox
+End Sub
+
+Private Sub FileP_TextBox_AfterUpdate() ' folderPath1 text
+        FolderPath1 = FileP_TextBox
+End Sub
+
+Private Sub Select_SearchRange_Click()  'Choose Search  Cell Range
+    Me.Hide ' Hide the UserForm
+    On Error Resume Next
+    Set SearchRange1 = Application.InputBox("Choose Search Cell range", Type:=8)
+
+    If Not SearchRange1 Is Nothing Then
+        SRng_TextBox.Value = SearchRange1.Address ' Îòîáðàæàåì àäðåñ âûáðàííîãî äèàïàçîíà â TextBox
+    Else
+        SRng_TextBox.Value = "Range isn't selected"
+    End If
+
+    Me.Show ' Show the UserForm again
+End Sub
+
+Private Sub Select_OutputRange_Click() 'Choose Output  Cell Range
+    Me.Hide ' Hide the UserForm
+    On Error Resume Next
+     Set OutputRange1 = Application.InputBox("Choose Output Cell Range", Type:=8)
+
+    If Not OutputRange1 Is Nothing Then
+        ORng_TextBox.Value = OutputRange1.Address ' Îòîáðàæàåì àäðåñ âûáðàííîãî äèàïàçîíà â TextBox
+    Else
+        ORng_TextBox.Value = "Range isn't selected"
+    End If
+
+    Me.Show ' Show the UserForm again
+End Sub
+
+Private Sub Choose_file_name_Click()
+    Me.Hide ' Hide the UserForm
+    On Error Resume Next
+    Dim selectedCell As Range
+
+    Set selectedCell = Application.InputBox("Choose Search File name", Type:=8)
+     If Not selectedCell Is Nothing Then
+        FileN_TextBox.Value = selectedCell.Value ' Display the value of the selected cell in TextBox
+    Else
+        FileN_TextBox.Value = "File name isn't selected"
+    End If
+    DataFileName1 = FileN_TextBox.Value
+    Me.Show ' Show the UserForm again
+End Sub
+
+Private Sub Choose_file_path_Click()
+    Me.Hide ' Hide the UserForm
+    On Error Resume Next
+    Dim selectedCell As Range
+
+    Set selectedCell = Application.InputBox("Choose Search File path", Type:=8)
+     If Not selectedCell Is Nothing Then
+        FileP_TextBox.Value = selectedCell.Value ' Display the value of the selected cell in TextBox
+    Else
+        FileP_TextBox.Value = "File path isn't selected"
+    End If
+    FolderPath1 = FileP_TextBox.Value
+    Me.Show ' Show the UserForm again
+End Sub
+
+
+Private Sub UserForm_Initialize()
+
+    Me.Width = 375 ' Øèðèíà â ïóíêòàõ
+    Me.Height = 235 ' Âûñîòà â ïóíêòàõ
+
+    If PackSearch = True Then
+        Pack_search.Value = True
+    Else
+        Pack_search.Value = False
+        PackSearch = False
+    End If
+    
+    If colorCell = True Then
+        Color_Cell.Value = True
+    Else
+        Color_Cell.Value = False
+        colorCell = False
+    End If
+   
+' selectedColor       Initialize the Value with the previously selected range, if any
+    If TypeName(selectedColor) = "Long" And Color_Cell.Value = True Then
+        ColorIndicator.BackColor = selectedColor
+    Else
+        ColorIndicator.BackColor = &H8000000F
+    End If
+    
+    If TypeName(ColorCellChange) = "Boolean" Then
+        Color_Cell.Value = ColorCellChange
+    Else
+        Color_Cell.Value = False
+    End If
+
+' SearchRange1       Initialize the TextBox with the previously selected range, if any
+    If TypeName(SearchRange1) = "Range" Then
+        SRng_TextBox.Value = SearchRange1.Address
+    Else
+        SRng_TextBox.Value = "No range selected"
+    End If
+' OutputRange1       Initialize the TextBox with the previously selected range, if any
+    If TypeName(OutputRange1) = "Range" Then
+        ORng_TextBox.Value = OutputRange1.Address
+    Else
+        ORng_TextBox.Value = "No range selected"
+    End If
+ ' Initialize the TextBox with the previously selected range, if any
+'DataFileName1 = ""
+    If DataFileName1 <> "" Then
+        FileN_TextBox.Value = DataFileName1
+   Else
+        FileN_TextBox.Value = "No File name selected"
+    End If
+' Initialize the TextBox with the previously selected range, if any
+'folderPath1 = ""
+    If FolderPath1 <> "" Then
+        FileP_TextBox.Value = FolderPath1
+    Else
+        FileP_TextBox.Value = "No File path selected"
+    End If
+
+    With OutputP_list
+        .AddItem "Output all values (0)"
+        .AddItem "Output PERMANENT values (1)"
+        .AddItem "Output Fix-Term values (2)"
+        .ListIndex = 0
+        OutputFormat1 = 0
+    End With
+
+
+End Sub
+

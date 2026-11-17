@@ -1,0 +1,32 @@
+# docker-compose.yml
+version: '3.8'
+
+services:
+  license-analyzer:
+    build: .
+    container_name: huawei-license-analyzer
+    ports:
+      - "5000:5000"
+    volumes:
+      # Персистентные данные
+      - ./data:/app/data
+      - ./logs:/app/logs
+      - ./backups:/app/backups
+      - ./uploads:/app/uploads
+      
+      # Конфигурация (монтируем для возможности редактирования)
+      - ./config.json:/app/config.json:ro
+      
+      # Путь к сетевым хранилищам (нужно настроить под вашу среду)
+      # Раскомментируйте и настройте для доступа к сетевым шарам
+      # - /mnt/network_storage:/mnt/network_storage
+      
+    environment:
+      - FLASK_ENV=production
+      - PYTHONUNBUFFERED=1
+      - TZ=Europe/Moscow
+      
+    restart: unless-stopped
+    
+    # Для доступа к сетевым шарам может потребоваться
+    # network_mode: host
