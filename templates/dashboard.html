@@ -1,0 +1,746 @@
+{% extends "base.html" %}
+
+{% block title %}Дашборд — {{ current_operator_title }} — License Analyzer{% endblock %}
+
+{% block extra_css %}
+<style>
+.dash-section {
+    margin-bottom: 20px;
+}
+.dash-section-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 12px;
+}
+.dash-section-title {
+    font-size: 1.05rem;
+    font-weight: 600;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin: 0;
+}
+.dash-section-title i {
+    color: var(--huawei-red, #C7000B);
+}
+.dash-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+    gap: 14px;
+}
+.kpi-card {
+    background: var(--card-bg, #ffffff);
+    border: 1px solid var(--border-color, #e5e7eb);
+    border-left: 4px solid var(--huawei-red, #C7000B);
+    border-radius: 10px;
+    padding: 16px 18px;
+    cursor: pointer;
+    transition: transform 0.15s ease, box-shadow 0.15s ease;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    min-height: 104px;
+}
+.kpi-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 6px 18px rgba(0, 0, 0, 0.08);
+}
+.kpi-card.accent-blue   { border-left-color: #2563eb; }
+.kpi-card.accent-green  { border-left-color: #16a34a; }
+.kpi-card.accent-red    { border-left-color: #dc2626; }
+.kpi-card.accent-orange { border-left-color: #ea580c; }
+.kpi-card.accent-amber  { border-left-color: #d97706; }
+.kpi-card.accent-purple { border-left-color: #7c3aed; }
+.kpi-card.accent-gray   { border-left-color: #64748b; }
+
+.kpi-top {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 8px;
+}
+.kpi-label {
+    font-size: 0.85rem;
+    color: var(--text-muted, #6b7280);
+    font-weight: 500;
+}
+.kpi-icon {
+    font-size: 1rem;
+    opacity: 0.7;
+}
+.kpi-value {
+    font-size: 1.85rem;
+    font-weight: 700;
+    line-height: 1.15;
+    margin: 8px 0 4px;
+}
+.kpi-sub {
+    font-size: 0.78rem;
+    color: var(--text-muted, #6b7280);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+.kpi-open-hint {
+    font-size: 0.72rem;
+    opacity: 0.65;
+}
+.kpi-card:hover .kpi-open-hint {
+    opacity: 1;
+    color: var(--huawei-red, #C7000B);
+}
+
+/* Широкое модальное окно детализации */
+.dash-modal-backdrop {
+    position: fixed;
+    inset: 0;
+    background: rgba(15, 23, 42, 0.58);
+    display: none;
+    align-items: center;
+    justify-content: center;
+    z-index: 2000;
+    padding: 16px;
+}
+.dash-modal-backdrop.open {
+    display: flex;
+}
+.dash-modal {
+    background: var(--card-bg, #ffffff);
+    color: var(--text-color, #111827);
+    border: 1px solid var(--border-color, #e5e7eb);
+    border-radius: 12px;
+    width: 96vw;
+    max-width: 1360px;
+    max-height: 88vh;
+    display: flex;
+    flex-direction: column;
+    box-shadow: 0 24px 60px rgba(0, 0, 0, 0.3);
+    overflow: hidden;
+}
+.dash-modal-header {
+    padding: 14px 20px;
+    border-bottom: 1px solid var(--border-color, #e5e7eb);
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 12px;
+}
+.dash-modal-title {
+    margin: 0;
+    font-size: 1.15rem;
+    font-weight: 700;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+.dash-modal-count {
+    font-size: 0.8rem;
+    font-weight: 600;
+    padding: 2px 9px;
+    border-radius: 999px;
+    background: rgba(199, 0, 11, 0.12);
+    color: var(--huawei-red, #C7000B);
+}
+.dash-modal-subtitle {
+    margin: 4px 0 0;
+    font-size: 0.84rem;
+    color: var(--text-muted, #6b7280);
+}
+.dash-modal-close {
+    background: transparent;
+    border: none;
+    font-size: 1.45rem;
+    cursor: pointer;
+    color: var(--text-muted, #6b7280);
+    line-height: 1;
+    padding: 4px 8px;
+}
+.dash-modal-close:hover {
+    color: var(--huawei-red, #C7000B);
+}
+.dash-modal-toolbar {
+    padding: 10px 20px;
+    border-bottom: 1px solid var(--border-color, #e5e7eb);
+    display: flex;
+    gap: 10px;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+}
+.dash-modal-search {
+    flex: 1;
+    min-width: 240px;
+    padding: 8px 12px;
+    border-radius: 8px;
+    border: 1px solid var(--border-color, #d1d5db);
+    background: var(--bg-color, #f9fafb);
+    color: inherit;
+    font-size: 0.9rem;
+}
+.dash-modal-body {
+    padding: 12px 20px 16px;
+    overflow: auto;
+    flex: 1;
+}
+.dash-modal-body .licenses-table {
+    table-layout: fixed;
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.85rem;
+}
+.dash-modal-body .licenses-table th,
+.dash-modal-body .licenses-table td {
+    padding: 7px 9px;
+    border-bottom: 1px solid var(--border-color, #e5e7eb);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.dash-modal-body .licenses-table th {
+    position: sticky;
+    top: 0;
+    background: var(--card-bg, #ffffff);
+    font-weight: 600;
+    z-index: 2;
+}
+/* Фиксированная компактная ширина колонки ESN */
+.dash-modal-body th.col-esn,
+.dash-modal-body td.col-esn,
+.dash-modal-body th.esn-cell,
+.dash-modal-body td.esn-cell {
+    width: 145px;
+    min-width: 145px;
+    max-width: 145px;
+}
+.dash-modal-body th.col-chk,
+.dash-modal-body td.col-chk {
+    width: 38px;
+    min-width: 38px;
+    max-width: 38px;
+    text-align: center;
+}
+.dash-modal-body th.col-act,
+.dash-modal-body td.col-act {
+    width: 44px;
+    min-width: 44px;
+    max-width: 44px;
+    text-align: center;
+}
+.dash-modal-body tbody tr.lic-row {
+    cursor: pointer;
+}
+.dash-modal-body tbody tr.lic-row:hover {
+    background: var(--bg-hover, rgba(0, 0, 0, 0.04));
+}
+.dash-modal-footer {
+    padding: 12px 20px;
+    border-top: 1px solid var(--border-color, #e5e7eb);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+}
+.dash-modal-actions {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    flex-wrap: wrap;
+}
+.dash-loading {
+    padding: 40px;
+    text-align: center;
+    color: var(--text-muted, #6b7280);
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<!-- Группа 1: Покрытие сети и ESN -->
+<div class="card dash-section">
+    <div class="dash-section-header">
+        <h2 class="dash-section-title"><i class="fas fa-network-wired"></i> Покрытие сети и ESN</h2>
+    </div>
+    <div class="dash-grid">
+        <div class="kpi-card accent-blue" data-metric="unique_esn">
+            <div class="kpi-top">
+                <span class="kpi-label">Уникальные ESN в БД</span>
+                <i class="fas fa-microchip kpi-icon"></i>
+            </div>
+            <div class="kpi-value">{{ summary.unique_esn_count }}</div>
+            <div class="kpi-sub">
+                <span>Актуальных узлов</span>
+                <span class="kpi-open-hint">Детали →</span>
+            </div>
+        </div>
+
+        <div class="kpi-card {% if summary.coverage_pct >= 95 %}accent-green{% elif summary.coverage_pct >= 70 %}accent-amber{% else %}accent-red{% endif %}" data-metric="coverage">
+            <div class="kpi-top">
+                <span class="kpi-label">Покрытие ESN-маппинга</span>
+                <i class="fas fa-check-circle kpi-icon"></i>
+            </div>
+            <div class="kpi-value">{{ summary.coverage_pct }}%</div>
+            <div class="kpi-sub">
+                <span>{{ summary.covered_esn_count }} из {{ summary.mapped_esn_count }} ESN</span>
+                <span class="kpi-open-hint">Детали →</span>
+            </div>
+        </div>
+
+        <div class="kpi-card {% if summary.missing_esn_count > 0 %}accent-red{% else %}accent-green{% endif %}" data-metric="missing_esn">
+            <div class="kpi-top">
+                <span class="kpi-label">ESN без лицензий (Gap)</span>
+                <i class="fas fa-exclamation-circle kpi-icon"></i>
+            </div>
+            <div class="kpi-value">{{ summary.missing_esn_count }}</div>
+            <div class="kpi-sub">
+                <span>Есть в маппинге, нет в БД</span>
+                <span class="kpi-open-hint">Детали →</span>
+            </div>
+        </div>
+
+        <div class="kpi-card {% if summary.unmapped_esn_count > 0 %}accent-amber{% else %}accent-gray{% endif %}" data-metric="unmapped_esn">
+            <div class="kpi-top">
+                <span class="kpi-label">Неизвестные ESN</span>
+                <i class="fas fa-question-circle kpi-icon"></i>
+            </div>
+            <div class="kpi-value">{{ summary.unmapped_esn_count }}</div>
+            <div class="kpi-sub">
+                <span>Есть в БД, нет в маппинге</span>
+                <span class="kpi-open-hint">Детали →</span>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Группа 2: Состав и типы лицензий -->
+<div class="card dash-section">
+    <div class="dash-section-header">
+        <h2 class="dash-section-title"><i class="fas fa-file-contract"></i> Состав и типы лицензий</h2>
+    </div>
+    <div class="dash-grid">
+        <div class="kpi-card accent-gray" data-metric="total_licenses">
+            <div class="kpi-top">
+                <span class="kpi-label">Всего файлов в БД</span>
+                <i class="fas fa-database kpi-icon"></i>
+            </div>
+            <div class="kpi-value">{{ summary.total_licenses_count }}</div>
+            <div class="kpi-sub">
+                <span>DAT: {{ summary.dat_count }} · XML: {{ summary.xml_count }}</span>
+                <span class="kpi-open-hint">Детали →</span>
+            </div>
+        </div>
+
+        <div class="kpi-card accent-green" data-metric="permanent">
+            <div class="kpi-top">
+                <span class="kpi-label">Только Permanent</span>
+                <i class="fas fa-infinity kpi-icon"></i>
+            </div>
+            <div class="kpi-value">{{ summary.permanent_count }}</div>
+            <div class="kpi-sub">
+                <span>Бессрочные (уник. ESN)</span>
+                <span class="kpi-open-hint">Детали →</span>
+            </div>
+        </div>
+
+        <div class="kpi-card accent-orange" data-metric="fixterm">
+            <div class="kpi-top">
+                <span class="kpi-label">Только Fixterm</span>
+                <i class="fas fa-hourglass-half kpi-icon"></i>
+            </div>
+            <div class="kpi-value">{{ summary.fixterm_count }}</div>
+            <div class="kpi-sub">
+                <span>Временные (уник. ESN)</span>
+                <span class="kpi-open-hint">Детали →</span>
+            </div>
+        </div>
+
+        <div class="kpi-card accent-purple" data-metric="permanent_fixterm">
+            <div class="kpi-top">
+                <span class="kpi-label">Permanent + Fixterm</span>
+                <i class="fas fa-layer-group kpi-icon"></i>
+            </div>
+            <div class="kpi-value">{{ summary.permanent_fixterm_count }}</div>
+            <div class="kpi-sub">
+                <span>Комбинированные (уник. ESN)</span>
+                <span class="kpi-open-hint">Детали →</span>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Группа 3: Сроки действия и риски -->
+<div class="card dash-section">
+    <div class="dash-section-header">
+        <h2 class="dash-section-title"><i class="fas fa-clock"></i> Сроки действия и риски</h2>
+    </div>
+    <div class="dash-grid">
+        <div class="kpi-card {% if summary.expired_count > 0 %}accent-red{% else %}accent-green{% endif %}" data-metric="expired">
+            <div class="kpi-top">
+                <span class="kpi-label">Просроченные (Expired)</span>
+                <i class="fas fa-ban kpi-icon"></i>
+            </div>
+            <div class="kpi-value">{{ summary.expired_count }}</div>
+            <div class="kpi-sub">
+                <span>Срок действия истёк</span>
+                <span class="kpi-open-hint">Детали →</span>
+            </div>
+        </div>
+
+        <div class="kpi-card {% if summary.expiring_30_count > 0 %}accent-orange{% else %}accent-green{% endif %}" data-metric="expiring_30">
+            <div class="kpi-top">
+                <span class="kpi-label">Истекают ≤ 30 дней</span>
+                <i class="fas fa-exclamation-triangle kpi-icon"></i>
+            </div>
+            <div class="kpi-value">{{ summary.expiring_30_count }}</div>
+            <div class="kpi-sub">
+                <span>Срочное продление</span>
+                <span class="kpi-open-hint">Детали →</span>
+            </div>
+        </div>
+
+        <div class="kpi-card {% if summary.expiring_90_count > 0 %}accent-amber{% else %}accent-gray{% endif %}" data-metric="expiring_90">
+            <div class="kpi-top">
+                <span class="kpi-label">Истекают 31–90 дней</span>
+                <i class="fas fa-calendar-alt kpi-icon"></i>
+            </div>
+            <div class="kpi-value">{{ summary.expiring_90_count }}</div>
+            <div class="kpi-sub">
+                <span>Плановый контроль</span>
+                <span class="kpi-open-hint">Детали →</span>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Группа 4: Оборудование, география и статус БД -->
+<div class="card dash-section">
+    <div class="dash-section-header">
+        <h2 class="dash-section-title"><i class="fas fa-server"></i> Оборудование, география и статус БД</h2>
+    </div>
+    <div class="dash-grid">
+        <div class="kpi-card accent-blue" data-metric="ne_types">
+            <div class="kpi-top">
+                <span class="kpi-label">Типы оборудования (NE)</span>
+                <i class="fas fa-cubes kpi-icon"></i>
+            </div>
+            <div class="kpi-value">{{ summary.ne_types_count }}</div>
+            <div class="kpi-sub">
+                <span>Сводка по типам NE</span>
+                <span class="kpi-open-hint">Детали →</span>
+            </div>
+        </div>
+
+        <div class="kpi-card accent-blue" data-metric="cities">
+            <div class="kpi-top">
+                <span class="kpi-label">Города / Регионы</span>
+                <i class="fas fa-map-marker-alt kpi-icon"></i>
+            </div>
+            <div class="kpi-value">{{ summary.cities_count }}</div>
+            <div class="kpi-sub">
+                <span>География сети</span>
+                <span class="kpi-open-hint">Детали →</span>
+            </div>
+        </div>
+
+        <div class="kpi-card {% if summary.pending_sync > 0 %}accent-amber{% else %}accent-gray{% endif %}" data-metric="db_status">
+            <div class="kpi-top">
+                <span class="kpi-label">Статус БД и синхронизации</span>
+                <i class="fas fa-sync-alt kpi-icon"></i>
+            </div>
+            <div class="kpi-value" style="font-size: 1.25rem;">{{ summary.last_db_update }}</div>
+            <div class="kpi-sub">
+                <span>Ожидают синхр.: {{ summary.pending_sync }}</span>
+                <span class="kpi-open-hint">Детали →</span>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Широкое модальное окно детализации в стиле списка лицензий -->
+<div id="dashModalBackdrop" class="dash-modal-backdrop" role="dialog" aria-modal="true">
+    <div class="dash-modal">
+        <div class="dash-modal-header">
+            <div>
+                <h3 class="dash-modal-title">
+                    <span id="dashModalTitle">Детализация</span>
+                    <span id="dashModalCount" class="dash-modal-count">0</span>
+                </h3>
+                <p id="dashModalSubtitle" class="dash-modal-subtitle"></p>
+            </div>
+            <button id="dashModalClose" class="dash-modal-close" title="Закрыть">&times;</button>
+        </div>
+
+        <div class="dash-modal-toolbar">
+            <input type="text" id="dashModalSearch" class="dash-modal-search" placeholder="Поиск по ESN, NE тип, городу, сайту, LSN...">
+            <div class="dash-modal-actions">
+                <button id="dashBulkDetailBtn" class="secondary-btn" style="display: none;">
+                    <i class="fas fa-layer-group"></i> <span>Детали выбранных (<span id="dashSelectedCount">0</span>)</span>
+                </button>
+                <button id="dashExportBtn" class="secondary-btn">
+                    <i class="fas fa-file-excel"></i> <span>Экспорт в Excel</span>
+                </button>
+                <a id="dashOpenListBtn" href="/{{ current_operator }}/" class="secondary-btn">
+                    <i class="fas fa-external-link-alt"></i> <span>Список лицензий</span>
+                </a>
+            </div>
+        </div>
+
+        <div id="dashModalBody" class="dash-modal-body">
+            <div class="dash-loading"><i class="fas fa-spinner fa-pulse"></i> Загрузка данных...</div>
+        </div>
+
+        <div class="dash-modal-footer">
+            <span id="dashModalShownInfo" class="text-muted" style="font-size: 0.82rem;"></span>
+            <button id="dashModalCloseBottom" class="secondary-btn">Закрыть</button>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+(function() {
+    const operator = {{ current_operator|tojson }};
+    const backdrop = document.getElementById('dashModalBackdrop');
+    const titleEl = document.getElementById('dashModalTitle');
+    const countEl = document.getElementById('dashModalCount');
+    const subtitleEl = document.getElementById('dashModalSubtitle');
+    const bodyEl = document.getElementById('dashModalBody');
+    const searchEl = document.getElementById('dashModalSearch');
+    const shownInfoEl = document.getElementById('dashModalShownInfo');
+    const exportBtn = document.getElementById('dashExportBtn');
+    const openListBtn = document.getElementById('dashOpenListBtn');
+    const bulkDetailBtn = document.getElementById('dashBulkDetailBtn');
+    const selectedCountEl = document.getElementById('dashSelectedCount');
+
+    let currentData = { mode: 'table', title: '', headers: [], rows: [], columns: [], records: [] };
+    let filteredRecords = [];
+    let filteredRows = [];
+    let selectedEsns = new Set();
+
+    function escapeHtml(val) {
+        return String(val ?? '')
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;');
+    }
+
+    function updateBulkButton() {
+        selectedCountEl.textContent = selectedEsns.size;
+        if (currentData.mode === 'licenses' && selectedEsns.size > 0) {
+            bulkDetailBtn.style.display = 'inline-flex';
+        } else {
+            bulkDetailBtn.style.display = 'none';
+        }
+    }
+
+    function renderLicensesTable() {
+        const q = (searchEl.value || '').trim().toLowerCase();
+        const cols = currentData.columns || [];
+
+        filteredRecords = q
+            ? currentData.records.filter(rec =>
+                cols.some(c => String(rec[c.key] ?? '').toLowerCase().includes(q))
+              )
+            : currentData.records.slice();
+
+        countEl.textContent = filteredRecords.length;
+        shownInfoEl.textContent = q
+            ? `Показано ${filteredRecords.length} из ${currentData.records.length} записей · Клик по строке открывает детали`
+            : `Всего записей: ${currentData.records.length} · Клик по строке открывает детали`;
+
+        if (!filteredRecords.length) {
+            bodyEl.innerHTML = '<div class="dash-loading">Нет данных по выбранному фильтру.</div>';
+            return;
+        }
+
+        const ths = [
+            '<th class="col-chk"><input type="checkbox" id="dashSelectAll"></th>',
+            ...cols.map(c => {
+                const cls = c.key === 'esn' ? ' class="col-esn esn-cell"' : '';
+                return `<th${cls}>${escapeHtml(c.label)}</th>`;
+            }),
+            '<th class="col-act"></th>'
+        ].join('');
+
+        const trs = filteredRecords.map(rec => {
+            const esnVal = rec.esn && rec.esn !== '-' ? rec.esn : '';
+            const checked = esnVal && selectedEsns.has(esnVal) ? ' checked' : '';
+            const tds = cols.map(c => {
+                const raw = String(rec[c.key] ?? '-');
+                if (c.key === 'esn') {
+                    return `<td class="col-esn esn-cell" title="${escapeHtml(raw)}">${escapeHtml(raw)}</td>`;
+                }
+                if (c.key === 'lsn') {
+                    const shortLsn = raw.length > 25 ? raw.slice(0, 25) + '...' : raw;
+                    return `<td class="lsn-cell" title="${escapeHtml(raw)}">${escapeHtml(shortLsn)}</td>`;
+                }
+                return `<td title="${escapeHtml(raw)}">${escapeHtml(raw)}</td>`;
+            }).join('');
+
+            const actCell = rec.detail_url
+                ? `<td class="col-act"><a href="${escapeHtml(rec.detail_url)}" class="action-link" title="Открыть детали лицензии"><i class="fas fa-list-ul"></i></a></td>`
+                : '<td class="col-act"></td>';
+
+            return `<tr class="lic-row" data-detail-url="${escapeHtml(rec.detail_url || '')}" data-esn="${escapeHtml(esnVal)}">
+                <td class="col-chk"><input type="checkbox" class="dash-row-chk" data-esn="${escapeHtml(esnVal)}"${checked}></td>
+                ${tds}
+                ${actCell}
+            </tr>`;
+        }).join('');
+
+        bodyEl.innerHTML = `<table class="licenses-table"><thead><tr>${ths}</tr></thead><tbody>${trs}</tbody></table>`;
+
+        bodyEl.querySelectorAll('.lic-row').forEach(tr => {
+            tr.addEventListener('click', (e) => {
+                if (e.target.closest('input[type="checkbox"]') || e.target.closest('a')) return;
+                const url = tr.dataset.detailUrl;
+                if (url) window.location.href = url;
+            });
+        });
+
+        bodyEl.querySelectorAll('.dash-row-chk').forEach(cb => {
+            cb.addEventListener('change', (e) => {
+                e.stopPropagation();
+                const esnVal = cb.dataset.esn;
+                if (!esnVal) return;
+                if (cb.checked) selectedEsns.add(esnVal);
+                else selectedEsns.delete(esnVal);
+                updateBulkButton();
+            });
+        });
+
+        const selectAll = document.getElementById('dashSelectAll');
+        if (selectAll) {
+            selectAll.addEventListener('change', () => {
+                bodyEl.querySelectorAll('.dash-row-chk').forEach(cb => {
+                    cb.checked = selectAll.checked;
+                    const esnVal = cb.dataset.esn;
+                    if (!esnVal) return;
+                    if (selectAll.checked) selectedEsns.add(esnVal);
+                    else selectedEsns.delete(esnVal);
+                });
+                updateBulkButton();
+            });
+        }
+    }
+
+    function renderGenericTable() {
+        const q = (searchEl.value || '').trim().toLowerCase();
+        const headers = currentData.headers || [];
+        const rows = currentData.rows || [];
+
+        filteredRows = q
+            ? rows.filter(r => r.some(cell => String(cell ?? '').toLowerCase().includes(q)))
+            : rows.slice();
+
+        countEl.textContent = filteredRows.length;
+        shownInfoEl.textContent = q
+            ? `Показано ${filteredRows.length} из ${rows.length} записей`
+            : `Всего записей: ${rows.length}`;
+
+        if (!filteredRows.length) {
+            bodyEl.innerHTML = '<div class="dash-loading">Нет данных по выбранному фильтру.</div>';
+            return;
+        }
+
+        const ths = headers.map((h, idx) => {
+            const isEsn = String(h).trim().toUpperCase() === 'ESN' || idx === 0 && String(h).toUpperCase().includes('ESN');
+            return `<th${isEsn ? ' class="col-esn esn-cell"' : ''}>${escapeHtml(h)}</th>`;
+        }).join('');
+
+        const trs = filteredRows.map(r => {
+            const tds = r.map((c, idx) => {
+                const raw = String(c ?? '');
+                const h = String(headers[idx] || '').trim().toUpperCase();
+                const isEsn = h === 'ESN';
+                return `<td${isEsn ? ' class="col-esn esn-cell"' : ''} title="${escapeHtml(raw)}">${escapeHtml(raw)}</td>`;
+            }).join('');
+            return `<tr>${tds}</tr>`;
+        }).join('');
+
+        bodyEl.innerHTML = `<table class="licenses-table"><thead><tr>${ths}</tr></thead><tbody>${trs}</tbody></table>`;
+    }
+
+    function renderContent() {
+        if (currentData.mode === 'licenses') renderLicensesTable();
+        else renderGenericTable();
+        updateBulkButton();
+    }
+
+    async function openMetricModal(metric) {
+        selectedEsns.clear();
+        updateBulkButton();
+        backdrop.classList.add('open');
+        titleEl.textContent = 'Загрузка...';
+        countEl.textContent = '…';
+        subtitleEl.textContent = '';
+        searchEl.value = '';
+        shownInfoEl.textContent = '';
+        bodyEl.innerHTML = '<div class="dash-loading"><i class="fas fa-spinner fa-pulse"></i> Загрузка данных...</div>';
+
+        try {
+            const resp = await fetch(`/${operator}/api/dashboard_details?metric=${encodeURIComponent(metric)}`);
+            const data = await resp.json();
+            if (!resp.ok) throw new Error(data.error || 'Ошибка загрузки');
+
+            currentData = data;
+            titleEl.textContent = data.title || 'Детализация';
+            subtitleEl.textContent = data.subtitle || '';
+            openListBtn.href = data.list_url || `/${operator}/`;
+            renderContent();
+        } catch (err) {
+            bodyEl.innerHTML = `<div class="dash-loading">Ошибка: ${escapeHtml(err.message)}</div>`;
+        }
+    }
+
+    function closeModal() {
+        backdrop.classList.remove('open');
+    }
+
+    document.querySelectorAll('.kpi-card[data-metric]').forEach(card => {
+        card.addEventListener('click', () => openMetricModal(card.dataset.metric));
+    });
+
+    searchEl.addEventListener('input', renderContent);
+    document.getElementById('dashModalClose').addEventListener('click', closeModal);
+    document.getElementById('dashModalCloseBottom').addEventListener('click', closeModal);
+    backdrop.addEventListener('click', (e) => {
+        if (e.target === backdrop) closeModal();
+    });
+    document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape' && backdrop.classList.contains('open')) closeModal();
+    });
+
+    bulkDetailBtn.addEventListener('click', () => {
+        if (!selectedEsns.size) return;
+        const url = `/${operator}/license_by_esns?esns=${encodeURIComponent(Array.from(selectedEsns).join(','))}`;
+        window.location.href = url;
+    });
+
+    exportBtn.addEventListener('click', () => {
+        if (!window.XLSX) {
+            alert('Библиотека XLSX не загружена');
+            return;
+        }
+        let aoa;
+        if (currentData.mode === 'licenses') {
+            const cols = currentData.columns || [];
+            aoa = [
+                cols.map(c => c.label),
+                ...filteredRecords.map(rec => cols.map(c => rec[c.key] ?? ''))
+            ];
+        } else {
+            aoa = [currentData.headers || [], ...filteredRows];
+        }
+        const ws = XLSX.utils.aoa_to_sheet(aoa);
+        const wb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb, ws, 'Dashboard');
+        const safeName = (currentData.title || 'dashboard').replace(/[^\wа-яА-Я0-9_-]+/g, '_');
+        XLSX.writeFile(wb, `${operator}_${safeName}.xlsx`);
+    });
+})();
+</script>
+{% endblock %}

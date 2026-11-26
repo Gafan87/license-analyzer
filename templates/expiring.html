@@ -1,0 +1,54 @@
+{% extends "base.html" %}
+
+{% block title %}Истекающие лицензии{% endblock %}
+
+{% block content %}
+<div class="card">
+    <h1>⚠️ Истекающие лицензии</h1>
+    
+    <div style="margin-bottom: 1rem; display: flex; gap: 0.5rem; flex-wrap: wrap;">
+        <a href="?days=30" class="btn-filter {% if days == 30 %}active{% endif %}">30 дней</a>
+        <a href="?days=60" class="btn-filter {% if days == 60 %}active{% endif %}">60 дней</a>
+        <a href="?days=90" class="btn-filter {% if days == 90 %}active{% endif %}">90 дней</a>
+        <a href="?days=180" class="btn-filter {% if days == 180 %}active{% endif %}">180 дней</a>
+        <a href="?days=365" class="btn-filter {% if days == 365 %}active{% endif %}">1 год</a>
+    </div>
+    
+    {% if expiring %}
+    <div class="stats-warning">
+        ⚠️ Найдено <strong>{{ expiring|length }}</strong> лицензий, истекающих в ближайшие {{ days }} дней
+    </div>
+    
+    <div style="overflow-x: auto;">
+        <table>
+            <thead>
+                <tr>
+                    <th>NE тип</th><th>Город</th><th>Сайт</th><th>Год</th>
+                    <th>LSN</th><th>CapacityKey</th><th>Значение</th>
+                    <th>Истекает</th><th>Дней осталось</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for item in expiring %}
+                <tr class="{% if item.days_left <= 7 %}expiring-critical{% elif item.days_left <= 30 %}expiring-warning{% endif %}">
+                    <td>{{ item.ne_type }}</td>
+                    <td>{{ item.city }}</td>
+                    <td>{{ item.site or '-' }}</td>
+                    <td>{% if item.year == 'permanent' %}♾️ бессрочная{% else %}{{ item.year or '-' }}{% endif %}</td>
+                    <td><a href="/{{ current_operator }}/license/{{ item.license_id }}">{{ item.lsn[:20] }}...</a></td>
+                    <td>{{ item.capacity_key }}</td>
+                    <td>{{ item.value }}</td>
+                    <td>{{ item.valid_date }}</td>
+                    <td class="days-left">{{ item.days_left }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% else %}
+    <div class="stats-success">
+        ✅ Нет истекающих лицензий в ближайшие {{ days }} дней
+    </div>
+    {% endif %}
+</div>
+{% endblock %}

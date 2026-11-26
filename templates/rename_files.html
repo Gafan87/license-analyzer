@@ -1,0 +1,256 @@
+{% extends "base.html" %}
+
+{% block title %}Переименование файлов{% endblock %}
+
+{% block extra_css %}
+<style>
+.drop-zone {
+    border: 2px dashed var(--border-light);
+    border-radius: var(--radius-lg);
+    padding: 2rem;
+    text-align: center;
+    background: var(--bg-secondary);
+    transition: var(--transition);
+    cursor: pointer;
+    margin-bottom: 1.5rem;
+}
+
+.drop-zone.drag-over {
+    border-color: var(--huawei-red);
+    background: var(--huawei-red-light);
+}
+
+.drop-zone i {
+    font-size: 3rem;
+    color: var(--text-muted);
+    margin-bottom: 1rem;
+}
+
+.drop-zone p {
+    color: var(--text-secondary);
+}
+
+.file-list {
+    margin-top: 1rem;
+    max-height: 300px;
+    overflow-y: auto;
+}
+
+.file-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 0.5rem;
+    border-bottom: 1px solid var(--border-light);
+}
+
+.file-name {
+    font-family: monospace;
+    font-size: 0.8rem;
+}
+
+.file-status {
+    font-size: 0.7rem;
+    padding: 2px 8px;
+    border-radius: 20px;
+}
+
+.file-status.pending { background: #ffc107; color: #333; }
+.file-status.success { background: #10B981; color: white; }
+.file-status.error { background: #dc3545; color: white; }
+
+.progress-bar {
+    height: 4px;
+    background: var(--border-light);
+    border-radius: 2px;
+    overflow: hidden;
+    margin-top: 1rem;
+}
+
+.progress-fill {
+    height: 100%;
+    background: var(--huawei-red);
+    width: 0%;
+    transition: width 0.3s ease;
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="card">
+    <h1>📝 Переименование файлов по ESN</h1>
+    
+    <!-- Drag & Drop зона -->
+    <div id="dropZone" class="drop-zone">
+        <i class="fas fa-cloud-upload-alt"></i>
+        <p>Перетащите файлы сюда или нажмите для выбора</p>
+        <p class="text-muted" style="font-size: 0.7rem;">Поддерживаются .xml и .dat файлы</p>
+        <input type="file" id="fileInput" multiple accept=".xml,.dat" style="display: none;">
+    </div>
+    
+    <!-- Прогресс -->
+    <div id="progressContainer" class="hidden">
+        <div class="progress-bar">
+            <div id="progressFill" class="progress-fill"></div>
+        </div>
+        <p id="progressText" class="text-muted" style="margin-top: 0.5rem;"></p>
+    </div>
+    
+    <!-- Список файлов -->
+    <div id="fileList" class="file-list hidden"></div>
+    
+    <!-- Кнопка сохранения -->
+    <div id="saveActions" class="hidden" style="margin-top: 1rem; display: flex; gap: 1rem;">
+        <button id="saveToTargetBtn" class="btn-primary">💾 Сохранить в целевую папку</button>
+        <button id="cancelBtn" class="btn-secondary">Отмена</button>
+    </div>
+    
+    <!-- Результаты -->
+    <div id="results" class="hidden">
+        <h3>Результаты переименования</h3>
+        <div id="successList"></div>
+        <div id="errorList"></div>
+    </div>
+</div>
+
+<script>
+    const dropZone = document.getElementById('dropZone');
+    const fileInput = document.getElementById('fileInput');
+    const fileListDiv = document.getElementById('fileList');
+    const progressContainer = document.getElementById('progressContainer');
+    const progressFill = document.getElementById('progressFill');
+    const progressText = document.getElementById('progressText');
+    const saveActions = document.getElementById('saveActions');
+    const resultsDiv = document.getElementById('results');
+    
+    let pendingFiles = [];
+    let renamedFiles = [];
+    
+    // Drag & Drop
+    dropZone.addEventListener('click', () => fileInput.click());
+    dropZone.addEventListener('dragover', (e) => {
+        e.preventDefault();
+        dropZone.classList.add('drag-over');
+    });
+    dropZone.addEventListener('dragleave', () => {
+        dropZone.classList.remove('drag-over');
+    });
+    dropZone.addEventListener('drop', (e) => {
+        e.preventDefault();
+        dropZone.classList.remove('drag-over');
+        const files = Array.from(e.dataTransfer.files);
+        handleFiles(files);
+    });
+    fileInput.addEventListener('change', (e) => {
+        handleFiles(Array.from(e.target.files));
+    });
+    
+    async function handleFiles(files) {
+        pendingFiles = files;
+        displayFileList();
+        
+        // Запускаем переименование
+        await processFiles();
+    }
+    
+    function displayFileList() {
+        fileListDiv.innerHTML = pendingFiles.map((file, i) => `
+            <div class="file-item" data-index="${i}">
+                <span class="file-name">${file.name}</span>
+                <span class="file-status pending">⏳ Ожидание</span>
+            </div>
+        `).join('');
+        fileListDiv.classList.remove('hidden');
+    }
+    
+    async function processFiles() {
+        progressContainer.classList.remove('hidden');
+        const operator = '{{ current_operator }}';
+        
+        for (let i = 0; i < pendingFiles.length; i++) {
+            const file = pendingFiles[i];
+            const percent = ((i + 1) / pendingFiles.length) * 100;
+            progressFill.style.width = `${percent}%`;
+            progressText.innerText = `Обработка: ${file.name} (${i + 1}/${pendingFiles.length})`;
+            
+            const formData = new FormData();
+            formData.append('file', file);
+            formData.append('operator', operator);
+            
+            try {
+                const resp = await fetch(`/${operator}/rename_single`, {
+                    method: 'POST',
+                    body: formData
+                });
+                const result = await resp.json();
+                
+                if (result.success) {
+                    renamedFiles.push(result);
+                    updateFileStatus(i, 'success', result.new_name);
+                } else {
+                    updateFileStatus(i, 'error', result.error);
+                }
+            } catch(e) {
+                updateFileStatus(i, 'error', e.message);
+            }
+        }
+        
+        progressText.innerText = 'Готово!';
+        saveActions.classList.remove('hidden');
+    }
+    
+    function updateFileStatus(index, status, message) {
+        const item = document.querySelector(`.file-item[data-index="${index}"]`);
+        if (item) {
+            const statusSpan = item.querySelector('.file-status');
+            statusSpan.className = `file-status ${status}`;
+            statusSpan.innerText = status === 'success' ? '✅ Готов' : '❌ Ошибка';
+            if (message) {
+                const nameSpan = item.querySelector('.file-name');
+                if (status === 'success') {
+                    nameSpan.innerHTML = `<s>${pendingFiles[index].name}</s> → <strong>${message}</strong>`;
+                } else {
+                    nameSpan.innerHTML = `${pendingFiles[index].name}<br><small style="color: red;">${message}</small>`;
+                }
+            }
+        }
+    }
+    
+    // Сохранение в целевую папку
+    document.getElementById('saveToTargetBtn').addEventListener('click', async () => {
+        const operator = '{{ current_operator }}';
+        const resp = await fetch(`/${operator}/save_renamed`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ files: renamedFiles })
+        });
+        const result = await resp.json();
+        
+        resultsDiv.classList.remove('hidden');
+        if (result.success) {
+            document.getElementById('successList').innerHTML = `
+                <div class="test-summary success">
+                    ✅ Успешно сохранено ${result.saved} файлов
+                    ${result.moved_to_old > 0 ? `<br>📁 Старые версии перемещены в old/ (${result.moved_to_old})` : ''}
+                </div>
+            `;
+        } else {
+            document.getElementById('errorList').innerHTML = `
+                <div class="test-summary failed">
+                    ❌ Ошибка: ${result.message}
+                </div>
+            `;
+        }
+        
+        saveActions.classList.add('hidden');
+    });
+    
+    document.getElementById('cancelBtn').addEventListener('click', () => {
+        fileListDiv.classList.add('hidden');
+        progressContainer.classList.add('hidden');
+        saveActions.classList.add('hidden');
+        pendingFiles = [];
+        renamedFiles = [];
+    });
+</script>
+{% endblock %}

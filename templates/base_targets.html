@@ -1,0 +1,112 @@
+{% extends "base.html" %}
+
+{% block title %}Базовые цели{% endblock %}
+
+{% block content %}
+<div class="card">
+    <h1>🎯 Базовые цели и формулы</h1>
+    
+    {% if message %}
+    <div class="info-card" style="background: #D4EDDA; color: #155724; margin-bottom: 1rem;">
+        {{ message }}
+    </div>
+    {% endif %}
+
+    <div style="display: flex; gap: 1rem; margin-bottom: 1.5rem; flex-wrap: wrap;">
+        <form method="post" style="display: inline;">
+            <input type="hidden" name="action" value="load">
+            <button type="submit" class="btn-primary" data-tooltip="Прочитать Targets, формулы и Sharing из настроенного Excel-файла.">📥 Загрузить из Excel</button>
+        </form>
+        <form method="post" style="display: inline;">
+            <input type="hidden" name="action" value="compute">
+            <button type="submit" class="btn-primary" data-tooltip="Пересчитать целевые значения на основе загруженных целей, формул и структуры лицензий.">🔄 Вычислить цели</button>
+        </form>
+    </div>
+    
+    <p class="text-muted">Файл целей: <code>{{ targets_file }}</code></p>
+
+    <!-- Таблица базовых целей -->
+    <h3>📊 Базовые цели (Targets)</h3>
+    {% if domain_targets %}
+    <div class="table-wrapper">
+        <table class="licenses-table">
+            <thead>
+                <tr>
+                    <th>Оператор</th><th>Домен</th><th>Тип</th><th>Город</th><th>Значение</th><th>Ед. изм.</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for t in domain_targets %}
+                <tr>
+                    <td>{{ t.operator }}</td>
+                    <td>{{ t.domain }}</td>
+                    <td>{{ t.type }}</td>
+                    <td>{{ t.city }}</td>
+                    <td>{{ t.value }}</td>
+                    <td>{{ t.unit }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% else %}
+    <p class="text-muted">Нет данных. Нажмите "Загрузить из Excel".</p>
+    {% endif %}
+
+    <!-- Таблица формул -->
+    <h3 style="margin-top: 2rem;">🔢 Формулы (Formulas)</h3>
+    {% if ne_formulas %}
+    <div class="table-wrapper">
+        <table class="licenses-table">
+            <thead>
+                <tr>
+                    <th>Домен</th><th>Тип</th><th>NE тип</th><th>CapacityKey</th><th>Формула</th><th>Sharing</th><th>MainKey</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for f in ne_formulas %}
+                <tr>
+                    <td>{{ f.domain }}</td>
+                    <td>{{ f.type }}</td>
+                    <td>{{ f.ne_type }}</td>
+                    <td>{{ f.capacity_key }}</td>
+                    <td><code>{{ f.formula }}</code></td>
+                    <td>{{ f.sharing }}</td>
+                    <td>{{ '✅' if f.main_key else '' }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% else %}
+    <p class="text-muted">Нет формул. Нажмите "Загрузить из Excel".</p>
+    {% endif %}
+
+    <!-- Вычисленные цели -->
+    {% if computed_targets %}
+    <h3 style="margin-top: 2rem;">🎯 Вычисленные цели</h3>
+    <div class="table-wrapper">
+        <table class="licenses-table">
+            <thead>
+                <tr>
+                    <th>Оператор</th><th>Домен</th><th>Тип</th><th>Город</th><th>NE тип</th><th>CapacityKey</th><th>Цель</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for c in computed_targets %}
+                <tr>
+                    <td>{{ c.operator }}</td>
+                    <td>{{ c.domain }}</td>
+                    <td>{{ c.type }}</td>
+                    <td>{{ c.city }}</td>
+                    <td>{{ c.ne_type }}</td>
+                    <td>{{ c.capacity_key }}</td>
+                    <td><strong>{{ c.target_value }}</strong></td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}

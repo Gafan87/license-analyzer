@@ -1,0 +1,1184 @@
+{% extends "base.html" %}
+
+{% block title %}Детали лицензии{% endblock %}
+
+{% block extra_css %}
+<style>
+/* ========== ДВУХКОЛОНОЧНЫЙ МАКЕТ ========== */
+.license-detail-container { display: flex; gap: 1.5rem; align-items: stretch; }
+.left-column { flex: 1; min-width: 0; }
+.right-column { width: 750px; flex-shrink: 0; display: flex; flex-direction: column; gap: 1.5rem; }
+
+/* ========== ИНФОРМАЦИОННЫЕ БЛОКИ ========== */
+.info-block { background: var(--bg-primary); border-radius: var(--radius-lg); border: 1px solid var(--border-light); overflow: hidden; }
+.info-block-header { background: var(--bg-secondary); padding: 0.75rem 1rem; border-bottom: 1px solid var(--border-light); display: flex; align-items: center; gap: 0.5rem; font-weight: 600; font-size: 0.9rem; color: var(--text-primary); }
+.info-block-header i { color: var(--huawei-red); font-size: 1rem; }
+.info-block-content { padding: 1rem; overflow-x: auto; }
+
+/* ========== ТАБЛИЦА ИНФОРМАЦИИ ========== */
+.info-table { width: 100%; border-collapse: collapse; }
+.info-table tr { border-bottom: 1px solid var(--border-light); }
+.info-table tr:last-child { border-bottom: none; }
+.info-table td { padding: 0.6rem 0; vertical-align: top; }
+.info-table td:first-child { font-weight: 600; color: var(--text-secondary); width: 120px; }
+
+/* ========== ДВУХКОЛОНОЧНАЯ ИНФОРМАЦИЯ ========== */
+.info-two-columns { display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem 1rem; }
+.info-two-columns .info-item { display: flex; align-items: baseline; gap: 0.5rem; padding: 0.3rem 0; border-bottom: 1px dashed var(--border-light); }
+.info-two-columns .info-label { font-weight: 600; color: var(--text-secondary); min-width: 90px; font-size: 0.75rem; }
+.info-two-columns .info-value { color: var(--text-primary); word-break: break-all; font-size: 0.75rem; }
+
+/* ========== ТАБЛИЦА РЕСУРСОВ ========== */
+.resources-table { width: 100%; min-width: 700px; border-collapse: collapse; font-size: var(--table-font-size, 12px); }
+.resources-table th, .resources-table td { padding: 0.15rem 0.4rem; text-align: left; border-bottom: 1px solid var(--border-light); font-size: inherit; font-family: inherit; font-weight: normal; white-space: nowrap; }
+.resources-table td:nth-child(2) { color: #000080; font-weight: 500; }
+.resources-table th { padding: 0.6rem 0.5rem; background: var(--bg-secondary); font-weight: 600; color: var(--text-secondary); }
+.resources-table code { font-size: inherit; background: none; padding: 0; font-family: inherit; }
+.resources-table small { font-size: inherit; }
+.resources-table .main-badge { font-size: 0.85em; color: var(--huawei-red); margin-left: 0.5rem; }
+.resources-table tbody tr { height: var(--table-row-height, 32px); }
+.resources-table .spart-row { height: calc(var(--table-row-height, 32px) + 4px); font-weight: bold !important; }
+
+.resources-table th:nth-child(2),
+.resources-table td:nth-child(2) {color: #000080;font-weight: 600;}
+
+/* ========== ФИЛЬТРЫ РЕСУРСОВ ========== */
+.resource-filters { display: flex; gap: 0.5rem; margin-left: auto; }
+.filter-chip { padding: 0.2rem 0.6rem; border-radius: 20px; font-size: 0.65rem; cursor: pointer; transition: var(--transition); background: var(--bg-tertiary); border: 1px solid var(--border-light); color: var(--text-secondary); }
+.filter-chip.active { background: var(--huawei-red); color: white; border-color: var(--huawei-red); }
+.filter-chip:hover:not(.active) { border-color: var(--huawei-red); color: var(--huawei-red); }
+
+/* ========== ИЕРАРХИЯ SPart/BPart ========== */
+.spart-row { font-weight: bold !important; background-color: var(--bg-tertiary) !important; border-top: 1px solid var(--border-light); border-bottom: 1px solid var(--border-light); cursor: pointer; }
+.spart-row td, .spart-row td code, .spart-row .toggle-icon { font-weight: bold !important; }
+.spart-row:hover { background-color: var(--bg-hover) !important; }
+.bpart-row td { padding-left: 1.5rem !important; }
+.bpart-row td:first-child { padding-left: 2.5rem !important; }
+.orphan-row td { padding-left: 1.5rem !important; }
+.orphan-row td:first-child { padding-left: 2rem !important; }
+.bpart-row, .orphan-row { background-color: var(--bg-primary); }
+.toggle-icon { cursor: pointer; display: inline-block; width: 20px; user-select: none; }
+.toggle-all-sparts { cursor: pointer; display: inline-block; width: 20px; user-select: none; }
+.valid-date-cell { white-space: nowrap; }
+
+/* ========== ЗАГОЛОВКИ РАЗДЕЛОВ ========== */
+.section-header-row { background: var(--bg-primary) !important; border-top: 2px solid var(--huawei-red) !important; }
+.section-header-row td { padding: 0.75rem 0.5rem !important; }
+.section-header { display: flex; align-items: center; gap: 0.5rem; font-weight: 600; color: var(--text-primary); }
+.section-title { font-size: 0.9rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--huawei-red); }
+
+/* ========== ПУСТЫЕ SPart ========== */
+.spart-empty { opacity: 0.45; border-left: 3px dashed var(--border-light) !important; background: var(--bg-secondary) !important; }
+.spart-empty:hover { opacity: 0.65; }
+.empty-value { color: var(--text-muted); font-style: italic; }
+.empty-badge { display: inline-block; margin-left: 0.5rem; padding: 0.1rem 0.4rem; font-size: 0.65rem; background: var(--bg-tertiary); color: var(--text-muted); border-radius: 3px; vertical-align: middle; }
+.spart-empty-child td { font-size: 0.8rem; padding-top: 0.3rem !important; padding-bottom: 0.3rem !important; }
+
+/* ========== ТАБЛИЦА ВЕРСИЙ ========== */
+.version-table-wrapper { overflow-x: auto; max-width: 100%; }
+.version-table { min-width: 600px; width: 100%; font-size: 0.65rem; }
+.version-table th, .version-table td { white-space: nowrap; padding: 0.3rem 0.5rem; font-size: 0.65rem; }
+.version-table tbody tr { cursor: pointer; }
+.version-table tbody tr:hover { background: var(--bg-hover); }
+.selected-version { background: var(--huawei-red-light, rgba(230, 0, 18, 0.1)); }
+
+/* ========== ТАБЛИЦА ВЫБРАННЫХ ESN ========== */
+.esn-table { width: 100%; border-collapse: collapse; font-size: 0.7rem; }
+.esn-table th { padding: 0.4rem 0.5rem; text-align: left; background: var(--bg-tertiary); font-weight: 600; color: var(--text-secondary); font-size: 0.65rem; border-bottom: 1px solid var(--border-light); }
+.esn-table td { padding: 0.35rem 0.5rem; border-bottom: 1px solid var(--border-light); vertical-align: middle; }
+.esn-table tr { cursor: pointer; transition: background 0.15s; }
+.esn-table tr:hover { background: var(--bg-hover); }
+.esn-table tr.active { background: var(--huawei-red-light, rgba(230, 0, 18, 0.08)); }
+.esn-table tr.active td:first-child { border-left: 3px solid var(--huawei-red); padding-left: calc(0.5rem - 3px); }
+.esn-table-wrapper { max-height: 300px; overflow-y: auto; }
+
+/* ========== КОММЕНТАРИИ ========== */
+.comment-item { padding: 0.75rem; border-bottom: 1px solid var(--border-light); }
+.comment-item:last-child { border-bottom: none; }
+.comment-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem; font-size: 0.7rem; }
+.comment-author { display: flex; align-items: center; gap: 0.5rem; font-weight: 500; color: var(--text-secondary); }
+.comment-date { color: var(--text-muted); }
+.comment-text { font-size: 0.85rem; color: var(--text-primary); line-height: 1.4; }
+.comment-form { margin-top: 1rem; display: flex; gap: 0.5rem; }
+.comment-form input { flex: 1; padding: 0.5rem 0.75rem; border: 1px solid var(--border-light); border-radius: var(--radius-md); background: var(--bg-primary); }
+
+/* ========== ТЕГИ ========== */
+.tags-container { display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: center; }
+.tag { display: inline-flex; align-items: center; gap: 0.25rem; padding: 0.25rem 0.75rem; border-radius: 20px; font-size: 0.7rem; font-weight: 500; }
+.tag-remove { cursor: pointer; opacity: 0.6; margin-left: 0.25rem; }
+.tag-remove:hover { opacity: 1; }
+.add-tag-btn { background: none; border: 1px dashed var(--border-light); padding: 0.25rem 0.75rem; border-radius: 20px; font-size: 0.7rem; cursor: pointer; color: var(--text-secondary); }
+.add-tag-btn:hover { border-color: var(--huawei-red); color: var(--huawei-red); }
+
+/* ========== КНОПКА НАЗАД ========== */
+.back-button { display: inline-flex; align-items: center; gap: 0.5rem; padding: 0.5rem 1rem; background: var(--bg-secondary); border: 1px solid var(--border-light); border-radius: var(--radius-md); text-decoration: none; color: var(--text-secondary); font-size: 0.85rem; transition: var(--transition); margin-bottom: 1rem; }
+.back-button:hover { border-color: var(--huawei-red); color: var(--huawei-red); transform: translateX(-3px); }
+
+/* ========== АДАПТИВНОСТЬ ========== */
+@media (max-width: 768px) {
+    .license-detail-container { flex-direction: column; }
+    .right-column { width: 100%; }
+    .info-two-columns { grid-template-columns: 1fr; }
+}
+</style>
+{% endblock %}
+
+{% block content %}
+
+<div class="license-detail-container">
+    <div class="left-column">
+        <div class="info-block">
+        <div class="info-block-header">
+            <i class="fas fa-chart-bar"></i> Ресурсы (CapacityKey)
+            <button id="openTableSettingsBtn" class="filter-chip" style="margin-left: auto;" title="Настройки таблицы">⚙️</button>
+            <div class="resource-filters">
+                <button class="filter-chip active" data-mode="total">📊 Суммарные</button>
+                <button class="filter-chip" data-mode="latest">📅 По дате</button>
+                <button class="filter-chip" data-mode="permanent">♾️ Постоянные</button>
+            </div>
+            
+        </div>
+            <div class="info-block-content" style="padding: 0; overflow-x: auto;">
+                <table class="resources-table" style="min-width: 600px;">
+                    <thead>
+                        <tr>
+                            <th data-col="capacity_key">
+                                <span class="toggle-all-sparts" ...>▼</span>
+                                CapacityKey
+                            </th>
+                            <th data-col="target">🎯 Цель</th>
+                            <th data-col="delta">Δ Дельта</th>
+                            <th data-col="value">Value</th>
+                            <th data-col="valid_date">Valid till</th>
+                            <th data-col="part_number">Bpart</th>
+                            <th data-col="dimension">Unit</th>
+                            <th data-col="description">Description</th>
+                        </tr>
+                    </thead>
+                    <tbody id="resourcesTableBody">
+                        <tr><td colspan="8" class="text-center">Загрузка...</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <div class="info-block">
+            <div class="info-block-header">
+                <i class="fas fa-puzzle-piece"></i> Дополнительные поля
+            </div>
+            <div class="info-block-content">
+                <table class="info-table">
+                    {% for field_name, field_data in license.dynamic_values.items() %}
+                    <tr>
+                        <td>{{ field_data.display_name }}</td>
+                        <td>{{ field_data.value or '-' }}</td>
+                    </tr>
+                    {% else %}
+                    <tr><td colspan="2" class="text-muted">Нет дополнительных полей</td></tr>
+                    {% endfor %}
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <div class="right-column">
+        <div class="info-block">
+            <div class="info-block-header">
+                <i class="fas fa-microchip"></i> 
+                {% if selected_esns and selected_esns|length > 0 %}
+                    Выбранные ESN ({{ selected_esns|length }})
+                {% else %}
+                    ESN устройства
+                {% endif %}
+            </div>
+            <div class="info-block-content" style="padding: 0;">
+                {% if selected_esns and selected_esns|length > 1 %}
+                    <div class="esn-table-wrapper">
+                        <table class="esn-table">
+                            <thead>
+                                <tr>
+                                    <th>ESN</th>
+                                    <th>NE тип</th>
+                                    <th>Город</th>
+                                </tr>
+                            </thead>
+                        <tbody>
+                            {% for esn_item in selected_esns %}
+                            <tr class="esn-list-item {% if esn_item.license_id == license.id %}active{% endif %}" 
+                                data-license-id="{{ esn_item.license_id }}">
+                                <td>{{ esn_item.esn }}</code></td>
+                                <td>{{ esn_item.ne_type or '-' }}</td>
+                                <td>{{ esn_item.city or '-' }}</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                        </table>
+                    </div>
+                {% else %}
+                    <code style="word-break: break-all; display: block; padding: 1rem;">{{ license.esn or '-' }}</code>
+                {% endif %}
+            </div>
+            <div class="info-block">
+                <div class="info-block-header" style="display: flex; align-items: flex-start;">
+                    <span style="flex: 0 0 auto; padding-top: 0.15rem;">
+                        <i class="fas fa-code-branch"></i> Все версии (LSN)
+                    </span>
+                    <span id="selectedLicensePath" style="flex: 1; margin: 0 1rem; font-size: 0.7rem; color: var(--text-secondary); display: none; line-height: 1.4;">
+                        <code id="pathText" style="font-size: 0.65rem; overflow-wrap: break-word; word-break: break-all; display: block;"></code>
+                    </span>
+                    <span style="flex: 0 0 20%; text-align: right; padding-top: 0.15rem;">
+                        <button id="openFolderBtn" onclick="openFolderFromPath()" class="action-btn" style="font-size: 0.65rem; display: none;">📂 Открыть</button>
+                    </span>
+                </div>
+                <div class="info-block-content" style="padding: 0;">
+                    <div class="version-table-wrapper">
+                        <table class="version-table">
+                            <thead>
+                                <tr>
+                                    <th>Путь</th>
+                                    <th>LSN</th>
+                                    <th>Файл</th>
+                                    <th>Создан</th>
+                                    <th>Действует до</th>
+                                    <th>Версия</th>
+                                    <th>Продукт</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+
+                                {% for lic in all_licenses_for_esn %}
+                                <tr data-license-id="{{ lic.id }}">
+                                    <td>{{ lic.lsn or '-' }}</code></td>
+                                    <td>{{ lic.filename or '-' }}</td>
+                                    <td>{{ lic.create_time[:10] if lic.create_time else '-' }}</td>
+                                    <td>{{ lic.valid_date or '-' }}</td>
+                                    <td>{{ lic.version or '-' }}</td>
+                                    <td>{{ lic.product or '-' }}</td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="info-block">
+            <div class="info-block-header">
+                <i class="fas fa-info-circle"></i> Основная информация
+            </div>
+            <div class="info-block-content">
+                <div class="info-two-columns">
+                    <div class="info-item"><span class="info-label">LSN:</span><span class="info-value">{{ license.lsn or '-' }}</span></div>
+                    <div class="info-item"><span class="info-label">Продукт:</span><span class="info-value">{{ license.product or '-' }}</span></div>
+                    <div class="info-item"><span class="info-label">Версия:</span><span class="info-value">{{ license.version or '-' }}</span></div>
+                    <div class="info-item"><span class="info-label">Оператор:</span><span class="info-value">{{ license.operator or '-' }}</span></div>
+                    <div class="info-item"><span class="info-label">NE тип:</span><span class="info-value">{{ license.ne_type or '-' }}</span></div>
+                    <div class="info-item"><span class="info-label">Город:</span><span class="info-value">{{ license.city or '-' }}</span></div>
+                    <div class="info-item"><span class="info-label">Сайт:</span><span class="info-value">{{ license.site or '-' }}</span></div>
+                    <div class="info-item"><span class="info-label">Год действия:</span><span class="info-value">{% if license.year == 'permanent' %}♾️ бессрочная{% else %}{{ license.year or '-' }}{% endif %}</span></div>
+                    <div class="info-item"><span class="info-label">Действует до:</span><span class="info-value">{{ license.valid_date or '-' }}</span></div>
+                    <div class="info-item"><span class="info-label">Дата создания:</span><span class="info-value">{{ license.create_time or '-' }}</span></div>
+                    <div class="info-item"><span class="info-label">Узел:</span><span class="info-value">{{ license.node or '-' }}</span></div>
+                    <div class="info-item"><span class="info-label">Домен:</span><span class="info-value">{{ domain or license.domain or '-' }}</span></div>
+                    <div class="info-item"><span class="info-label">Имя файла:</span><span class="info-value">{{ license.filename or '-' }}</span></div>
+                    <div class="info-item"><span class="info-label">Последнее изменение:</span><span class="info-value">{{ license.last_modified or '-' }}</span></div>
+                    <div class="info-item"><span class="info-label">Кем изменено:</span><span class="info-value">{{ license.modified_by or '-' }}</span></div>
+                </div>
+            </div>
+        </div>
+
+        <div class="info-block">
+            <div class="info-block-header">
+                <i class="fas fa-tags"></i> Теги
+            </div>
+            <div class="info-block-content">
+                <div class="tags-container" id="tagsContainer">
+                    {% for tag in license.tags %}
+                    <span class="tag" style="background: {{ tag.color }}20; color: {{ tag.color }};">
+                        <i class="fas fa-tag"></i> {{ tag.name }}
+                        <span class="tag-remove" data-tag-id="{{ tag.id }}">✕</span>
+                    </span>
+                    {% endfor %}
+                    <button class="add-tag-btn" id="addTagBtn">
+                        <i class="fas fa-plus"></i> Добавить тег
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <div class="info-block">
+            <div class="info-block-header">
+                <i class="fas fa-comments"></i> Комментарии
+            </div>
+            <div class="info-block-content">
+                <div id="commentsList">
+                    {% for comment in license.comments %}
+                    <div class="comment-item">
+                        <div class="comment-header">
+                            <span class="comment-author">
+                                <i class="fas fa-user-circle"></i> {{ comment.user_name }}
+                            </span>
+                            <span class="comment-date">{{ comment.created_at }}</span>
+                        </div>
+                        <div class="comment-text">{{ comment.comment }}</div>
+                    </div>
+                    {% else %}
+                    <div class="text-muted" style="text-align: center; padding: 1rem;">Нет комментариев</div>
+                    {% endfor %}
+                </div>
+
+                <form method="post" action="/{{ current_operator }}/license/{{ license.id }}/comments" class="comment-form">
+                    <input type="text" name="comment" placeholder="Написать комментарий..." required>
+                    <input type="hidden" name="user_name" value="{{ current_operator_title }}">
+                    <button type="submit" class="btn-primary" style="padding: 0.5rem 1rem;">
+                        <i class="fas fa-paper-plane"></i> Отправить
+                    </button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Модальное окно настроек таблицы -->
+<div id="tableSettingsModal" class="modal" style="display: none;">
+    <div class="modal-content" style="max-width: 400px;">
+        <span class="modal-close">&times;</span>
+        <h3>⚙️ Настройки таблицы</h3>
+
+        <div style="margin-top: 1rem; padding-top: 1rem; border-top: 1px solid var(--border-light);">
+            <label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer;">
+                <input type="checkbox" id="showAllSpartsToggle" style="width: 18px; height: 18px;">
+                <span>📋 Показывать все SPart</span>
+            </label>
+            <small class="text-muted" style="display: block; margin-top: 0.25rem; margin-left: 26px;">
+                Если выключено — только SPart с заданными целями
+            </small>
+        </div>
+        
+        <div style="margin-bottom: 1rem;">
+            <label style="display: block; margin-bottom: 0.3rem; font-weight: 600;">Размер шрифта</label>
+            <input type="range" id="modalFontSize" min="10" max="18" step="1" value="12" style="width: 100%;">
+            <span id="modalFontSizeValue" style="font-size: 0.7rem;">12px</span>
+        </div>
+        
+        <div style="margin-bottom: 1rem;">
+            <label style="display: block; margin-bottom: 0.3rem; font-weight: 600;">Высота строки</label>
+            <input type="range" id="modalRowHeight" min="24" max="48" step="2" value="32" style="width: 100%;">
+            <span id="modalRowHeightValue" style="font-size: 0.7rem;">32px</span>
+        </div>
+        
+        <div style="margin-bottom: 1rem;">
+            <label style="display: block; margin-bottom: 0.3rem; font-weight: 600;">Отображаемые колонки</label>
+            <div id="visibleColumnsCheckboxes">
+                <label style="display: block; margin-bottom: 0.3rem;"><input type="checkbox" value="capacity_key" checked> CapacityKey</label>
+                <label style="display: block; margin-bottom: 0.3rem;"><input type="checkbox" value="target" checked> 🎯 Цель</label>
+                <label style="display: block; margin-bottom: 0.3rem;"><input type="checkbox" value="delta" checked> Δ Дельта</label>
+                <label style="display: block; margin-bottom: 0.3rem;"><input type="checkbox" value="value" checked> Значение</label>
+                <label style="display: block; margin-bottom: 0.3rem;"><input type="checkbox" value="valid_date" checked> Действителен до</label>
+                <label style="display: block; margin-bottom: 0.3rem;"><input type="checkbox" value="part_number" checked> Part-number</label>
+                <label style="display: block; margin-bottom: 0.3rem;"><input type="checkbox" value="dimension" checked> Размерность</label>
+                <label style="display: block; margin-bottom: 0.3rem;"><input type="checkbox" value="description" checked> Описание</label>
+            </div>
+        </div>
+        
+        <div style="display: flex; gap: 0.5rem; margin-top: 1rem;">
+            <button id="saveTableSettingsBtn" class="btn-primary" style="flex: 1;">Сохранить</button>
+            <button id="closeSettingsBtn" class="btn-secondary" style="flex: 1;">Отмена</button>
+        </div>
+    </div>
+</div>
+
+<script>
+    // ========== ГЛОБАЛЬНЫЕ ПЕРЕМЕННЫЕ ==========
+    const operator = '{{ current_operator }}'; 
+    let currentResourceMode = 'total';
+    let currentLicenseId = {{ license.id }};
+    let currentDomain = '{{ domain or license.domain or "" }}';
+    let currentHierarchy = null;
+    let collapsedSparts = new Set();
+
+    let currentEsn = '{{ esn or license.esn or "" }}';
+    let hasSelectedEsns = {{ 'true' if selected_esns and selected_esns|length > 1 else 'false' }};
+    
+
+    console.log('currentDomain:', currentDomain);
+    console.log('currentLicenseId:', currentLicenseId);
+
+    function escapeHtml(str) {
+        if (!str) return '';
+        return String(str).replace(/[&<>]/g, function(m) {
+            if (m === '&') return '&amp;';
+            if (m === '<') return '&lt;';
+            if (m === '>') return '&gt;';
+            return m;
+        });
+    }
+
+    // ========== ЗАГРУЗКА ИЕРАРХИИ ==========
+async function loadHierarchy(licenseId, mode) {
+    try {
+        const showAll = localStorage.getItem('showAllSparts') === 'true';
+        const url = `/api/license/${licenseId}/hierarchy?domain=${encodeURIComponent(currentDomain)}&mode=${mode}&show_all=${showAll}`;
+        const response = await fetch(url);
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        const data = await response.json();
+        currentHierarchy = data;
+        renderHierarchyTable(data.sparts, data.orphans);
+    } catch (error) {
+        console.error('Ошибка загрузки иерархии:', error);
+        document.getElementById('resourcesTableBody').innerHTML = '<tr><td colspan="6" class="text-center">❌ Ошибка загрузки данных</td></tr>';
+    }
+}
+
+// ========== ОТРИСОВКА ТАБЛИЦЫ ==========
+function renderHierarchyTable(sparts, orphans) {
+    const tbody = document.getElementById('resourcesTableBody');
+    
+    let html = '';
+    
+    // Обрабатываем sparts (теперь там и SPart, и BPart, и переменные)
+    sparts.forEach((item) => {
+        // Секция
+        if (item.is_section) {
+            html += `<tr class="section-header-row">
+                        <td colspan="8">
+                            <div class="section-header">
+                                <span class="section-title">${escapeHtml(item.name)}</span>
+                            </div>
+                         </td>
+                     </tr>`;
+            return;
+        }
+        
+        // Определяем тип строки
+        const isBpart = (item.type === 'bpart') || (item.is_bpart === true);
+        const isVariable = (item.type === 'variable') || (item.is_variable === true);
+        const isSpart = !isBpart && !isVariable && !item.is_section;
+        
+        const isEmpty = item.is_empty === true;
+        
+        // Выбираем класс строки и отступ
+        let rowClass = '';
+        let paddingLeft = '0.5rem';
+        let toggleIcon = '';
+        
+        if (isSpart) {
+            rowClass = isEmpty ? 'spart-row spart-empty' : 'spart-row';
+            paddingLeft = '0.5rem';
+            if (item.children && item.children.length > 0 && !collapsedSparts.has(item.name)) {
+                toggleIcon = '▼';
+            } else if (item.children && item.children.length > 0) {
+                toggleIcon = '▶';
+            }
+        } else {
+            // BPart или Variable - обычная строка
+            rowClass = 'bpart-row';
+            paddingLeft = '2rem';
+        }
+        
+        const valueDisplay = isEmpty ? '<span class="empty-value">—</span>' : (item.value || 0);
+        const targetDisplay = (item.target_value && item.target_value !== '') ? item.target_value : '';
+        
+        // Дельта
+        const targetVal = parseFloat(item.target_value) || 0;
+        const actualVal = parseFloat(item.value) || 0;
+        let delta = '';
+        let deltaColor = '';
+        if (targetVal && actualVal) {
+            const diff = actualVal - targetVal;
+            deltaColor = diff > 0 ? 'green' : diff < 0 ? 'red' : '';
+            delta = `<span style="color: ${deltaColor};">${diff > 0 ? '+' : ''}${diff.toFixed(0)}</span>`;
+        }
+        
+        html += `
+            <tr class="${rowClass}" data-item="${item.name}" data-type="${item.type || 'spart'}">
+                <td style="padding-left: ${paddingLeft};">
+                    ${toggleIcon ? `<span class="toggle-icon" data-spart="${item.name}">${toggleIcon}</span>` : ''}
+                    ${escapeHtml(item.name)}
+                    ${isBpart && item.is_main ? '<span class="main-badge">(main)</span>' : ''}
+                    ${isEmpty ? '<span class="empty-badge">нет в лицензии</span>' : ''}
+                    ${isVariable ? '<span class="variable-badge">var</span>' : ''}
+                 </td>
+                 <td>${targetDisplay}</td>
+                 <td>${delta}</td>
+                 <td>${valueDisplay}</td>
+                <td class="valid-date-cell">${escapeHtml(item.valid_date || '-')}</td>
+                 <td>${escapeHtml(item.part_number || '-')}</td>
+                 <td>${escapeHtml(item.dimension || '-')}</td>
+                 <td><small>${escapeHtml(item.description || '—')}</small></td>
+             </tr>
+        `;
+        
+        // Дети для SPart (только для иерархического сценария)
+        if (isSpart && item.children && item.children.length > 0 && !collapsedSparts.has(item.name)) {
+            item.children.forEach(child => {
+                const childValue = child.value || 0;
+                const childTarget = child.target_value || '';
+                const childDelta = (childTarget && childValue) ? (childValue - childTarget) : '';
+                const childDeltaColor = childDelta > 0 ? 'green' : (childDelta < 0 ? 'red' : '');
+                
+                html += `
+                    <tr class="bpart-row" data-parent="${item.name}">
+                        <td style="padding-left: 2rem;">
+                            ${escapeHtml(child.name)}
+                            ${child.is_main ? '<span class="main-badge">(main)</span>' : ''}
+                         </td>
+                         <td>${childTarget}</td>
+                         <td>${childDelta ? `<span style="color: ${childDeltaColor};">${childDelta > 0 ? '+' : ''}${childDelta.toFixed(0)}</span>` : ''}</td>
+                         <td>${childValue}</td>
+                        <td class="valid-date-cell">${escapeHtml(child.valid_date || '-')}</td>
+                         <td>${escapeHtml(child.part_number || '-')}</td>
+                         <td>${escapeHtml(child.dimension || '-')}</td>
+                         <td><small>${escapeHtml(child.description || '—')}</small></td>
+                     </tr>
+                `;
+            });
+        }
+    });
+    
+    // Обрабатываем orphans (только если они есть и не пустые)
+    if (orphans && orphans.length > 0) {
+        html += `<tr class="separator"><td colspan="8" style="background: var(--bg-secondary); padding: 0.5rem;"><strong>📌 Прочие CapacityKey</strong></td></tr>`;
+        orphans.forEach(orphan => {
+            const orphanValidDate = orphan.valid_date || '-';
+            const orphanTarget = orphan.target_value || '';
+            
+            // Дельта для orphan
+            const orTargetVal = parseFloat(orphan.target_value) || 0;
+            const orActualVal = parseFloat(orphan.value) || 0;
+            let orDelta = '';
+            let orDeltaColor = '';
+            if (orTargetVal && orActualVal) {
+                const diff = orActualVal - orTargetVal;
+                orDeltaColor = diff > 0 ? 'green' : diff < 0 ? 'red' : '';
+                orDelta = `<span style="color: ${orDeltaColor};">${diff > 0 ? '+' : ''}${diff.toFixed(0)}</span>`;
+            }
+            
+            // Определяем тип orphan
+            const isBpartOrphan = orphan.type === 'bpart' || orphan.is_bpart === true;
+            const isVariableOrphan = orphan.type === 'variable' || orphan.is_variable === true;
+            
+            html += `
+                <tr class="orphan-row">
+                    <td style="padding-left: 2rem;">
+                        ${escapeHtml(orphan.name)}
+                        ${isBpartOrphan && orphan.is_main ? '<span class="main-badge">(main)</span>' : ''}
+                        ${isVariableOrphan ? '<span class="variable-badge">var</span>' : ''}
+                     </td>
+                     <td>${orphanTarget}</td>
+                     <td>${orDelta}</td>
+                     <td>${orphan.value || 0}</td>
+                    <td class="valid-date-cell">${orphanValidDate}</td>
+                     <td>${escapeHtml(orphan.part_number || '-')}</td>
+                     <td>${escapeHtml(orphan.dimension || '-')}</td>
+                     <td><small>${escapeHtml(orphan.description || '—')}</small></td>
+                 </tr>
+            `;
+        });
+    }
+    
+    tbody.innerHTML = html;
+    
+    // Привязываем обработчики для иконок раскрытия
+    document.querySelectorAll('.toggle-icon').forEach(icon => {
+        icon.removeEventListener('click', handleToggleClick);
+        icon.addEventListener('click', handleToggleClick);
+    });
+    
+    // Привязываем обработчики двойного клика для SPart
+    document.querySelectorAll('.spart-row').forEach(row => {
+        row.removeEventListener('dblclick', handleSpartDoubleClick);
+        row.addEventListener('dblclick', handleSpartDoubleClick);
+    });
+}
+
+// Вспомогательные функции
+function handleToggleClick(e) {
+    e.stopPropagation();
+    const spartName = this.dataset.spart;
+    if (!spartName) return;
+    
+    if (collapsedSparts.has(spartName)) {
+        collapsedSparts.delete(spartName);
+    } else {
+        collapsedSparts.add(spartName);
+    }
+    if (currentHierarchy) {
+        renderHierarchyTable(currentHierarchy.sparts, currentHierarchy.orphans);
+    }
+}
+
+function handleSpartDoubleClick(e) {
+    const row = e.currentTarget;
+    const spartName = row.getAttribute('data-spart');
+    if (!spartName) return;
+    
+    if (collapsedSparts.has(spartName)) {
+        collapsedSparts.delete(spartName);
+    } else {
+        collapsedSparts.add(spartName);
+    }
+    if (currentHierarchy) {
+        renderHierarchyTable(currentHierarchy.sparts, currentHierarchy.orphans);
+    }
+}
+
+    // ========== ПЕРЕКЛЮЧЕНИЕ РЕЖИМОВ ==========
+function initResourceFilters() {
+    const chips = document.querySelectorAll('.filter-chip');
+    if (chips.length === 0) return;
+
+    // Восстанавливаем режим из localStorage
+    const savedMode = localStorage.getItem('resourceMode');
+    if (savedMode && savedMode !== 'undefined') {
+        currentResourceMode = savedMode;
+    }
+    if (!currentResourceMode || currentResourceMode === 'undefined') {
+        currentResourceMode = 'total';
+    }
+
+    // Подсвечиваем активную кнопку (только у которых есть data-mode)
+    chips.forEach(c => c.classList.remove('active'));
+    const activeChip = document.querySelector(`.filter-chip[data-mode="${currentResourceMode}"]`);
+    if (activeChip) {
+        activeChip.classList.add('active');
+    }
+
+    // Обработчики клика
+    chips.forEach(chip => {
+        chip.addEventListener('click', function() {
+            const mode = this.dataset.mode;
+            if (!mode) return; // Пропускаем кнопки без data-mode (например ⚙️)
+            
+            chips.forEach(c => c.classList.remove('active'));
+            this.classList.add('active');
+            currentResourceMode = mode;
+            localStorage.setItem('resourceMode', mode);
+            loadHierarchy(currentLicenseId, mode);
+        });
+    });
+}
+    // ========== ТЕГИ ==========
+    document.getElementById('addTagBtn')?.addEventListener('click', async () => {
+        const tagName = prompt('Введите название тега:');
+        if (tagName && tagName.trim()) {
+            const resp = await fetch(`/{{ current_operator }}/tags/create`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ name: tagName.trim() })
+            });
+            const data = await resp.json();
+            if (data.success) {
+                const addResp = await fetch(`/{{ current_operator }}/license/{{ license.id }}/tags/add`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ tag_id: data.tag_id })
+                });
+                if (addResp.ok) location.reload();
+            } else {
+                alert('Ошибка: ' + (data.error || 'Неизвестная ошибка'));
+            }
+        }
+    });
+
+    document.querySelectorAll('.tag-remove').forEach(btn => {
+        btn.addEventListener('click', async () => {
+            const tagId = btn.dataset.tagId;
+            const resp = await fetch(`/{{ current_operator }}/license/{{ license.id }}/tags/remove`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ tag_id: tagId })
+            });
+            if (resp.ok) location.reload();
+        });
+    });
+
+    // ========== ИНИЦИАЛИЗАЦИЯ ==========
+document.addEventListener('DOMContentLoaded', function() {
+    // Инициализация фильтров ресурсов
+    initResourceFilters();
+    
+    // Загрузка иерархии
+    if (currentLicenseId) {
+        loadHierarchy(currentLicenseId, currentResourceMode);
+    }
+
+    // Загрузка версий LSN через API
+    loadVersions();
+
+    // Обработчики для переключения между ESN в списке
+    document.querySelectorAll('.esn-list-item').forEach(item => {
+        item.addEventListener('click', function() {
+            const licenseId = parseInt(this.dataset.licenseId);
+            if (licenseId && licenseId !== currentLicenseId) {
+                const esns = new URL(window.location.href).searchParams.get('esns');
+                if (esns) {
+                    const newUrl = `/${operator}/license_by_esns?esns=${esns}&license_id=${licenseId}`;
+                    window.location.href = newUrl;
+                }
+            }
+        });
+    });
+
+    // Применяем настройки шрифта и строк
+    setTimeout(() => {
+        applyFontAndRow();
+        updateColumnsVisibility();
+    }, 100);
+});
+
+// ========== ЗАГРУЗКА ВЕРСИЙ LSN ==========
+async function loadVersions() {
+    try {
+        const tbody = document.querySelector('.version-table tbody');
+        if (!tbody) return;
+        
+        tbody.innerHTML = '<tr><td colspan="7" class="text-center">Загрузка...</td></tr>';
+        
+        const resp = await fetch(`/api/license_versions?operator=${encodeURIComponent(operator)}&esn=${encodeURIComponent(currentEsn)}`);
+        if (!resp.ok) {
+            tbody.innerHTML = '<tr><td colspan="7" class="text-center">Ошибка загрузки версий</td></tr>';
+            return;
+        }
+        const versions = await resp.json();
+        
+        if (versions.length > 0) {
+            tbody.innerHTML = versions.map(lic => `
+                <tr data-license-id="${lic.id}" class="${lic.id === currentLicenseId ? 'selected-version' : ''}">
+                    <td>
+                        ${lic.local_path || lic.id ? `<a href="#" onclick="event.stopPropagation(); showPath('${lic.local_path.replace(/\\/g, '\\\\')}', ${lic.id}); return false;" title="Показать путь">📋</a>` : '-'}
+                    </td>
+                    <td>${escapeHtml(lic.lsn || '-')}</td>
+                    <td>${escapeHtml(lic.filename || '-')}</td>
+                    <td>${(lic.create_time || '').substring(0, 10) || '-'}</td>
+                    <td>${escapeHtml(lic.valid_date || '-')}</td>
+                    <td>${escapeHtml(lic.version || '-')}</td>
+                    <td>${escapeHtml(lic.product || '-')}</td>
+                </tr>
+            `).join('');
+            bindVersionRowHandlers();
+        } else {
+            tbody.innerHTML = '<tr><td colspan="7" class="text-center">Нет доступных версий</td></tr>';
+        }
+    } catch(e) {
+        console.error('Ошибка загрузки версий:', e);
+        const tbody = document.querySelector('.version-table tbody');
+        if (tbody) {
+            tbody.innerHTML = '<tr><td colspan="7" class="text-center">Ошибка загрузки</td></tr>';
+        }
+    }
+}
+
+let currentDisplayedPath = '';
+
+function showPath(path, licenseId) {
+    const normalized = path.replace(/\\\\/g, '/').replace(/\\/g, '/');
+    const folderPath = normalized.replace(/\/[^\/]+$/, '');
+    currentDisplayedPath = normalized;
+    
+    // Добавляем возможность переноса после каждого /
+    const displayPath = folderPath.replace(/\//g, '/<wbr>');
+    
+    const pathEl = document.getElementById('selectedLicensePath');
+    const pathText = document.getElementById('pathText');
+    const openBtn = document.getElementById('openFolderBtn');
+    
+    pathText.innerHTML = displayPath;
+    pathEl.style.display = 'block';
+    if (openBtn) openBtn.style.display = 'inline-block';
+    
+    document.querySelectorAll('.version-table tbody tr').forEach(r => r.classList.remove('selected-version'));
+    const row = document.querySelector(`.version-table tbody tr[data-license-id="${licenseId}"]`);
+    if (row) row.classList.add('selected-version');
+}
+
+function openFolderFromPath() {
+    if (!currentDisplayedPath) return;
+    
+    // Заменяем \ на / для URL
+    const winPath = currentDisplayedPath.replace(/\\/g, '/');
+    fetch(`/api/open_folder?path=${encodeURIComponent(winPath)}`)
+        .then(r => r.json())
+        .then(d => {
+            if (!d.success) alert('Не удалось открыть папку: ' + d.error);
+        })
+        .catch(e => alert('Ошибка: ' + e));
+}
+
+function openFolder(licenseId) {
+    fetch(`/api/open_folder?license_id=${licenseId}`)
+        .then(r => r.json())
+        .then(d => {
+            if (!d.success) alert('Не удалось открыть папку: ' + d.error);
+        })
+        .catch(e => alert('Ошибка: ' + e));
+}
+
+// ========== ОБРАБОТЧИКИ СТРОК ВЕРСИЙ ==========
+function bindVersionRowHandlers() {
+    const versionRows = document.querySelectorAll('.version-table tbody tr');
+    versionRows.forEach(row => {
+        row.addEventListener('click', async function(e) {
+            if (e.target.tagName === 'A' || e.target.tagName === 'BUTTON') return;
+            const licenseId = parseInt(this.getAttribute('data-license-id'));
+            if (licenseId) {
+                currentLicenseId = licenseId;
+                collapsedSparts.clear();
+                
+                // Сначала получаем информацию о лицензии (включая domain)
+                await updateLicenseInfoFromApi(licenseId);
+                
+                // Затем загружаем иерархию
+                loadHierarchy(currentLicenseId, currentResourceMode);
+                
+                // Обновляем выделение
+                versionRows.forEach(r => r.classList.remove('selected-version'));
+                this.classList.add('selected-version');
+                
+                // ===== ВАЖНО: сохраняем esns в URL =====
+                const esns = new URL(window.location.href).searchParams.get('esns');
+                let newUrl;
+                if (esns) {
+                    newUrl = `/${operator}/license_by_esns?esns=${esns}&license_id=${licenseId}`;
+                } else {
+                    newUrl = `/${operator}/license/${licenseId}`;
+                }
+                history.pushState({licenseId: currentLicenseId}, '', newUrl);
+                // ======================================
+            }
+        });
+    });
+}
+
+// ========== ОБНОВЛЕНИЕ ИНФОРМАЦИИ ЛИЦЕНЗИИ ЧЕРЕЗ API ==========
+async function updateLicenseInfoFromApi(licenseId) {
+    try {
+        const resp = await fetch(`/api/license/${licenseId}/info`);
+        if (!resp.ok) return;
+        const data = await resp.json();
+        
+        // Обновляем основные поля
+        const infoItems = document.querySelectorAll('.info-two-columns .info-item .info-value');
+        if (infoItems.length >= 15) {
+            if (data.lsn) infoItems[0].innerHTML = `${escapeHtml(data.lsn)}`;
+            if (data.product) infoItems[1].textContent = data.product;
+            if (data.version) infoItems[2].textContent = data.version;
+            if (data.operator) infoItems[3].textContent = data.operator;
+            if (data.ne_type) infoItems[4].textContent = data.ne_type;
+            if (data.city) infoItems[5].textContent = data.city;
+            if (data.site) infoItems[6].textContent = data.site;
+            if (data.year) infoItems[7].textContent = data.year === 'permanent' ? '♾️ бессрочная' : data.year;
+            if (data.valid_date) infoItems[8].textContent = data.valid_date;
+            if (data.create_time) infoItems[9].textContent = data.create_time;
+            if (data.node) infoItems[10].textContent = data.node;
+            if (data.domain) {
+                infoItems[11].textContent = data.domain;
+                currentDomain = data.domain;
+            }
+            if (data.filename) infoItems[12].innerHTML = `${escapeHtml(data.filename)}`;
+            if (data.last_modified) infoItems[13].textContent = data.last_modified;
+            if (data.modified_by) infoItems[14].textContent = data.modified_by;
+        }
+        
+        // Обновляем ESN если он показывается отдельно
+        const esnBlock = document.querySelector('.info-block-content code');
+        if (esnBlock && data.esn) {
+            esnBlock.textContent = data.esn;
+        }
+
+        // Обновляем currentDomain
+        if (data.domain) {
+            currentDomain = data.domain;  // <-- Эта строка должна быть
+        }
+        
+    } catch(e) {
+        console.error('Ошибка обновления информации:', e);
+    }
+}
+
+// Функция обновления основной информации без перезагрузки
+function updateLicenseInfo(data) {
+    // Обновляем ESN
+    const esnBlock = document.querySelector('.info-block-content code');
+    if (esnBlock) esnBlock.textContent = data.esn || '-';
+    
+    // Обновляем LSN
+    const lsnEl = document.querySelector('.info-two-columns .info-item:nth-child(1) .info-value code');
+    if (lsnEl) lsnEl.textContent = data.lsn || '-';
+    
+    // Обновляем продукт
+    const productEl = document.querySelector('.info-two-columns .info-item:nth-child(2) .info-value');
+    if (productEl) productEl.textContent = data.product || '-';
+    
+    // Обновляем версию
+    const versionEl = document.querySelector('.info-two-columns .info-item:nth-child(3) .info-value');
+    if (versionEl) versionEl.textContent = data.version || '-';
+    
+    // Обновляем NE тип
+    const neTypeEl = document.querySelector('.info-two-columns .info-item:nth-child(5) .info-value');
+    if (neTypeEl) neTypeEl.textContent = data.ne_type || '-';
+    
+    // Обновляем город
+    const cityEl = document.querySelector('.info-two-columns .info-item:nth-child(6) .info-value');
+    if (cityEl) cityEl.textContent = data.city || '-';
+    
+    // Обновляем сайт
+    const siteEl = document.querySelector('.info-two-columns .info-item:nth-child(7) .info-value');
+    if (siteEl) siteEl.textContent = data.site || '-';
+    
+    // Обновляем домен (и currentDomain)
+    const domainEl = document.querySelector('.info-two-columns .info-item:nth-child(13) .info-value');
+    if (domainEl && data.domain) {
+        domainEl.textContent = data.domain;
+        currentDomain = data.domain;
+    }
+    
+    // Обновляем имя файла
+    const filenameEl = document.querySelector('.info-two-columns .info-item:nth-child(14) .info-value code');
+    if (filenameEl) filenameEl.textContent = data.filename || '-';
+    
+    // Обновляем даты
+    const yearEl = document.querySelector('.info-two-columns .info-item:nth-child(9) .info-value');
+    if (yearEl) yearEl.textContent = data.year === 'permanent' ? '♾️ бессрочная' : (data.year || '-');
+    
+    const validDateEl = document.querySelector('.info-two-columns .info-item:nth-child(10) .info-value');
+    if (validDateEl) validDateEl.textContent = data.valid_date || '-';
+    
+    const createTimeEl = document.querySelector('.info-two-columns .info-item:nth-child(11) .info-value');
+    if (createTimeEl) createTimeEl.textContent = data.create_time || '-';
+    
+    const nodeEl = document.querySelector('.info-two-columns .info-item:nth-child(12) .info-value');
+    if (nodeEl) nodeEl.textContent = data.node || '-';
+}
+
+// Обновление списка версий
+async function updateVersionsList(esn) {
+    try {
+        const resp = await fetch(`/api/license_versions?operator=${operator}&esn=${encodeURIComponent(esn)}`);
+        if (!resp.ok) return;
+        const versions = await resp.json();
+        
+        const tbody = document.querySelector('.version-table tbody');
+        if (tbody && versions.length > 0) {
+            tbody.innerHTML = versions.map(lic => `
+                <tr data-license-id="${lic.id}" class="${lic.id === currentLicenseId ? 'selected-version' : ''}">
+                    <td>${lic.lsn || '-'}</td>
+                    <td>${lic.filename || '-'}</td>
+                    <td>${(lic.create_time || '').substring(0, 10) || '-'}</td>
+                    <td>${lic.valid_date || '-'}</td>
+                    <td>${lic.version || '-'}</td>
+                    <td>${lic.product || '-'}</td>
+                </tr>
+            `).join('');
+            
+            // Перепривязываем обработчики
+            bindVersionRowHandlers();
+        }
+    } catch(e) {
+        console.error('Ошибка обновления версий:', e);
+    }
+}
+
+// Управление размером шрифта
+const fontSizeInput = document.getElementById('tableFontSize');
+if (fontSizeInput) {
+    // Загружаем сохранённое значение
+    const savedFontSize = localStorage.getItem('license_detail_font_size');
+    if (savedFontSize) {
+        fontSizeInput.value = savedFontSize;
+        document.querySelector('.resources-table').style.setProperty('--table-font-size', savedFontSize + 'px');
+    }
+    
+    fontSizeInput.addEventListener('change', () => {
+        const size = fontSizeInput.value;
+        localStorage.setItem('license_detail_font_size', size);
+        document.querySelector('.resources-table').style.setProperty('--table-font-size', size + 'px');
+    });
+}
+
+// Управление высотой строки
+const rowHeightInput = document.getElementById('tableRowHeight');
+if (rowHeightInput) {
+    const savedRowHeight = localStorage.getItem('license_detail_row_height');
+    if (savedRowHeight) {
+        rowHeightInput.value = savedRowHeight;
+        document.querySelector('.resources-table').style.setProperty('--table-row-height', savedRowHeight + 'px');
+    }
+    
+    rowHeightInput.addEventListener('change', () => {
+        const height = rowHeightInput.value;
+        localStorage.setItem('license_detail_row_height', height);
+        document.querySelector('.resources-table').style.setProperty('--table-row-height', height + 'px');
+    });
+}
+
+// Обработчик для глобального сворачивания/разворачивания
+document.querySelector('.toggle-all-sparts')?.addEventListener('click', () => {
+    const allSparts = currentHierarchy?.sparts?.map(s => s.name) || [];
+    // Проверяем, все ли свёрнуты
+    const allCollapsed = allSparts.length > 0 && allSparts.every(name => collapsedSparts.has(name));
+    
+    if (allCollapsed) {
+        // Разворачиваем все
+        allSparts.forEach(name => collapsedSparts.delete(name));
+    } else {
+        // Сворачиваем все
+        allSparts.forEach(name => collapsedSparts.add(name));
+    }
+    if (currentHierarchy) {
+        renderHierarchyTable(currentHierarchy.sparts, currentHierarchy.orphans);
+    }
+    
+    // Обновляем иконку
+    const icon = document.querySelector('.toggle-all-sparts');
+    const newAllCollapsed = allSparts.length > 0 && allSparts.every(name => collapsedSparts.has(name));
+    icon.textContent = newAllCollapsed ? '▶' : '▼';
+});
+
+
+// ========== НАСТРОЙКИ ТАБЛИЦЫ ==========
+const modal = document.getElementById('tableSettingsModal');
+const openBtn = document.getElementById('openTableSettingsBtn');
+const closeBtn = document.getElementById('closeSettingsBtn');
+const modalClose = document.querySelector('#tableSettingsModal .modal-close');
+
+// Загрузка сохранённых настроек
+let savedFontSize = localStorage.getItem('license_detail_font_size') || '12';
+let savedRowHeight = localStorage.getItem('license_detail_row_height') || '32';
+let savedColumns = JSON.parse(localStorage.getItem('license_detail_visible_columns') || 
+    '["capacity_key", "target", "delta", "value", "valid_date", "part_number", "dimension", "description"]');
+
+// Колонки и их порядок
+const columnConfig = [
+    { key: 'capacity_key', label: 'CapacityKey', defaultWidth: 200 },
+    { key: 'target', label: '🎯 Цель', defaultWidth: 80 },
+    { key: 'delta', label: 'Δ Дельта', defaultWidth: 80 },
+    { key: 'value', label: 'Value', defaultWidth: 80 },
+    { key: 'valid_date', label: 'Valid till', defaultWidth: 100 },
+    { key: 'part_number', label: 'Part-number', defaultWidth: 100 },
+    { key: 'dimension', label: 'Размерность', defaultWidth: 100 },
+    { key: 'description', label: 'Description', defaultWidth: 200 }
+];
+
+// Применение размера шрифта и высоты строки
+function applyFontAndRow() {
+    document.querySelector('.resources-table').style.setProperty('--table-font-size', savedFontSize + 'px');
+    document.querySelector('.resources-table').style.setProperty('--table-row-height', savedRowHeight + 'px');
+}
+
+// Обновление видимости колонок (работает для всей таблицы)
+function updateColumnsVisibility() {
+    // Скрываем/показываем заголовки
+    const ths = document.querySelectorAll('.resources-table thead th');
+    ths.forEach(th => {
+        const colKey = th.getAttribute('data-col');
+        if (colKey && !savedColumns.includes(colKey)) {
+            th.style.display = 'none';
+        } else if (colKey) {
+            th.style.display = '';
+        }
+    });
+
+    // Скрываем/показываем ячейки
+    const rows = document.querySelectorAll('#resourcesTableBody tr');
+    rows.forEach(row => {
+        const cells = row.querySelectorAll('td');
+        cells.forEach((cell, idx) => {
+            const th = ths[idx];
+            if (th) {
+                const colKey = th.getAttribute('data-col');
+                if (colKey && !savedColumns.includes(colKey)) {
+                    cell.style.display = 'none';
+                } else {
+                    cell.style.display = '';
+                }
+            }
+        });
+    });
+}
+
+// Переопределяем renderHierarchyTable, чтобы после отрисовки применять настройки
+const originalRender = renderHierarchyTable;
+renderHierarchyTable = function(sparts, orphans) {
+    originalRender(sparts, orphans);
+    applyFontAndRow();
+    updateColumnsVisibility();
+};
+
+// Инициализация модального окна
+openBtn?.addEventListener('click', () => {
+    document.getElementById('modalFontSize').value = savedFontSize;
+    document.getElementById('modalRowHeight').value = savedRowHeight;
+    document.getElementById('modalFontSizeValue').innerText = savedFontSize + 'px';
+    document.getElementById('modalRowHeightValue').innerText = savedRowHeight + 'px';
+    
+    // Устанавливаем чекбоксы
+    document.querySelectorAll('#visibleColumnsCheckboxes input').forEach(cb => {
+        cb.checked = savedColumns.includes(cb.value);
+    });
+    
+    modal.style.display = 'flex';
+});
+
+// В функции closeModal()
+function closeModal() {
+    modal.style.display = 'none';
+    loadHierarchy(currentLicenseId, currentResourceMode);
+}
+
+closeBtn?.addEventListener('click', closeModal);
+modalClose?.addEventListener('click', closeModal);
+modal?.addEventListener('click', (e) => {
+    if (e.target === modal) closeModal();
+});
+
+// Переключатель "Показывать все SPart"
+const showAllSpartsToggle = document.getElementById('showAllSpartsToggle');
+
+if (showAllSpartsToggle) {
+    // Загружаем сохранённое значение
+    const savedShowAll = localStorage.getItem('showAllSparts') === 'true';
+    showAllSpartsToggle.checked = savedShowAll;
+    
+    // При изменении — сохраняем и перезагружаем иерархию
+    showAllSpartsToggle.addEventListener('change', function() {
+        localStorage.setItem('showAllSparts', this.checked);
+        loadHierarchy(currentLicenseId, currentResourceMode);
+    });
+}
+
+// Сохранение настроек
+document.getElementById('saveTableSettingsBtn')?.addEventListener('click', () => {
+    savedFontSize = document.getElementById('modalFontSize').value;
+    savedRowHeight = document.getElementById('modalRowHeight').value;
+    savedColumns = [];
+    document.querySelectorAll('#visibleColumnsCheckboxes input:checked').forEach(cb => {
+        savedColumns.push(cb.value);
+    });
+    
+    localStorage.setItem('license_detail_font_size', savedFontSize);
+    localStorage.setItem('license_detail_row_height', savedRowHeight);
+    localStorage.setItem('license_detail_visible_columns', JSON.stringify(savedColumns));
+    
+    applyFontAndRow();
+    updateColumnsVisibility();
+    closeModal();
+});
+
+// Обработчики слайдеров
+document.getElementById('modalFontSize')?.addEventListener('input', (e) => {
+    document.getElementById('modalFontSizeValue').innerText = e.target.value + 'px';
+});
+document.getElementById('modalRowHeight')?.addEventListener('input', (e) => {
+    document.getElementById('modalRowHeightValue').innerText = e.target.value + 'px';
+});
+
+// При загрузке страницы применяем настройки
+setTimeout(() => {
+    applyFontAndRow();
+    updateColumnsVisibility();
+}, 100);
+
+</script>
+{% endblock %}
