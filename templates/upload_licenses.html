@@ -1,0 +1,2274 @@
+{% extends "base.html" %}
+
+{% block content %}
+<style>
+    .staging-bar {
+        position: sticky; top: 62px; z-index: 40;
+        background: var(--bg-primary); border: 1px solid var(--border-light); border-radius: var(--radius-lg);
+        padding: 12px 16px; margin-bottom: 16px;
+        display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px;
+        box-shadow: var(--shadow-md);
+    }
+    .staging-badges { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+    .st-badge {
+        padding: 4px 10px; border-radius: var(--radius-sm); font-size: 0.78rem; font-weight: 600;
+        background: var(--bg-tertiary); color: var(--text-primary); border: 1px solid var(--border-light);
+    }
+    .st-badge.ok { border-color: #10B981; color: #10B981; }
+    .st-badge.warn { border-color: #F59E0B; color: #F59E0B; }
+    .st-badge.err { border-color: var(--huawei-red); color: var(--huawei-red); }
+    .staging-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+
+    .upload-tabs { display: flex; gap: 8px; border-bottom: 2px solid var(--border-light); margin-bottom: 16px; }
+    .upload-tab-btn {
+        padding: 10px 18px; border: none; background: transparent;
+        font-size: 0.88rem; font-weight: 600; color: var(--text-secondary); cursor: pointer;
+        border-bottom: 3px solid transparent; margin-bottom: -2px; border-radius: 0;
+    }
+    .upload-tab-btn:hover { color: var(--huawei-red); background: transparent; border-color: transparent; transform: none; }
+    .upload-tab-btn.active { color: var(--huawei-red); border-bottom-color: var(--huawei-red); }
+    .upload-tab-pane { display: none; }
+    .upload-tab-pane.active { display: block; }
+
+    .drop-zone {
+        border: 2px dashed var(--border-light); border-radius: var(--radius-lg); padding: 30px 20px;
+        text-align: center; background: var(--bg-primary); transition: var(--transition); cursor: pointer; margin-bottom: 14px;
+    }
+    .drop-zone:hover, .drop-zone.dragover { border-color: var(--huawei-red); background: var(--bg-tertiary); }
+    .source-controls { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin-bottom: 16px; }
+    .folder-input-group { display: flex; gap: 8px; flex: 1; min-width: 280px; }
+    .folder-input-group input {
+        flex: 1; padding: 8px 12px; border: 1px solid var(--border-light); border-radius: var(--radius-md);
+        background: var(--bg-primary); color: var(--text-primary);
+    }
+
+    .queue-table {
+        width: 100%; border-collapse: collapse; background: var(--bg-primary);
+        border-radius: var(--radius-md); overflow: hidden; border: 1px solid var(--border-light);
+    }
+    .queue-table th, .queue-table td {
+        padding: 8px 10px; border-bottom: 1px solid var(--border-light); text-align: left; font-size: 0.8rem;
+        color: var(--text-primary);
+    }
+    .queue-table th { background: var(--bg-tertiary); font-weight: 600; color: var(--text-secondary); }
+
+    /* Master-Detail Comparison */
+    .domain-pills { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 14px; }
+    .domain-pill {
+        padding: 6px 14px; border-radius: 20px; border: 1px solid var(--border-light);
+        background: var(--bg-primary); cursor: pointer; font-size: 0.8rem; font-weight: 600; color: var(--text-primary);
+        display: inline-flex; align-items: center; gap: 6px;
+    }
+    .domain-pill.active { background: var(--huawei-red-grad); color: #fff; border-color: transparent; }
+    .dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
+    .dot-red { background: #ef4444; }
+    .dot-yellow { background: #f59e0b; }
+    .dot-green { background: #10b981; }
+
+    .md-layout { display: grid; grid-template-columns: 330px 1fr; gap: 16px; align-items: start; }
+    @media (max-width: 980px) { .md-layout { grid-template-columns: 1fr; } }
+    .md-sidebar {
+        background: var(--bg-primary); border: 1px solid var(--border-light); border-radius: var(--radius-lg);
+        padding: 12px;
+    }
+    .md-search {
+        width: 100%; padding: 7px 10px; border: 1px solid var(--border-light); border-radius: var(--radius-sm);
+        margin-bottom: 8px; font-size: 0.8rem; background: var(--bg-secondary); color: var(--text-primary);
+    }
+    .city-group-title {
+        font-size: 0.7rem; font-weight: 700; text-transform: uppercase; color: var(--text-muted);
+        padding: 6px 4px; margin-top: 6px; border-bottom: 1px solid var(--border-light);
+    }
+    .site-item {
+        padding: 9px 10px; border-radius: var(--radius-sm); cursor: pointer; margin-top: 4px;
+        border: 1px solid transparent; display: flex; justify-content: space-between; align-items: center; gap: 8px;
+        transition: var(--transition);
+    }
+    .site-item:hover { background: var(--bg-hover); }
+    .site-item.active { background: var(--bg-tertiary); border-color: var(--huawei-red); }
+    .site-title { font-size: 0.92rem; font-weight: 700; color: var(--text-primary); line-height: 1.25; }
+    .site-sub { font-size: 0.72rem; color: var(--text-muted); margin-top: 2px; }
+
+    .md-detail {
+        background: var(--bg-primary); border: 1px solid var(--border-light); border-radius: var(--radius-lg);
+        padding: 16px; min-height: 360px;
+    }
+    .detail-header {
+        display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center;
+        gap: 10px; padding-bottom: 10px; border-bottom: 1px solid var(--border-light); margin-bottom: 10px;
+    }
+    .detail-meta { display: flex; flex-wrap: wrap; gap: 14px; font-size: 0.8rem; color: var(--text-secondary); margin-bottom: 12px; }
+    .toolbar-row {
+        display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center;
+        gap: 10px; margin-bottom: 12px;
+    }
+    .pill-group { display: flex; gap: 6px; flex-wrap: wrap; }
+    .mode-pill {
+        padding: 5px 12px; border-radius: var(--radius-sm); border: 1px solid var(--border-light);
+        background: var(--bg-secondary); color: var(--text-secondary); cursor: pointer; font-size: 0.76rem; font-weight: 600;
+    }
+    .mode-pill.active { background: var(--huawei-red-grad); color: #fff; border-color: transparent; }
+
+    .spart-row { background: var(--bg-secondary); font-weight: 700; cursor: pointer; }
+    .spart-row:hover td { background: var(--bg-hover); }
+    .bpart-row td:first-child { padding-left: 28px; color: var(--text-secondary); }
+    .spart-toggle { display: inline-block; width: 16px; text-align: center; color: var(--huawei-red); margin-right: 4px; }
+    .delta-pos, .queue-table td.delta-pos { color: #10B981 !important; font-weight: 700; }
+    .delta-neg, .queue-table td.delta-neg { color: #EF4444 !important; font-weight: 700; }
+    .row-shortage td { background: rgba(239, 68, 68, 0.12); }
+    .section-row td { background: var(--bg-tertiary) !important; color: var(--text-primary); font-weight: 700; font-size: 0.78rem; letter-spacing: 0.02em; }
+    .city-targets-box {
+        background: var(--bg-secondary); border: 1px solid var(--border-light);
+        border-radius: var(--radius-md); padding: 10px 12px; margin-bottom: 12px;
+    }
+    .city-targets-hdr {
+        display: flex; align-items: center; justify-content: space-between;
+        gap: 10px; margin-bottom: 6px; font-size: 0.8rem; font-weight: 700; color: var(--text-primary);
+    }
+    .sh-badge {
+        display: inline-block; padding: 2px 8px; border-radius: 12px; font-size: 0.72rem;
+        font-weight: 600; background: rgba(230, 0, 18, 0.12); color: var(--huawei-red);
+    }
+    .city-targets-tbl { width: 100%; border-collapse: collapse; font-size: 0.71rem; table-layout: fixed; }
+    .city-targets-tbl td { word-break: break-word; }
+    .city-targets-tbl th, .city-targets-tbl td {
+        padding: 3px 5px; border-bottom: 1px solid var(--border-light); text-align: left;
+    }
+    .city-targets-tbl th { color: var(--text-muted); font-weight: 600; }
+    .compare-table { table-layout: fixed; width: 100%; }
+    .compare-table th, .compare-table td {
+        white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }
+    .preview-banner {
+        display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 12px;
+        margin-bottom: 14px; background: var(--bg-primary); padding: 14px 16px;
+        border-radius: var(--radius-lg); border: 1px solid var(--border-light);
+    }
+</style>
+
+<div class="container-fluid" style="padding: 8px 16px;">
+    <h2 style="margin-bottom: 12px; color: var(--text-primary);">📥 Загрузка и сравнение лицензий ({{ current_operator }})</h2>
+
+    <div class="staging-bar">
+        <div class="staging-badges">
+            <span class="st-badge">Файлов: <b id="st-total">0</b></span>
+            <span class="st-badge ok">Готовы: <b id="st-ready">0</b></span>
+            <span class="st-badge warn">Дубликаты: <b id="st-dup">0</b></span>
+            <span class="st-badge err">Ошибки: <b id="st-err">0</b></span>
+        </div>
+        <div class="staging-actions">
+            <span id="source-mode-badge" style="display:inline-flex;align-items:center;gap:6px;padding:6px 12px;border-radius:var(--radius-sm);background:var(--bg-tertiary);color:var(--text-primary);font-size:0.8rem;font-weight:600;border:1px solid var(--border-light);">Режим: 🆕 Новые (0 шт.)</span>
+            <button class="btn-warning" onclick="clearStaging()" title="Удалить все временные файлы из текущей сессии загрузки">
+                🗑️ Очистить сессию
+            </button>
+        </div>
+    </div>
+    <div class="upload-tabs">
+        <button class="upload-tab-btn active" data-tab="upload" onclick="switchTab('upload')" title="Шаг 1: загрузить новые файлы или выбрать ранее загруженные сессии из БД">1. 📥 Источник лицензий</button>
+        <button class="upload-tab-btn" data-tab="compare" onclick="openCompareTab()" title="Шаг 2: сравнить выбранные лицензии с Target и предыдущей версией в БД">2. ⚖️ Сравнение и проверка</button>
+        <button class="upload-tab-btn" data-tab="preview" onclick="openPreviewTab()" title="Шаг 3: раскладка и запись в БД или сборка пакета с HTML/ZIP/Excel">3. 🚀 Сохранение и выгрузка</button>
+    </div>
+
+    <!-- Вкладка 1: Загрузка -->
+    <div id="pane-upload" class="upload-tab-pane active">
+        <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px; margin-bottom:14px;">
+            <div class="pill-group">
+                <button id="src-mode-new" class="mode-pill active" onclick="setSourceMode('new')" title="Загрузить новые файлы лицензий во временную очередь">🆕 Новые файлы (Staging)</button>
+                <button id="src-mode-db" class="mode-pill" onclick="setSourceMode('db')" title="Выбрать ранее загруженные лицензии из БД по сессиям">📚 Сессии в БД</button>
+            </div>
+            <button class="btn-primary" onclick="openCompareTab()" style="padding:7px 14px; font-size:0.82rem;" title="Перейти к сравнению выбранных лицензий">Далее: Сравнение →</button>
+        </div>
+        <div id="source-new-block">
+        <div id="drop-zone" class="drop-zone" onclick="document.getElementById('file-input').click()">
+            <div style="font-size: 32px; margin-bottom: 8px;">📂</div>
+            <div style="font-size: 1rem; font-weight: 600; color: var(--text-primary);">
+                Перетащите файлы лицензий (.dat, .xml) сюда или нажмите для выбора
+            </div>
+            <div style="font-size: 0.8rem; color: var(--text-muted); margin-top: 4px;">
+                Файлы парсятся во временном хранилище без изменения основной БД
+            </div>
+        </div>
+
+        <input type="file" id="file-input" multiple accept=".dat,.xml" style="display:none" onchange="handleFileSelect(this.files)">
+        <input type="file" id="folder-input" webkitdirectory directory multiple style="display:none" onchange="handleFileSelect(this.files)">
+
+        <div class="source-controls">
+            <button onclick="document.getElementById('file-input').click()" title="Выбрать один или несколько файлов .dat / .xml">📄 Выбрать файлы</button>
+            <button onclick="document.getElementById('folder-input').click()" title="Выбрать локальную папку через диалог браузера">📁 Выбрать папку (браузер)</button>
+            <button class="secondary2-btn" onclick="scanTemporaryFolder()" title="Загрузить все файлы лицензий из папки _temporary оператора">📂 Из _temporary</button>
+            <div class="folder-input-group">
+                <input type="text" id="local-folder-path" placeholder="Или укажите путь к папке на диске / шаре" title="Локальный или сетевой путь к папке с файлами лицензий">
+                <button class="btn-primary" onclick="scanLocalFolder()" title="Рекурсивно просканировать указанную папку на диске или сетевой шаре">🔎 Сканировать папку</button>
+            </div>
+        </div>
+
+        <table class="queue-table">
+            <thead>
+                <tr>
+                    <th style="width:32px;"></th>
+                    <th>Файл</th>
+                    <th>Тип</th>
+                    <th>ESN / LSN</th>
+                    <th>Домен / Город / Сайт</th>
+                    <th>Статус</th>
+                    <th style="width: 50px;"></th>
+                </tr>
+            </thead>
+            <tbody id="queue-tbody">
+                <tr><td colspan="7" style="text-align:center; color:var(--text-muted); padding: 24px;">Загрузка состояния...</td></tr>
+            </tbody>
+        </table>
+        </div><!-- /source-new-block -->
+
+        <div id="source-db-block" style="display:none;">
+            <div class="md-layout">
+                <div class="md-sidebar">
+                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+                        <b style="font-size:0.84rem; color:var(--text-primary);">🗂️ Сессии загрузки</b>
+                        <button class="mode-pill" onclick="loadSourceSessions()" title="Обновить список сессий">🔄</button>
+                    </div>
+                    <div id="src-sessions-list" style="font-size:0.8rem; color:var(--text-muted);">Загрузка сессий...</div>
+                </div>
+                <div class="md-detail">
+                    <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px; margin-bottom:10px;">
+                        <div style="display:flex; align-items:center; flex-wrap:wrap; gap:8px;">
+                            <input type="text" id="src-db-search" class="md-search" style="width:200px; margin:0;" placeholder="Поиск по сайту, NE, ESN..." oninput="renderSourceDbTable()">
+                            <select id="src-db-domain" class="md-search" style="width:auto; margin:0;" onchange="renderSourceDbTable()">
+                                <option value="ALL">Все домены</option>
+                            </select>
+                            <span style="font-size:0.82rem; color:var(--text-secondary);">Выбрано: <b id="src-db-selected-count">0</b></span>
+                        </div>
+                        <div style="display:flex; gap:8px;">
+                            <button class="mode-pill" onclick="toggleAllSourceDb(true)" title="Выбрать все лицензии в списке">Выбрать все</button>
+                            <button class="mode-pill" onclick="toggleAllSourceDb(false)" title="Снять выделение со всех лицензий">Снять все</button>
+                        </div>
+                    </div>
+                    <table class="queue-table">
+                        <thead>
+                            <tr>
+                                <th style="width:32px;"><input type="checkbox" id="chk-src-db-all" onchange="toggleAllSourceDb(this.checked)"></th>
+                                <th>Домен</th>
+                                <th>Город / Сайт</th>
+                                <th>NE / Версия</th>
+                                <th>ESN / LSN</th>
+                                <th>Создана / Действует до</th>
+                            </tr>
+                        </thead>
+                        <tbody id="src-db-tbody">
+                            <tr><td colspan="6" style="text-align:center; color:var(--text-muted); padding:24px;">Выберите одну или несколько сессий слева</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div><!-- /source-db-block -->
+    </div>
+
+    <!-- Вкладка 2: Сравнение (Master-Detail) -->
+    <div id="pane-compare" class="upload-tab-pane">
+        <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px; margin-bottom:10px;">
+            <div id="domain-pills" class="domain-pills" style="margin-bottom:0;"></div>
+            <button class="btn-primary" onclick="openPreviewTab()" style="padding:7px 14px; font-size:0.82rem;" title="Перейти к сохранению и выгрузке">Далее: Сохранение и выгрузка →</button>
+        </div>
+        <div id="city-pills" class="domain-pills" style="margin-bottom:10px;"></div>
+        <div class="md-layout">
+            <div class="md-sidebar">
+                <input type="text" id="md-search" class="md-search" placeholder="Поиск по NE, сайту, городу, ESN..." oninput="renderSidebar()">
+                <label style="display:flex; align-items:center; gap:6px; font-size:0.76rem; color:var(--text-secondary); margin-bottom:8px; cursor:pointer;" title="Скрыть лицензии без изменений и недобора (зелёный статус)">
+                    <input type="checkbox" id="only-issues-chk" onchange="renderSidebar()"> Только с расхождениями / изменениями
+                </label>
+                <div id="cmpCityTargetsSlot"></div>
+                <div id="md-tree"></div>
+            </div>
+            <div class="md-detail" id="md-detail">
+                <div style="color:var(--text-muted); text-align:center; padding:48px 16px;">
+                    Выберите элемент в списке слева для просмотра сравнения с БД и Target.
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Вкладка 3: Предпросмотр раскладки -->
+    <div id="pane-preview" class="upload-tab-pane">
+        <div class="preview-banner" style="margin-bottom:12px; padding:10px 14px; display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:12px;">
+            <div style="display:flex; flex-wrap:wrap; align-items:center; gap:16px;">
+                <label style="display:inline-flex; align-items:center; gap:6px; font-weight:600; font-size:0.82rem; color:var(--text-primary); cursor:pointer;" title="Показывать ли колонку «Предыдущая лицензия» (последнюю из БД) при выгрузке в HTML">
+                    <input type="checkbox" id="chk-export-prev-db" checked onchange="toggleExportPrevDb(this.checked)">
+                    Включать «Предыдущая лицензия» в HTML
+                </label>
+                <label style="display:inline-flex; align-items:center; gap:6px; font-weight:600; font-size:0.82rem; color:var(--text-primary); cursor:pointer;" title="Включать ли колонку PART-NUMBER при выгрузке отчёта">
+                    <input type="checkbox" id="chk-export-part-number" checked onchange="toggleExportPartNumber(this.checked)">
+                    Включать колонку «PART-NUMBER»
+                </label>
+            </div>
+            <div id="commit-select-dropdown-wrap" style="position:relative; display:inline-block;">
+                <button type="button" id="btn-commit-select-dropdown" class="secondary2-btn" onclick="toggleCommitSelectDropdown(event)" title="Выбрать файлы, которые будут загружены в БД и разложены на шаре">
+                    ☑️ Включить в загрузку (<span id="commit-sel-summary">0/0</span>) ▾
+                </button>
+                <div id="commit-select-dropdown-menu" onclick="event.stopPropagation()" style="display:none; position:absolute; right:0; top:calc(100% + 6px); z-index:1000; min-width:360px; max-width:480px; max-height:340px; overflow-y:auto; background:var(--bg-primary); border:1px solid var(--border-light); border-radius:var(--radius-md); box-shadow:0 10px 25px rgba(0,0,0,0.2); padding:10px;">
+                    <div style="display:flex; justify-content:space-between; align-items:center; padding-bottom:8px; margin-bottom:8px; border-bottom:1px solid var(--border-light); font-size:0.78rem;">
+                        <span id="commit-sel-menu-stat" style="font-weight:600; color:var(--text-secondary);">Выбрано: 0 из 0</span>
+                        <div style="display:flex; gap:8px;">
+                            <button type="button" class="mode-pill" style="padding:2px 8px; font-size:0.74rem;" onclick="selectAllForCommit(true)">Выбрать все</button>
+                            <button type="button" class="mode-pill" style="padding:2px 8px; font-size:0.74rem;" onclick="selectAllForCommit(false)">Снять все</button>
+                        </div>
+                    </div>
+                    <div id="commit-select-dropdown-list" style="display:flex; flex-direction:column; gap:6px;">
+                        <div style="color:var(--text-muted); font-size:0.78rem; padding:8px; text-align:center;">Нет загруженных файлов</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <!-- Режим 1: Новые файлы -> раскладка и запись в БД -->
+        <div id="action-new-block">
+            <div class="preview-banner">
+                <div>
+                    <div style="font-size:0.82rem; color:var(--text-secondary);">Базовая папка оператора на шаре: <code id="preview-base">—</code></div>
+                    <div style="font-size:0.78rem; color:var(--text-muted); margin-top:4px;">Предыдущие файлы с тем же ESN в целевой папке автоматически переносятся в подпапку <code>Old</code>.</div>
+                </div>
+                <div style="display:flex; flex-wrap:wrap; gap:10px; align-items:center;">
+                    <button id="btn-rename-source" class="secondary2-btn" onclick="renameInSourceFolder()" title="Переименовать выбранные файлы прямо в исходной папке (без загрузки в БД и раскладки на шаре)">
+                        ✏️ Переименовать в исходной папке
+                    </button>
+                    <button id="btn-export-html" class="secondary2-btn" onclick="exportComparisonHtml(this)" title="Сохранить автономный интерактивный HTML-отчёт сравнения до записи в БД">
+                        📄 Сохранить HTML
+                    </button>
+                    <button id="btn-confirm-commit" class="btn-primary" onclick="commitStaging()" disabled style="padding:10px 18px;" title="Скопировать выбранные файлы на шару и записать в БД">
+                        ✅ Подтвердить и загрузить в БД (<span id="preview-count">0</span>)
+                    </button>
+                </div>
+            </div>
+            <div class="preview-banner" style="margin-bottom:12px; flex-direction:column; align-items:stretch; gap:10px;">
+                <label style="display:inline-flex; align-items:center; gap:8px; font-size:0.84rem; font-weight:600; color:var(--text-primary); cursor:pointer;">
+                    <input type="checkbox" id="chk-commit-and-package" onchange="toggleNewPkgOptions(this.checked)">
+                    📦 Также сразу собрать пакет в <code>_New-licenses</code> после записи в БД
+                </label>
+                <div id="new-pkg-options" style="display:none; flex-direction:column; gap:8px; padding-top:8px; border-top:1px solid var(--border-light);">
+                    <div style="display:flex; flex-wrap:wrap; gap:10px; align-items:center;">
+                        <div class="pill-group">
+                            <button type="button" id="new-pkg-mode-structure" class="mode-pill active" onclick="setNewPkgMode('structure')">📁 Структура (без года)</button>
+                            <button type="button" id="new-pkg-mode-flat" class="mode-pill" onclick="setNewPkgMode('flat')">📄 Всё в корень</button>
+                        </div>
+                        <input type="text" id="new-pkg-comment" class="md-search" style="width:240px; margin:0;" placeholder="Комментарий к папке (опц.)">
+                    </div>
+                    <div style="display:flex; flex-wrap:wrap; gap:14px; font-size:0.8rem; color:var(--text-primary);">
+                        <label style="display:inline-flex; align-items:center; gap:5px; cursor:pointer;">
+                            <input type="checkbox" id="new-pkg-opt-html" checked> HTML (Опись + Сравнение)
+                        </label>
+                        <label style="display:inline-flex; align-items:center; gap:5px; cursor:pointer;">
+                            <input type="checkbox" id="new-pkg-opt-zip" checked> Упаковать в .zip
+                        </label>
+                        <label style="display:inline-flex; align-items:center; gap:5px; cursor:pointer;">
+                            <input type="checkbox" id="new-pkg-opt-xlsx" checked> Excel-опись (manifest.xlsx)
+                        </label>
+                    </div>
+                </div>
+            </div>
+            <div id="commit-result-box"  style="display:none; margin-bottom:12px; padding:10px 14px; border-radius:var(--radius-md); font-size:0.84rem; border:1px solid var(--border-light);"></div>
+            <table class="queue-table">
+                <thead>
+                    <tr>
+                        <th>Исходный файл</th>
+                        <th>Домен / Город / Сайт</th>
+                        <th>Целевая папка</th>
+                        <th>Новое имя файла</th>
+                        <th>Статус</th>
+                    </tr>
+                </thead>
+                <tbody id="preview-tbody">
+                    <tr><td colspan="5" style="text-align:center; color:var(--text-muted); padding:24px;">Нажмите «Далее: Сохранение и выгрузка» для расчёта путей...</td></tr>
+                </tbody>
+            </table>
+        </div>
+
+        <!-- Режим 2: Сессии в БД -> сборка пакета _New-licenses -->
+        <div id="action-db-block" style="display:none;">
+            <div class="preview-banner" style="margin-bottom:12px;">
+                <div style="display:flex; flex-direction:column; gap:8px; flex:1;">
+                    <div style="font-size:0.82rem; color:var(--text-secondary);">
+                        Целевая папка пакета: <code id="pkg-target-dir">—</code>
+                    </div>
+                    <div style="display:flex; flex-wrap:wrap; gap:10px; align-items:center;">
+                        <div class="pill-group">
+                            <button id="pkg-mode-structure" class="mode-pill active" onclick="setPkgMode('structure')" title="Раскладывать по структуре папок шары (без года)">📁 Структура (без года)</button>
+                            <button id="pkg-mode-flat" class="mode-pill" onclick="setPkgMode('flat')" title="Сохранить все лицензии в 1 корневую папку">📄 Всё в корень</button>
+                        </div>
+                        <input type="text" id="pkg-comment" class="md-search" style="width:220px; margin:0;" placeholder="Комментарий к папке (опц.)" oninput="refreshPackagePreview()" title="Необязательный суффикс к имени папки, например Sakhalin_CS">
+                    </div>
+                    <div style="display:flex; flex-wrap:wrap; gap:14px; font-size:0.8rem; color:var(--text-primary);">
+                        <label style="display:inline-flex; align-items:center; gap:5px; cursor:pointer;" title="Сохранить в корень папки единый HTML с вкладками «Опись лицензий» и «Сравнение»">
+                            <input type="checkbox" id="pkg-opt-html" checked> HTML (Опись + Сравнение)
+                        </label>
+                        <label style="display:inline-flex; align-items:center; gap:5px; cursor:pointer;" title="Упаковать созданную папку в .zip архив рядом с ней">
+                            <input type="checkbox" id="pkg-opt-zip" checked> Упаковать в .zip
+                        </label>
+                        <label style="display:inline-flex; align-items:center; gap:5px; cursor:pointer;" title="Создать Excel-опись manifest.xlsx в корне папки">
+                            <input type="checkbox" id="pkg-opt-xlsx" checked> Excel-опись (manifest.xlsx)
+                        </label>
+                    </div>
+                </div>
+                <div style="display:flex; flex-wrap:wrap; gap:10px; align-items:center;">
+                    <button class="secondary2-btn" onclick="exportComparisonHtml(this)" title="Скачать только HTML-отчёт сравнения без копирования файлов">
+                        📄 Скачать HTML
+                    </button>
+                    <button id="btn-pkg-export" class="btn-primary" onclick="runPackageExport()" disabled style="padding:10px 18px;" title="Создать папку, скопировать лицензии и сформировать отчёты">
+                        📦 Сохранить пакет (<span id="pkg-files-count">0</span>)
+                    </button>
+                </div>
+            </div>
+
+            <div id="pkg-export-result" style="display:none; margin-bottom:12px; padding:10px 14px; border-radius:var(--radius-md); font-size:0.84rem; border:1px solid var(--border-light);"></div>
+
+            <table class="queue-table">
+                <thead>
+                    <tr>
+                        <th>Домен</th>
+                        <th>Город / Сайт</th>
+                        <th>NE / Версия</th>
+                        <th>ESN / LSN</th>
+                        <th>Создана / Действует до</th>
+                        <th>Путь внутри новой папки</th>
+                    </tr>
+                </thead>
+                <tbody id="pkg-preview-tbody">
+                    <tr><td colspan="6" style="text-align:center; color:var(--text-muted); padding:24px;">Выберите сессии на Шаге 1</td></tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+<script>
+const CURRENT_OPERATOR = "{{ current_operator }}";
+let stagingState = null;
+let compareData = null;
+let activeDomain = 'ALL';
+let activeCity = 'ALL';
+let activeItemId = null;
+let activeRowFilter = 'all';       // all | changes | shortage
+let activeCapMode = 'total';       // total | permanent | dated
+let activeCompareBase = 'target';  // target | db
+let exportIncludePrevDb = true;
+let exportIncludePartNumber = true;
+let expandedSparts = {};           // { "itemId::spartName": true/false }
+
+function switchTab(tabName) {
+    document.querySelectorAll('.upload-tab-btn').forEach(btn => {
+        btn.classList.toggle('active', btn.dataset.tab === tabName);
+    });
+    document.querySelectorAll('.upload-tab-pane').forEach(pane => {
+        pane.classList.toggle('active', pane.id === 'pane-' + tabName);
+    });
+}
+
+async function loadState() {
+    const res = await fetch('/api/staging/state?operator=' + encodeURIComponent(CURRENT_OPERATOR));
+    const data = await res.json();
+    renderState(data);
+}
+
+function renderState(data) {
+    stagingState = data;
+    const stats = data.stats || {total: 0, ready: 0, duplicate: 0, errors: 0};
+    document.getElementById('st-total').textContent = stats.total;
+    document.getElementById('st-ready').textContent = stats.ready;
+    document.getElementById('st-dup').textContent = stats.duplicate;
+    document.getElementById('st-err').textContent = stats.errors;
+
+    const _el_btn_compare = document.getElementById('btn-compare'); if (_el_btn_compare) _el_btn_compare.disabled = stats.total === 0;
+    const _el_btn_export_html = document.getElementById('btn-export-html'); if (_el_btn_export_html) _el_btn_export_html.disabled = stats.total === 0;
+    const _el_btn_commit = document.getElementById('btn-commit'); if (_el_btn_commit) _el_btn_commit.disabled = stats.total === 0;
+
+    const tbody = document.getElementById('queue-tbody');
+    if (!data.files || data.files.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="6" style="text-align:center; color:var(--text-muted); padding: 24px;">Очередь пуста. Добавьте файлы .dat или .xml для начала работы.</td></tr>';
+        return;
+    }
+
+    tbody.innerHTML = data.files.map(f => {
+        const loc = [f.domain || 'unknown', f.city_full || f.city, f.site].filter(Boolean).join(' / ');
+        const statusColor = f.status === 'error' ? '#EF4444' : (f.status === 'duplicate' ? '#F59E0B' : '#10B981');
+        return `
+            <tr>
+                <td><b>${f.original_name}</b><div style="font-size:0.72rem;color:var(--text-muted);">${f.size_kb} KB</div></td>
+                <td>${f.ext.toUpperCase()}</td>
+                <td>
+                    <div style="font-family:monospace;font-size:0.76rem;">${f.esn || '—'}</div>
+                    <div style="font-size:0.72rem;color:var(--text-muted);">${f.lsn || ''}</div>
+                </td>
+                <td>${loc}</td>
+                <td style="color:${statusColor}; font-weight:600;">${f.status_text}</td>
+                <td><button onclick="removeFile('${f.id}')" title="Удалить" style="padding:2px 8px;">✖</button></td>
+            </tr>
+        `;
+    }).join('');
+}
+
+async function handleFileSelect(fileList) {
+    if (!fileList || fileList.length === 0) return;
+    const tbody = document.getElementById('queue-tbody');
+    if (tbody) {
+        tbody.innerHTML = '<tr><td colspan="7" style="text-align:center; color:var(--text-muted); padding: 24px;">⏳ Загрузка и парсинг файлов...</td></tr>';
+    }
+    try {
+        const formData = new FormData();
+        formData.append('operator', CURRENT_OPERATOR);
+        for (const file of fileList) formData.append('files', file);
+        const res = await fetch('/api/staging/upload', { method: 'POST', body: formData });
+        if (!res.ok) throw new Error('HTTP ' + res.status);
+        const data = await res.json();
+        if (data.error) { alert(data.error); await loadState(); return; }
+        renderState(data.state);
+    } catch (err) {
+        alert('Ошибка загрузки файлов: ' + err.message);
+        await loadState();
+    } finally {
+        const fi = document.getElementById('file-input');
+        const di = document.getElementById('folder-input');
+        if (fi) fi.value = '';
+        if (di) di.value = '';
+    }
+}
+
+async function scanLocalFolder() {
+    const path = document.getElementById('local-folder-path').value.trim();
+    if (!path) { alert('Укажите путь к папке'); return; }
+    const res = await fetch('/api/staging/scan_folder', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({folder_path: path, operator: CURRENT_OPERATOR})
+    });
+    const data = await res.json();
+    if (data.error) { alert(data.error); return; }
+    renderState(data.state);
+}
+
+async function removeFile(fileId) {
+    const res = await fetch('/api/staging/file/' + fileId + '?operator=' + encodeURIComponent(CURRENT_OPERATOR), { method: 'DELETE' });
+    const data = await res.json();
+    renderState(data);
+}
+
+async function clearStaging() {
+    if (!confirm('Очистить текущую очередь загрузки?')) return;
+    const res = await fetch('/api/staging/clear', { method: 'DELETE' });
+    const data = await res.json();
+    compareData = null;
+    activeItemId = null;
+    renderState(data);
+    switchTab('upload');
+}
+
+async function openCompareTab() {
+    switchTab('compare');
+    const treeEl = document.getElementById('md-tree');
+    const detailEl = document.getElementById('md-detail');
+    treeEl.innerHTML = '<div style="padding:12px;color:var(--text-muted);">Выполняется сравнение...</div>';
+    try {
+        const res = await fetch('/api/staging/compare?operator=' + encodeURIComponent(CURRENT_OPERATOR));
+        if (!res.ok) throw new Error('HTTP ' + res.status);
+        const data = await res.json();
+        if (data.error) {
+            treeEl.innerHTML = `<div style="padding:12px;color:#EF4444;">${data.error}</div>`;
+            return;
+        }
+        compareData = data;
+        renderDomainPills();
+        renderCityPills();
+        if (!compareData.items || compareData.items.length === 0) {
+            activeItemId = null;
+            renderSidebar();
+            detailEl.innerHTML = '<div style="color:var(--text-muted); text-align:center; padding:48px 16px;">Нет лицензий для сравнения. Проверьте выбор на Шаге 1.</div>';
+            return;
+        }
+        const exists = activeItemId && compareData.items.some(x => x.id === activeItemId);
+        if (!exists) {
+            selectCompareItem(getEsnSiblings(compareData.items[0])[0].id);
+        } else {
+            renderSidebar();
+            renderDetail();
+        }
+    } catch (err) {
+        treeEl.innerHTML = `<div style="padding:12px;color:#EF4444;">Ошибка сравнения: ${err.message}</div>`;
+    }
+}
+
+function renderDomainPills() {
+    if (!compareData) return;
+    const total = compareData.items.length;
+    let html = `<button class="domain-pill ${activeDomain === 'ALL' ? 'active' : ''}" onclick="setDomain('ALL')" title="Показать лицензии всех доменов">Все (${total})</button>`;
+    for (const d of compareData.domains) {
+        const dotCls = d.red > 0 ? 'dot-red' : (d.yellow > 0 ? 'dot-yellow' : 'dot-green');
+        html += `<button class="domain-pill ${activeDomain === d.name ? 'active' : ''}" onclick="setDomain('${d.name}')" title="Фильтр по домену ${d.name}">
+            <span class="dot ${dotCls}"></span> ${d.name} (${d.count})
+        </button>`;
+    }
+    document.getElementById('domain-pills').innerHTML = html;
+}
+
+function setDomain(dom) {
+    activeDomain = dom;
+    activeCity = 'ALL';
+    renderDomainPills();
+    renderCityPills();
+    renderSidebar();
+}
+
+function getEsnSiblings(it) {
+    if (!compareData || !compareData.items || !it) return [];
+    const esn = (it.esn || '').trim();
+    if (!esn) return [it];
+    return compareData.items
+        .filter(x => (x.esn || '').trim() === esn)
+        .sort((a, b) => (b.create_time || '').localeCompare(a.create_time || '') || (b.lsn || '').localeCompare(a.lsn || ''));
+}
+function updateCityTargetsSlot(fallbackItem) {
+    const ctSlot = document.getElementById('cmpCityTargetsSlot');
+    if (!ctSlot || !compareData || !compareData.items) return;
+    const esc = s => String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    let targetItem = fallbackItem || compareData.items.find(x => x.id === activeItemId);
+    if (targetItem && activeCity !== 'ALL' && (targetItem.city_full || 'Без города') !== activeCity) {
+        targetItem = null;
+    }
+    if (!targetItem && activeCity !== 'ALL') {
+        targetItem = compareData.items.find(x =>
+            (activeDomain === 'ALL' || x.domain === activeDomain) &&
+            (x.city_full || 'Без города') === activeCity &&
+            x.city_targets && x.city_targets.rows && x.city_targets.rows.length
+        ) || compareData.items.find(x =>
+            (x.city_full || 'Без города') === activeCity &&
+            x.city_targets && x.city_targets.rows && x.city_targets.rows.length
+        );
+    }
+    ctSlot.innerHTML = targetItem ? renderCityTargetsBox(targetItem, esc) : '';
+}
+function renderSidebar() {
+    if (!compareData) return;
+    const q = (document.getElementById('md-search').value || '').toLowerCase().trim();
+    const onlyIssues = document.getElementById('only-issues-chk').checked;
+    const filtered = compareData.items.filter(it => {
+        if (activeDomain !== 'ALL' && it.domain !== activeDomain) return false;
+        if (activeCity !== 'ALL' && (it.city_full || 'Без города') !== activeCity) return false;
+        if (onlyIssues && it.severity === 'green') return false;
+        if (q) {
+            const hay = `${it.ne_type} ${it.site} ${it.city_full} ${it.esn} ${it.lsn || ''} ${it.new_name || ''} ${it.original_name}`.toLowerCase();
+            if (!hay.includes(q)) return false;
+        }
+        return true;
+    });
+    updateCityTargetsSlot();
+    if (filtered.length === 0) {
+        document.getElementById('md-tree').innerHTML = '<div style="padding:12px;color:var(--text-muted);font-size:0.8rem;">Нет подходящих файлов</div>';
+        return;
+    }
+    const byCity = {};
+    for (const it of filtered) {
+        const c = it.city_full || 'Без города';
+        if (!byCity[c]) byCity[c] = [];
+        byCity[c].push(it);
+    }
+    let html = '';
+    for (const city of Object.keys(byCity).sort()) {
+        const cityList = byCity[city];
+        const esnGroups = [];
+        const seenEsn = new Map();
+        for (const it of cityList) {
+            const esnKey = (it.esn || '').trim();
+            if (!esnKey) {
+                esnGroups.push([it]);
+            } else if (seenEsn.has(esnKey)) {
+                seenEsn.get(esnKey).push(it);
+            } else {
+                const arr = [it];
+                seenEsn.set(esnKey, arr);
+                esnGroups.push(arr);
+            }
+        }
+        html += `<div class="city-group-title">${city} (${esnGroups.length})</div>`;
+        for (const grp of esnGroups) {
+            grp.sort((a, b) => (b.create_time || '').localeCompare(a.create_time || '') || (b.lsn || '').localeCompare(a.lsn || ''));
+            const rep = grp.find(x => x.id === activeItemId) || grp[0];
+            const icon = rep.severity === 'red' ? '🔴' : (rep.severity === 'yellow' ? '🟡' : '🟢');
+            const isActive = rep.id === activeItemId ? 'active' : '';
+            const createdShort = rep.create_time ? rep.create_time.split(' ')[0] : '—';
+            const verTxt = rep.version ? rep.version.replace(/^R/i, '') : '—';
+            const lsnBadge = grp.length > 1 ? ` <span class="sh-badge" style="font-size:0.66rem;padding:1px 6px;">${grp.length} LSN</span>` : '';
+            html += `<div class="site-item ${isActive}" onclick="selectCompareItem('${rep.id}')">
+                <div style="min-width:0;">
+                    <div class="site-title">${icon} ${rep.city ? rep.city + ' · ' : ''}${rep.ne_type} · ${rep.site}${lsnBadge}</div>
+                    <div class="site-sub">${verTxt} · Создана: ${createdShort} · Δ ${rep.changes_count}</div>
+                </div>
+                <input type="checkbox" ${rep.selected ? 'checked' : ''} onclick="event.stopPropagation(); toggleSelect('${rep.id}', this.checked)">
+            </div>`;
+        }
+    }
+    document.getElementById('md-tree').innerHTML = html;
+}
+
+function selectCompareItem(id) {
+    activeItemId = id;
+    renderSidebar();
+    renderDetail();
+}
+
+function setRowFilter(mode) { activeRowFilter = mode; renderDetail(); }
+function setCapMode(mode) { activeCapMode = mode; renderDetail(); }
+function setCompareBase(base) { activeCompareBase = base; renderDetail(); }
+function toggleExportPrevDb(checked) { exportIncludePrevDb = !!checked; }
+function toggleExportPartNumber(checked) { exportIncludePartNumber = !!checked; }
+
+function toggleCommitSelectDropdown(ev) {
+    if (ev) ev.stopPropagation();
+    const menu = document.getElementById('commit-select-dropdown-menu');
+    if (!menu) return;
+    const isOpen = menu.style.display === 'block';
+    menu.style.display = isOpen ? 'none' : 'block';
+    if (!isOpen) renderCommitSelectDropdown();
+}
+
+document.addEventListener('click', function(e) {
+    const wrap = document.getElementById('commit-select-dropdown-wrap');
+    const menu = document.getElementById('commit-select-dropdown-menu');
+    if (menu && wrap && !wrap.contains(e.target)) {
+        menu.style.display = 'none';
+    }
+});
+
+function renderCommitSelectDropdown() {
+    const items = (stagingState && Array.isArray(stagingState.items)) ? stagingState.items : [];
+    const total = items.length;
+    const selectedCnt = items.filter(it => it.selected !== false).length;
+
+    const sumEl = document.getElementById('commit-sel-summary');
+    if (sumEl) sumEl.textContent = `${selectedCnt}/${total}`;
+    const statEl = document.getElementById('commit-sel-menu-stat');
+    if (statEl) statEl.textContent = `Выбрано: ${selectedCnt} из ${total}`;
+
+    const listEl = document.getElementById('commit-select-dropdown-list');
+    if (!listEl) return;
+    if (!total) {
+        listEl.innerHTML = '<div style="color:var(--text-muted); font-size:0.78rem; padding:8px; text-align:center;">Нет загруженных файлов</div>';
+        return;
+    }
+    listEl.innerHTML = items.map(it => {
+        const isChk = it.selected !== false;
+        const fname = esc(it.new_name || it.original_name || it.id);
+        const meta = [it.ne_type, it.city_full || it.city, it.site].filter(Boolean).map(esc).join(' · ');
+        return `<label style="display:flex; align-items:flex-start; gap:8px; padding:5px 6px; border-radius:6px; cursor:pointer; font-size:0.78rem; background:${isChk ? 'var(--bg-secondary)' : 'transparent'};">
+            <input type="checkbox" ${isChk ? 'checked' : ''} onchange="toggleSelectFromPreview('${esc(it.id)}', this.checked)" style="margin-top:2px;">
+            <span style="display:flex; flex-direction:column; min-width:0;">
+                <span style="font-weight:600; color:var(--text-primary); word-break:break-all;">${fname}</span>
+                ${meta ? `<span style="font-size:0.71rem; color:var(--text-muted);">${meta}</span>` : ''}
+            </span>
+        </label>`;
+    }).join('');
+}
+
+async function toggleSelectFromPreview(id, checked) {
+    await toggleSelect(id, checked);
+    renderCommitSelectDropdown();
+    const panePrev = document.getElementById('pane-preview');
+    if (panePrev && panePrev.classList.contains('active')) {
+        await openPreviewTab(true);
+    }
+}
+
+async function selectAllForCommit(checked) {
+    const items = (stagingState && Array.isArray(stagingState.items)) ? stagingState.items : [];
+    const toChange = items.filter(it => (it.selected !== false) !== !!checked);
+    for (const it of toChange) {
+        await toggleSelect(it.id, !!checked);
+    }
+    renderCommitSelectDropdown();
+    const panePrev = document.getElementById('pane-preview');
+    if (panePrev && panePrev.classList.contains('active')) {
+        await openPreviewTab(true);
+    }
+}
+
+function toggleSpart(key) {
+    expandedSparts[key] = !expandedSparts[key];
+    renderDetail();
+}
+
+function setAllSparts(expand) {
+    if (!compareData || !activeItemId) return;
+    const it = compareData.items.find(x => x.id === activeItemId);
+    if (!it) return;
+    for (const sg of it.spart_groups || []) {
+        expandedSparts[`${it.id}::${sg.key}`] = expand;
+    }
+    renderDetail();
+}
+
+async function toggleSelect(id, checked) {
+    const res = await fetch('/api/staging/toggle_select', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({id, selected: checked, operator: CURRENT_OPERATOR})
+    });
+    const state = await res.json();
+    renderState(state);
+    if (compareData) {
+        const it = compareData.items.find(x => x.id === id);
+        if (it) it.selected = checked;
+        renderSidebar();
+        renderDetail();
+    }
+}
+
+function calcRowForMode(r) {
+    const dbVal = activeCapMode === 'permanent' ? r.db_perm : (activeCapMode === 'dated' ? r.db_dated : r.db_total);
+    const newVal = activeCapMode === 'permanent' ? r.new_perm : (activeCapMode === 'dated' ? r.new_dated : r.new_total);
+    const hasDb = dbVal !== null && dbVal !== undefined;
+    const dbNum = hasDb ? dbVal : 0;
+    const newNum = newVal !== null && newVal !== undefined ? newVal : 0;
+    const delta = Math.round((newNum - dbNum) * 100) / 100;
+    const hasTgt = r.target_val !== null && r.target_val !== undefined;
+    const tgtDelta = hasTgt ? Math.round((newNum - r.target_val) * 100) / 100 : null;
+
+    let baseDelta = tgtDelta;
+    let status = 'none';
+    if (activeCompareBase === 'db') {
+        baseDelta = hasDb ? delta : null;
+        if (hasDb) {
+            status = newNum < dbNum ? 'shortage' : 'ok';
+        }
+    } else if (hasTgt) {
+        status = newNum < r.target_val ? 'shortage' : 'ok';
+    }
+    return { dbVal, newVal, noTarget: (r.target_val === null || r.target_val === undefined) && (newVal !== null && newVal !== undefined && Number(newVal) > 0), delta, tgtDelta, baseDelta, status };
+}
+
+function matchesFilter(calc) {
+    if (activeRowFilter === 'changes') return calc.delta !== 0 || calc.status === 'shortage';
+    if (activeRowFilter === 'shortage') return calc.status === 'shortage';
+    if (activeRowFilter === 'no_target') return !!calc.noTarget;
+    return true;
+}
+
+function formatValidDateForMode(r, mode) {
+    const perm = r.new_perm || 0;
+    const dated = r.new_dated || 0;
+    const rawDate = (r.valid_date || '').trim();
+    const isPermText = rawDate.toUpperCase() === 'PERMANENT';
+    const datedStr = (!rawDate || isPermText) ? '' : rawDate;
+
+    if (mode === 'permanent') return perm > 0 ? 'Permanent' : '—';
+    if (mode === 'dated') return dated > 0 ? (datedStr || 'Fix-term') : '—';
+
+    const parts = [];
+    if (perm > 0) parts.push('Permanent');
+    if (dated > 0) {
+        if (datedStr) {
+            for (const d of datedStr.split(',').map(s => s.trim()).filter(Boolean)) {
+                if (d.toUpperCase() !== 'PERMANENT' && !parts.includes(d)) parts.push(d);
+            }
+        } else {
+            parts.push('Fix-term');
+        }
+    }
+    if (parts.length) return parts.join(', ');
+    return rawDate || '—';
+}
+
+function renderRowCells(r, calc, firstColHtml) {
+    const hasBaseDelta = calc.baseDelta !== null && calc.baseDelta !== undefined;
+    const dCls = hasBaseDelta ? (calc.baseDelta > 0 ? 'delta-pos' : (calc.baseDelta < 0 ? 'delta-neg' : '')) : '';
+    const dTxt = hasBaseDelta ? (calc.baseDelta > 0 ? '+' + calc.baseDelta : (calc.baseDelta === 0 ? '0' : calc.baseDelta)) : '—';
+    const stTxt = calc.status === 'shortage' ? '🔴 Недобор' : (calc.status === 'ok' ? '🟢 ОК' : '—');
+    const vdate = formatValidDateForMode(r, activeCapMode);
+    const esc = s => String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    const keyEsc = esc(r.key);
+    const pnEsc = esc(r.part_number);
+    const descEsc = esc(r.description);
+    const dimEsc = esc(r.dimension);
+    const tgtTxt = r.target_val !== null && r.target_val !== undefined ? r.target_val : '—';
+    const newTxt = calc.newVal !== null && calc.newVal !== undefined ? calc.newVal : '—';
+    const dbTxt = calc.dbVal !== null && calc.dbVal !== undefined ? calc.dbVal : '—';
+    const colBase = activeCompareBase === 'db' ? dbTxt : tgtTxt;
+    const colRef = activeCompareBase === 'db' ? tgtTxt : dbTxt;
+    return `
+        <td style="font-family:monospace;" title="${keyEsc}">${firstColHtml}</td>
+        <td style="font-family:monospace; font-size:0.74rem; color:var(--text-secondary);" title="${pnEsc}">${pnEsc || '—'}</td>
+        <td style="font-size:0.74rem; color:var(--text-secondary);" title="${descEsc}">${descEsc || '—'}</td>
+        <td style="font-size:0.74rem; color:var(--text-secondary);" title="${dimEsc}">${dimEsc || '—'}</td>
+        <td style="font-size:0.75rem; color:var(--text-secondary);" title="${esc(vdate)}">${vdate}</td>
+        <td title="${colBase}">${colBase}</td>
+        <td title="${newTxt}"><b>${newTxt}</b></td>
+        <td class="${dCls}" title="${dTxt}">${dTxt}</td>
+        <td title="${colRef}">${colRef}</td>
+        <td title="${stTxt}">${stTxt}</td>
+    `;
+}
+
+function renderCityTargetsBox(it, escFn) {
+    const ct = it.city_targets;
+    if (!ct || !ct.rows || !ct.rows.length) return '';
+    const hasSh = !!ct.has_sharing;
+    const badge = hasSh
+        ? `<span class="sh-badge">Шаринг: ÷${ct.sharing_coeff}</span>`
+        : `<span class="sh-badge" style="background:var(--bg-tertiary);color:var(--text-secondary);">Без шаринга (1:1)</span>`;
+    let trs = '';
+    for (const r of ct.rows) {
+        const cVal = r.city_val !== null && r.city_val !== undefined ? r.city_val : '—';
+        const nVal = r.ne_val !== null && r.ne_val !== undefined ? r.ne_val : '—';
+        trs += `<tr>
+            <td style="font-family:monospace;">${escFn(r.key)}</td>
+            <td><b>${cVal}</b></td>
+            ${hasSh ? `<td>÷${r.sharing || 1}</td><td><b>${nVal}</b></td>` : ''}
+        </tr>`;
+    }
+    return `
+        <div class="city-targets-box">
+            <div class="city-targets-hdr">
+                <span>🎯 Targets для города ${escFn(it.city_full || it.city || '')}</span>
+                ${badge}
+            </div>
+            <table class="city-targets-tbl">
+                ${hasSh
+                    ? '<colgroup><col style="width:38%;"><col style="width:21%;"><col style="width:19%;"><col style="width:22%;"></colgroup>'
+                    : '<colgroup><col style="width:75%;"><col style="width:25%;"></colgroup>'}
+                <thead><tr>
+                    <th>Target-параметр</th>
+                    <th>City</th>
+                    ${hasSh ? '<th>Шаринг</th><th>Target (1 NE)</th>' : ''}
+                </tr></thead>
+                <tbody>${trs}</tbody>
+            </table>
+        </div>`;
+}
+
+function renderDetail() {
+    if (!compareData || !activeItemId) return;
+    const it = compareData.items.find(x => x.id === activeItemId);
+    if (!it) return;
+
+    const dbDate = it.db_latest ? (it.db_latest.valid_date || '—') : 'Нет в БД';
+    const hasSparts = (it.spart_groups && it.spart_groups.length > 0);
+    let rowsHtml = '';
+    let curSec = '';
+
+    if (hasSparts) {
+        for (const sg of it.spart_groups) {
+            const sgCalc = calcRowForMode(sg);
+            const allBparts = (sg.bparts || []).map(bp => ({ bp, calc: calcRowForMode(bp) }));
+            if (allBparts.some(x => x.calc.status === 'shortage')) {
+                sgCalc.status = 'shortage';
+            }
+            const visibleBparts = allBparts.filter(x => matchesFilter(x.calc));
+
+            if (!matchesFilter(sgCalc) && visibleBparts.length === 0) continue;
+
+            const spKey = `${it.id}::${sg.key}`;
+            const isOpen = !!expandedSparts[spKey];
+            const arrow = (sg.bparts && sg.bparts.length) ? (isOpen ? '▼' : '▶') : '•';
+            const cntBadge = (sg.bparts && sg.bparts.length) ? ` <span style="font-size:0.7rem;color:var(--text-muted);">(${sg.bparts.length})</span>` : '';
+
+            if (sg.section && sg.section !== curSec) {
+                curSec = sg.section;
+                rowsHtml += `<tr class=\"section-row\"><td colspan=\"10\">📂 ${curSec}</td></tr>`;
+            }
+            rowsHtml += `<tr class="spart-row ${sgCalc.status === 'shortage' ? 'row-shortage' : ''}" onclick="toggleSpart('${spKey}')">
+                ${renderRowCells(sg, sgCalc, `<span class="spart-toggle">${arrow}</span>${sg.key}${cntBadge}`)}
+            </tr>`;
+
+            if (isOpen) {
+                for (const { bp, calc } of visibleBparts) {
+                    rowsHtml += `<tr class="bpart-row ${calc.status === 'shortage' ? 'row-shortage' : ''}">
+                        ${renderRowCells(bp, calc, `↳ ${bp.key}`)}
+                    </tr>`;
+                }
+            }
+        }
+    }
+
+    for (const r of (it.flat_rows || [])) {
+        const calc = calcRowForMode(r);
+        if (!matchesFilter(calc)) continue;
+        if (r.section && r.section !== curSec) {
+            curSec = r.section;
+            rowsHtml += `<tr class=\"section-row\"><td colspan=\"10\">📂 ${curSec}</td></tr>`;
+        }
+        rowsHtml += `<tr class="${calc.status === 'shortage' ? 'row-shortage' : ''}">
+            ${renderRowCells(r, calc, r.key)}
+        </tr>`;
+    }
+
+    if (!rowsHtml) {
+        rowsHtml = '<tr><td colspan="10" style="text-align:center;color:var(--text-muted);padding:18px;">Нет параметров по выбранному фильтру</td></tr>';
+    }
+
+    updateCityTargetsSlot(it);
+    const lsnSiblings = getEsnSiblings(it);
+    const lsnSwitcherHtml = lsnSiblings.length > 1 ? `
+        <label style="display:flex;align-items:center;gap:6px;font-weight:600;font-size:0.82rem;color:var(--text-primary);" title="Доступно несколько лицензий (LSN) для этого ESN">
+            LSN:
+            <select class="md-search" style="width:auto;margin:0;padding:3px 8px;font-size:0.78rem;" onchange="selectCompareItem(this.value)">
+                ${lsnSiblings.map(s => {
+                    const dt = s.create_time ? s.create_time.split(' ')[0] : '—';
+                    const lbl = (s.lsn || s.original_name || '—') + ' (' + dt + ')';
+                    return `<option value="${s.id}" ${s.id === it.id ? 'selected' : ''}>${lbl}</option>`;
+                }).join('')}
+            </select>
+        </label>` : '';
+    const escAttr = s => String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    const newLicTip = escAttr([
+        'Новая лицензия (Staging)',
+        'Файл: ' + (it.new_name || it.original_name || '—'),
+        'Версия: ' + (it.version || '—'),
+        'Создана: ' + (it.create_time || '—'),
+        'Действует до: ' + (it.valid_date || '—'),
+        'LSN: ' + (it.lsn || '—')
+    ].join('\n'));
+    const prevLicTip = escAttr(it.db_latest ? [
+        'Предыдущая лицензия (в БД)',
+        'Файл: ' + (it.db_latest.filename || '—'),
+        'Версия: ' + (it.db_latest.version || '—'),
+        'Создана: ' + (it.db_latest.create_time || '—'),
+        'Действует до: ' + (it.db_latest.valid_date || '—'),
+        'LSN: ' + (it.db_latest.lsn || '—')
+    ].join('\n') : 'Предыдущая лицензия в БД отсутствует');
+
+    const expandControls = hasSparts ? `
+        <div class="pill-group">
+            <button class="mode-pill" onclick="setAllSparts(true)" title="Развернуть все группы Spart для просмотра вложенных Bpart">Развернуть все</button>
+            <button class="mode-pill" onclick="setAllSparts(false)" title="Свернуть все группы Spart">Свернуть все</button>
+        </div>` : '';
+
+    document.getElementById('md-detail').innerHTML = `
+        <div class="detail-header">
+            <div>
+                <h3 style="margin:0; color:var(--text-primary);">${it.ne_type} · (${it.city ? it.city + ' · ' : ''}${it.site}) <span style="font-size:0.82rem;color:var(--text-muted);">(${it.city_full} / ${it.domain})</span></h3>
+                <div style="font-size:0.76rem;color:var(--text-muted);margin-top:2px;">Файл: ${it.new_name || it.original_name}</div>
+            </div>
+            <div style="display:flex;flex-wrap:wrap;align-items:center;gap:14px;">
+                ${lsnSwitcherHtml}
+            </div>
+        </div>
+        <div class="detail-meta">
+            <span><b>ESN:</b> <code>${it.esn}</code></span>
+            <span><b>LSN:</b> <code>${it.lsn}</code></span>
+            <span><b>Версия:</b> ${it.version || '—'}</span>
+            <span><b>Создана:</b> ${it.create_time || '—'}</span>
+            <span><b>Срок действия:</b> ${dbDate} → <b>${it.valid_date || '—'}</b></span>
+        </div>
+        <div class="toolbar-row">
+            <div class="pill-group">
+                <button class="mode-pill ${activeCompareBase === 'target' ? 'active' : ''}" onclick="setCompareBase('target')" title="Сравнить новую лицензию с Target">🎯 Target</button>
+                <button class="mode-pill ${activeCompareBase === 'db' ? 'active' : ''}" onclick="setCompareBase('db')" title="Сравнить новую лицензию с последней в БД по дате создания">🗄️ Последняя в БД</button>
+            </div>
+            <div class="pill-group">
+                <button class="mode-pill ${activeCapMode === 'total' ? 'active' : ''}" onclick="setCapMode('total')" title="Суммарная ёмкость (Permanent + Fix-term)">Суммарная</button>
+                <button class="mode-pill ${activeCapMode === 'permanent' ? 'active' : ''}" onclick="setCapMode('permanent')" title="Только постоянная ёмкость (Permanent)">Permanent</button>
+                <button class="mode-pill ${activeCapMode === 'dated' ? 'active' : ''}" onclick="setCapMode('dated')" title="Только срочная ёмкость (Fix-term)">Fix-term</button>
+            </div>
+            <div class="pill-group">
+                <button class="mode-pill ${activeRowFilter === 'no_target' ? 'active' : ''}" onclick="setRowFilter('no_target')" title="Показать позиции, которых нет в Target, но они есть в сравниваемой лицензии">Нет в Target</button>
+                <button class="mode-pill ${activeRowFilter === 'all' ? 'active' : ''}" onclick="setRowFilter('all')" title="Показать все параметры лицензии">Все (${it.total_params})</button>
+                <button class="mode-pill ${activeRowFilter === 'changes' ? 'active' : ''}" onclick="setRowFilter('changes')" title="Показать параметры с изменениями или недобором">Изменения (${it.changes_count})</button>
+                <button class="mode-pill ${activeRowFilter === 'shortage' ? 'active' : ''}" onclick="setRowFilter('shortage')" title="Показать только параметры с недобором">Недобор (${it.shortage_count})</button>
+            </div>
+            ${expandControls}
+        </div>
+        <table class="queue-table compare-table">
+            <colgroup>
+                <col style="width: 16%;">
+                <col style="width: 9%;">
+                <col style="width: 21%;">
+                <col style="width: 8%;">
+                <col style="width: 11%;">
+                <col style="width: 7%;">
+                <col style="width: 7%;">
+                <col style="width: 7%;">
+                <col style="width: 7%;">
+                <col style="width: 7%;">
+            </colgroup>
+            <thead>
+                <tr>
+                    <th title="Spart/Bpart">Параметр</th>
+                    <th title="Part-number">Part-number</th>
+                    <th title="Описание">Описание</th>
+                    <th title="Размерность">Размерность</th>
+                    <th title="Срок действия">Срок действия</th>
+                    ${activeCompareBase === 'db'
+                        ? `<th title="${prevLicTip}" style="cursor:help;">Предыдущая лицензия</th>`
+                        : `<th title="Target">Target</th>`}
+                    <th title="${newLicTip}" style="cursor:help;">Новая</th>
+                    <th title="${activeCompareBase === 'db' ? 'Дельта (Новая − Предыдущая лицензия)' : 'Дельта (Новая − Target)'}">Дельта (Δ)</th>
+                    ${activeCompareBase === 'db'
+                        ? `<th title="Target">Target</th>`
+                        : `<th title="${prevLicTip}" style="cursor:help;">Предыдущая лицензия</th>`}
+                    <th title="Статус">Статус</th>
+                </tr>
+            </thead>
+            <tbody>${rowsHtml}</tbody>
+        </table>
+    `;
+}
+
+async function openPreviewTab(keepResultBox = false) {
+    switchTab('preview');
+    const ddWrap = document.getElementById('commit-select-dropdown-wrap');
+    if (ddWrap) ddWrap.style.display = (typeof sourceMode !== 'undefined' && sourceMode === 'db') ? 'none' : 'inline-block';
+    renderCommitSelectDropdown();
+    const tbody = document.getElementById('preview-tbody');
+    tbody.innerHTML = '<tr><td colspan="5" style="text-align:center; color:var(--text-muted); padding:24px;">Расчёт целевых путей...</td></tr>';
+    if (!keepResultBox) document.getElementById('commit-result-box').style.display = 'none';
+
+    let data;
+    try {
+        const res = await fetch('/api/staging/preview_paths?operator=' + encodeURIComponent(CURRENT_OPERATOR));
+        if (!res.ok) throw new Error('HTTP ' + res.status);
+        data = await res.json();
+    } catch (err) {
+        tbody.innerHTML = `<tr><td colspan="5" style="color:#EF4444; padding:16px;">Ошибка загрузки предпросмотра: ${err.message}</td></tr>`;
+        return;
+    }
+    if (data.error) {
+        tbody.innerHTML = `<tr><td colspan="5" style="color:#EF4444; padding:16px;">${data.error}</td></tr>`;
+        return;
+    }
+
+    document.getElementById('preview-base').textContent = data.remote_base || '—';
+    const cntEl = document.getElementById('preview-count');
+    if (cntEl) cntEl.textContent = data.selected_count || 0;
+    document.getElementById('btn-confirm-commit').disabled = !data.selected_count;
+
+    if (!data.items || data.items.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="5" style="text-align:center; color:var(--text-muted); padding:24px;">Нет выбранных файлов для загрузки.</td></tr>';
+        return;
+    }
+
+    tbody.innerHTML = data.items.map(it => {
+        const loc = [it.domain, it.city_full, it.site].filter(Boolean).join(' / ');
+        let st = '<span style="color:#10B981;font-weight:600;">🟢 Готов</span>';
+        if (it.exists_on_disk) st = '<span style="color:#F59E0B;font-weight:600;">🟡 Перезапишет файл</span>';
+        if (it.missing_fields && it.missing_fields.length) {
+            st += `<div style="font-size:0.72rem;color:#EF4444;">Нет в маппинге: ${it.missing_fields.join(', ')}</div>`;
+        }
+        return `<tr>
+            <td>${it.original_name}</td>
+            <td>${loc}</td>
+            <td style="font-family:monospace;font-size:0.76rem;" title="${it.target_dir || it.rel_dir}">${it.target_dir || it.rel_dir}</td>
+            <td style="font-family:monospace;font-size:0.76rem;"><b>${it.new_name}</b></td>
+            <td>${st}</td>
+        </tr>`;
+    }).join('');
+}
+
+async function commitStaging() {
+    const cntEl = document.getElementById('preview-count');
+    const count = cntEl ? cntEl.textContent : '0';
+    if (!confirm(`Загрузить ${count} выбранных лицензий в основную БД (${CURRENT_OPERATOR})?`)) return;
+
+    const btn = document.getElementById('btn-confirm-commit');
+    btn.disabled = true;
+    btn.innerHTML = '⏳ Выполняется импорт...';
+
+    const copyEl = document.getElementById('chk-copy-files'); const copyFiles = copyEl ? copyEl.checked : true;
+    const res = await fetch('/api/staging/commit', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({operator: CURRENT_OPERATOR, copy_files: copyFiles})
+    });
+    const data = await res.json();
+
+    const box = document.getElementById('commit-result-box');
+    box.style.display = 'block';
+    if (data.error) {
+        box.style.background = 'rgba(239, 68, 68, 0.12)';
+        box.style.color = '#EF4444';
+        box.innerHTML = `<b>Ошибка:</b> ${data.error}`;
+    } else {
+        box.style.background = 'rgba(16, 185, 129, 0.12)';
+        box.style.color = '#10B981';
+        let msg = `<b>Импорт завершён!</b> Сохранено в БД: <b>${data.saved}</b>, скопировано файлов: <b>${data.copied}</b>`;
+        if (data.db_errors) msg += `, ошибок БД: <b>${data.db_errors}</b>`;
+        if (data.file_errors && data.file_errors.length) {
+            msg += '<br>Предупреждения:<br>' + data.file_errors.join('<br>');
+        }
+        box.innerHTML = msg;
+        if (data.state) renderState(data.state);
+        await openPreviewTab(true);
+    }
+    btn.innerHTML = '✅ Подтвердить и загрузить в БД (<span id="preview-count">0</span>)';
+}
+
+const dropZone = document.getElementById('drop-zone');
+if (dropZone) {
+    ['dragenter', 'dragover'].forEach(evt => {
+        dropZone.addEventListener(evt, e => { e.preventDefault(); e.stopPropagation(); dropZone.classList.add('dragover'); });
+    });
+    ['dragleave', 'drop'].forEach(evt => {
+        dropZone.addEventListener(evt, e => { e.preventDefault(); e.stopPropagation(); dropZone.classList.remove('dragover'); });
+    });
+    dropZone.addEventListener('drop', e => {
+        e.preventDefault();
+        e.stopPropagation();
+        const files = e.dataTransfer && e.dataTransfer.files;
+        if (!files || files.length === 0) {
+            alert('Не удалось получить файлы из перетаскивания. Попробуйте кнопку «Выбрать файлы».');
+            return;
+        }
+        handleFileSelect(files);
+    });
+}
+
+async function exportComparisonHtml(btnEl) {
+    const btn = btnEl || document.getElementById('btn-export-html');
+    const origText = btn ? btn.textContent : '';
+    if (btn) { btn.disabled = true; btn.textContent = '⏳ Подготовка HTML...'; }
+    try {
+        let data = compareData;
+        if (!data && sourceMode === 'db' && srcDbSelectedIds.size > 0) {
+            await fetch('/api/staging/load_from_db', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({license_ids: Array.from(srcDbSelectedIds), operator: CURRENT_OPERATOR, clear_first: true})
+            });
+        }
+        if (!data) {
+            const res = await fetch('/api/staging/compare?operator=' + encodeURIComponent(CURRENT_OPERATOR));
+            data = await res.json();
+            if (data.error) { alert(data.error); return; }
+            compareData = data;
+        }
+        const isDark = document.body.classList.contains('dark');
+        const nowStr = new Date().toLocaleString('ru-RU');
+        const chkPrevEl = document.getElementById('chk-export-prev-db');
+        const includePrevDb = chkPrevEl ? !!chkPrevEl.checked : !!exportIncludePrevDb;
+        const chkPnEl = document.getElementById('chk-export-part-number');
+        const includePartNumber = chkPnEl ? !!chkPnEl.checked : !!exportIncludePartNumber;
+        const safeJson = JSON.stringify(data).replace(/<\//g, '<\\/');
+
+        const reportHtml = `<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Сравнение лицензий — ${CURRENT_OPERATOR}</title>
+<style>
+:root {
+    --huawei-red: #E60012; --huawei-red-grad: linear-gradient(135deg, #E60012 0%, #C7000B 100%);
+    --bg-primary: #FFFFFF; --bg-secondary: #F8FAFC; --bg-tertiary: #F1F5F9; --bg-hover: #F1F5F9;
+    --text-primary: #1E293B; --text-secondary: #64748B; --text-muted: #94A3B8;
+    --border-light: #E2E8F0; --radius-sm: 6px; --radius-md: 10px; --radius-lg: 14px;
+}
+body.dark {
+    --bg-primary: #1E293B; --bg-secondary: #0F172A; --bg-tertiary: #334155; --bg-hover: #334155;
+    --text-primary: #F8FAFC; --text-secondary: #CBD5E1; --text-muted: #94A3B8; --border-light: #334155;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: var(--bg-secondary); color: var(--text-primary); padding: 16px 20px; line-height: 1.45; }
+.report-top { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; margin-bottom: 14px; padding-bottom: 10px; border-bottom: 1px solid var(--border-light); }
+.report-title { font-size: 1.15rem; font-weight: 700; }
+.report-date { font-size: 0.78rem; color: var(--text-muted); }
+.domain-pills { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 14px; }
+.domain-pill { padding: 6px 14px; border-radius: 20px; border: 1px solid var(--border-light); background: var(--bg-primary); cursor: pointer; font-size: 0.8rem; font-weight: 600; color: var(--text-primary); display: inline-flex; align-items: center; gap: 6px; }
+.domain-pill.active { background: var(--huawei-red-grad); color: #fff; border-color: transparent; }
+.dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
+.dot-red { background: #ef4444; } .dot-yellow { background: #f59e0b; } .dot-green { background: #10b981; }
+.md-layout { display: grid; grid-template-columns: 320px 1fr; gap: 16px; align-items: start; }
+@media (max-width: 980px) { .md-layout { grid-template-columns: 1fr; } }
+.md-sidebar { background: var(--bg-primary); border: 1px solid var(--border-light); border-radius: var(--radius-lg); padding: 12px; }
+.md-search { width: 100%; padding: 7px 10px; border: 1px solid var(--border-light); border-radius: var(--radius-sm); margin-bottom: 8px; font-size: 0.8rem; background: var(--bg-secondary); color: var(--text-primary); }
+.city-group-title { font-size: 0.7rem; font-weight: 700; text-transform: uppercase; color: var(--text-muted); padding: 6px 4px; margin-top: 6px; border-bottom: 1px solid var(--border-light); }
+.site-item { padding: 9px 10px; border-radius: var(--radius-sm); cursor: pointer; margin-top: 4px; border: 1px solid transparent; }
+.site-item:hover { background: var(--bg-hover); }
+.site-item.active { background: var(--bg-tertiary); border-color: var(--huawei-red); }
+.site-title { font-size: 0.9rem; font-weight: 700; color: var(--text-primary); }
+.site-sub { font-size: 0.72rem; color: var(--text-muted); margin-top: 2px; }
+.md-detail { background: var(--bg-primary); border: 1px solid var(--border-light); border-radius: var(--radius-lg); padding: 16px; min-height: 360px; overflow-x: auto; }
+.detail-header { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 10px; padding-bottom: 10px; border-bottom: 1px solid var(--border-light); margin-bottom: 10px; }
+.detail-meta { display: flex; flex-wrap: wrap; gap: 14px; font-size: 0.8rem; color: var(--text-secondary); margin-bottom: 12px; }
+.toolbar-row { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 10px; margin-bottom: 12px; }
+.pill-group { display: flex; gap: 6px; flex-wrap: wrap; }
+.mode-pill { padding: 5px 12px; border-radius: var(--radius-sm); border: 1px solid var(--border-light); background: var(--bg-secondary); color: var(--text-secondary); cursor: pointer; font-size: 0.76rem; font-weight: 600; }
+.mode-pill.active { background: var(--huawei-red-grad); color: #fff; border-color: transparent; }
+.compare-table { width: 100%; table-layout: fixed; border-collapse: collapse; border: 1px solid var(--border-light); }
+.compare-table th, .compare-table td { padding: 8px 10px; border-bottom: 1px solid var(--border-light); text-align: left; font-size: 0.8rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--text-primary); }
+.compare-table th { background: var(--bg-tertiary); color: var(--text-secondary); font-weight: 600; }
+.spart-row { background: var(--bg-secondary); font-weight: 700; cursor: pointer; }
+.spart-row:hover td { background: var(--bg-hover); }
+.bpart-row td:first-child { padding-left: 28px; color: var(--text-secondary); }
+.spart-toggle { display: inline-block; width: 16px; text-align: center; color: var(--huawei-red); margin-right: 4px; }
+.delta-pos { color: #10B981 !important; font-weight: 700; }
+.delta-neg { color: #EF4444 !important; font-weight: 700; }
+.row-shortage td { background: rgba(239, 68, 68, 0.12); }
+.section-row td { background: var(--bg-tertiary) !important; color: var(--text-primary); font-weight: 700; font-size: 0.78rem; letter-spacing: 0.02em; }
+.city-targets-box { background: var(--bg-secondary); border: 1px solid var(--border-light); border-radius: var(--radius-md); padding: 10px 12px; margin-bottom: 12px; }
+.city-targets-hdr { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 6px; font-size: 0.8rem; font-weight: 700; }
+.sh-badge { display: inline-block; padding: 2px 8px; border-radius: 12px; font-size: 0.72rem; font-weight: 600; background: rgba(230, 0, 18, 0.12); color: var(--huawei-red); }
+.city-targets-tbl { width: 100%; border-collapse: collapse; font-size: 0.71rem; table-layout: fixed; } .city-targets-tbl td { word-break: break-word; }
+.city-targets-tbl th, .city-targets-tbl td { padding: 3px 5px; border-bottom: 1px solid var(--border-light); text-align: left; }
+.city-targets-tbl th { color: var(--text-muted); font-weight: 600; }
+</style>
+</head>
+<body>
+<div class="report-top">
+    <div>
+        <div class="report-title">⚖️ Сравнение лицензий (${CURRENT_OPERATOR})</div>
+        <div class="report-date">Выгрузка от ${nowStr}</div>
+    </div>
+    <button class="mode-pill" onclick="toggleReportTheme()" title="Переключить дневную / ночную тему">🌓 Тема</button>
+</div>
+<div id="domain-pills" class="domain-pills"></div>
+<div id="city-pills" class="domain-pills" style="margin-bottom:10px;"></div>
+<div class="md-layout">
+    <div class="md-sidebar">
+        <input type="text" id="md-search" class="md-search" placeholder="Поиск по NE, сайту, городу, ESN..." oninput="renderSidebar()">
+        <label style="display:flex; align-items:center; gap:6px; font-size:0.76rem; color:var(--text-secondary); margin-bottom:8px; cursor:pointer;" title="Скрыть лицензии без изменений и недобора">
+            <input type="checkbox" id="only-issues-chk" onchange="renderSidebar()"> Только с расхождениями / изменениями
+        </label>
+        <div id="expCityTargetsSlot"></div>
+        <div id="md-tree"></div>
+    </div>
+    <div class="md-detail" id="md-detail"></div>
+</div>
+<script>
+const darkMq = window.matchMedia('(prefers-color-scheme: dark)');
+let manualTheme = false;
+function applyAutoTheme() {
+    if (!manualTheme) document.body.classList.toggle('dark', darkMq.matches);
+}
+applyAutoTheme();
+if (darkMq.addEventListener) darkMq.addEventListener('change', applyAutoTheme);
+function toggleReportTheme() {
+    manualTheme = true;
+    document.body.classList.toggle('dark');
+}
+const INCLUDE_PREV_DB = ${includePrevDb ? 'true' : 'false'};
+const INCLUDE_PART_NUMBER = ${includePartNumber ? 'true' : 'false'};
+const compareData = ${safeJson};
+let activeDomain = 'ALL', activeCity = 'ALL';
+let activeRowFilter = 'all', activeCapMode = 'total', activeCompareBase = 'target', expandedSparts = {};
+const esc = s => String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+function getEsnSiblings(it) {
+    if (!it) return [];
+    const esn = (it.esn || '').trim();
+    if (!esn) return [it];
+    return compareData.items
+        .filter(x => (x.esn || '').trim() === esn)
+        .sort((a, b) => (b.create_time || '').localeCompare(a.create_time || '') || (b.lsn || '').localeCompare(a.lsn || ''));
+}
+let activeItemId = compareData.items.length ? getEsnSiblings(compareData.items[0])[0].id : null;
+function updateExpCityTargets(fallbackItem) {
+    const slot = document.getElementById('expCityTargetsSlot');
+    if (!slot) return;
+    let targetItem = fallbackItem || compareData.items.find(x => x.id === activeItemId);
+    if (targetItem && activeCity !== 'ALL' && (targetItem.city_full || 'Без города') !== activeCity) {
+        targetItem = null;
+    }
+    if (!targetItem && activeCity !== 'ALL') {
+        targetItem = compareData.items.find(x =>
+            (activeDomain === 'ALL' || x.domain === activeDomain) &&
+            (x.city_full || 'Без города') === activeCity &&
+            x.city_targets && x.city_targets.rows && x.city_targets.rows.length
+        ) || compareData.items.find(x =>
+            (x.city_full || 'Без города') === activeCity &&
+            x.city_targets && x.city_targets.rows && x.city_targets.rows.length
+        );
+    }
+    const ct = targetItem && targetItem.city_targets;
+    if (!ct || !ct.rows || !ct.rows.length) {
+        slot.innerHTML = '';
+        return;
+    }
+    const hasSh = !!ct.has_sharing;
+    const badge = hasSh ? '<span class="sh-badge">Шаринг: ÷' + ct.sharing_coeff + '</span>' : '<span class="sh-badge" style="background:var(--bg-tertiary);color:var(--text-secondary);">Без шаринга (1:1)</span>';
+    let trs = '';
+    for (const r of ct.rows) {
+        trs += '<tr><td style="font-family:monospace;">' + esc(r.key) + '</td><td><b>' + (r.city_val ?? '—') + '</b></td>' + (hasSh ? '<td>÷' + (r.sharing || 1) + '</td><td><b>' + (r.ne_val ?? '—') + '</b></td>' : '') + '</tr>';
+    }
+    const ctCols = hasSh
+        ? '<colgroup><col style="width:38%;"><col style="width:21%;"><col style="width:19%;"><col style="width:22%;"></colgroup>'
+        : '<colgroup><col style="width:75%;"><col style="width:25%;"></colgroup>';
+    slot.innerHTML = '<div class="city-targets-box"><div class="city-targets-hdr"><span>🎯 Targets: ' + esc(targetItem.city_full || targetItem.city || '') + '</span>' + badge + '</div><table class="city-targets-tbl">' + ctCols + '<thead><tr><th>Параметр</th><th>Город</th>' + (hasSh ? '<th>Шар.</th><th>1 NE</th>' : '') + '</tr></thead><tbody>' + trs + '</tbody></table></div>';
+}
+function renderDomainPills() {
+    let html = '<button class="domain-pill ' + (activeDomain === 'ALL' ? 'active' : '') + '" onclick="setDomain(\\'ALL\\')" title="Показать лицензии всех доменов">Все (' + compareData.items.length + ')</button>';
+    for (const d of compareData.domains) {
+        const dotCls = d.red > 0 ? 'dot-red' : (d.yellow > 0 ? 'dot-yellow' : 'dot-green');
+        html += '<button class="domain-pill ' + (activeDomain === d.name ? 'active' : '') + '" onclick="setDomain(\\'' + esc(d.name) + '\\')" title="Фильтр по домену ' + esc(d.name) + '"><span class="dot ' + dotCls + '"></span> ' + esc(d.name) + ' (' + d.count + ')</button>';
+    }
+    document.getElementById('domain-pills').innerHTML = html;
+}
+function renderCityPills() {
+    const slot = document.getElementById('city-pills');
+    if (!slot) return;
+    const baseItems = compareData.items.filter(it => activeDomain === 'ALL' || it.domain === activeDomain);
+    if (!baseItems.length) { slot.innerHTML = ''; return; }
+    const seenEsn = new Set();
+    const latestItems = [];
+    for (const it of baseItems) {
+        const esnKey = (it.esn || '').trim();
+        if (!esnKey) {
+            latestItems.push(it);
+        } else if (!seenEsn.has(esnKey)) {
+            seenEsn.add(esnKey);
+            const sibs = getEsnSiblings(it).filter(x => activeDomain === 'ALL' || x.domain === activeDomain);
+            latestItems.push(sibs[0] || it);
+        }
+    }
+    const cityMap = {};
+    for (const it of latestItems) {
+        const c = it.city_full || 'Без города';
+        if (!cityMap[c]) cityMap[c] = { count: 0, red: 0, yellow: 0 };
+        cityMap[c].count++;
+        if (it.severity === 'red') cityMap[c].red++;
+        else if (it.severity === 'yellow') cityMap[c].yellow++;
+    }
+    let html = '<button class="domain-pill ' + (activeCity === 'ALL' ? 'active' : '') + '" onclick="setCity(\\'ALL\\')" title="Показать все города">Все города (' + latestItems.length + ')</button>';
+    for (const c of Object.keys(cityMap).sort()) {
+        const st = cityMap[c];
+        const dotCls = st.red > 0 ? 'dot-red' : (st.yellow > 0 ? 'dot-yellow' : 'dot-green');
+        html += '<button class="domain-pill ' + (activeCity === c ? 'active' : '') + '" onclick="setCity(\\'' + esc(c).replace(/'/g, "\\\\'") + '\\')" title="Фильтр по городу ' + esc(c) + '"><span class="dot ' + dotCls + '"></span> ' + esc(c) + ' (' + st.count + ')</button>';
+    }
+    slot.innerHTML = html;
+}
+function setDomain(d) { activeDomain = d; activeCity = 'ALL'; renderDomainPills(); renderCityPills(); updateExpCityTargets(); renderSidebar(); }
+function setCity(c) {
+    activeCity = c;
+    renderCityPills();
+    const onlyIssues = document.getElementById('only-issues-chk')?.checked;
+    const list = compareData.items.filter(it => {
+        if (activeDomain !== 'ALL' && it.domain !== activeDomain) return false;
+        if (activeCity !== 'ALL' && (it.city_full || 'Без города') !== activeCity) return false;
+        if (onlyIssues && it.severity === 'green') return false;
+        return true;
+    });
+    if (list.length > 0) {
+        const first = getEsnSiblings(list[0])[0] || list[0];
+        selectItem(first.id);
+        return;
+    }
+    updateExpCityTargets();
+    renderSidebar();
+}
+function renderSidebar() {
+    const q = (document.getElementById('md-search').value || '').toLowerCase().trim();
+    const onlyIssues = document.getElementById('only-issues-chk').checked;
+    const filtered = compareData.items.filter(it => {
+        if (activeDomain !== 'ALL' && it.domain !== activeDomain) return false;
+        if (activeCity !== 'ALL' && (it.city_full || 'Без города') !== activeCity) return false;
+        if (onlyIssues && it.severity === 'green') return false;
+        if (q && !(it.ne_type + ' ' + it.site + ' ' + it.city_full + ' ' + it.esn + ' ' + (it.lsn || '') + ' ' + (it.new_name || '') + ' ' + it.original_name).toLowerCase().includes(q)) return false;
+        return true;
+    });
+    updateExpCityTargets();
+    if (!filtered.length) { document.getElementById('md-tree').innerHTML = '<div style="padding:12px;color:var(--text-muted);font-size:0.8rem;">Нет подходящих файлов</div>'; return; }
+    const byCity = {};
+    for (const it of filtered) { const c = it.city_full || 'Без города'; (byCity[c] = byCity[c] || []).push(it); }
+    let html = '';
+    for (const city of Object.keys(byCity).sort()) {
+        const esnGroups = [];
+        const seenEsn = new Map();
+        for (const it of byCity[city]) {
+            const esnKey = (it.esn || '').trim();
+            if (!esnKey) esnGroups.push([it]);
+            else if (seenEsn.has(esnKey)) seenEsn.get(esnKey).push(it);
+            else { const arr = [it]; seenEsn.set(esnKey, arr); esnGroups.push(arr); }
+        }
+        html += '<div class="city-group-title">' + esc(city) + ' (' + esnGroups.length + ')</div>';
+        for (const grp of esnGroups) {
+            grp.sort((a, b) => (b.create_time || '').localeCompare(a.create_time || '') || (b.lsn || '').localeCompare(a.lsn || ''));
+            const rep = grp.find(x => x.id === activeItemId) || grp[0];
+            const icon = rep.severity === 'red' ? '🔴' : (rep.severity === 'yellow' ? '🟡' : '🟢');
+            const createdShort = rep.create_time ? rep.create_time.split(' ')[0] : '—';
+            const verTxt = rep.version ? rep.version.replace(/^R/i, '') : '—';
+            const lsnBadge = grp.length > 1 ? ' <span class="sh-badge" style="font-size:0.66rem;padding:1px 6px;">' + grp.length + ' LSN</span>' : '';
+            html += '<div class="site-item ' + (rep.id === activeItemId ? 'active' : '') + '" onclick="selectItem(\\'' + rep.id + '\\')"><div class="site-title">' + icon + ' ' + (rep.city ? esc(rep.city) + ' · ' : '') + esc(rep.ne_type) + ' · ' + esc(rep.site) + lsnBadge + '</div><div class="site-sub">' + esc(verTxt) + ' · Создана: ' + esc(createdShort) + ' · Δ ' + rep.changes_count + '</div></div>';
+        }
+    }
+    document.getElementById('md-tree').innerHTML = html;
+}
+function selectItem(id) { activeItemId = id; renderSidebar(); renderDetail(); }
+function setRowFilter(m) { activeRowFilter = m; renderDetail(); }
+function setCapMode(m) { activeCapMode = m; renderDetail(); }
+function setCompareBase(b) { activeCompareBase = b; renderDetail(); }
+function toggleSpart(k) { expandedSparts[k] = !expandedSparts[k]; renderDetail(); }
+function setAllSparts(exp) {
+    const it = compareData.items.find(x => x.id === activeItemId);
+    if (!it) return;
+    for (const sg of it.spart_groups || []) expandedSparts[it.id + '::' + sg.key] = exp;
+    renderDetail();
+}
+function calcRow(r) {
+    const dbVal = activeCapMode === 'permanent' ? r.db_perm : (activeCapMode === 'dated' ? r.db_dated : r.db_total);
+    const newVal = activeCapMode === 'permanent' ? r.new_perm : (activeCapMode === 'dated' ? r.new_dated : r.new_total);
+    const hasDb = dbVal !== null && dbVal !== undefined;
+    const dbNum = hasDb ? dbVal : 0, newNum = newVal ?? 0;
+    const delta = Math.round((newNum - dbNum) * 100) / 100;
+    const hasTgt = r.target_val !== null && r.target_val !== undefined;
+    const tgtDelta = hasTgt ? Math.round((newNum - r.target_val) * 100) / 100 : null;
+    let baseDelta = tgtDelta, status = 'none';
+    if (activeCompareBase === 'db') {
+        baseDelta = hasDb ? delta : null;
+        if (hasDb) status = newNum < dbNum ? 'shortage' : 'ok';
+    } else if (hasTgt) {
+        status = newNum < r.target_val ? 'shortage' : 'ok';
+    }
+    return { dbVal, newVal, noTarget: (r.target_val === null || r.target_val === undefined) && (newVal !== null && newVal !== undefined && Number(newVal) > 0), delta, tgtDelta, baseDelta, status };
+}
+function matchesFilter(c) {
+    if (activeRowFilter === 'changes') return c.delta !== 0 || c.status === 'shortage';
+    if (activeRowFilter === 'shortage') return c.status === 'shortage';
+    if (activeRowFilter === 'no_target') return !!c.noTarget;
+    return true;
+}
+function formatValidDateForMode(r, mode) {
+    const perm = r.new_perm || 0, dated = r.new_dated || 0;
+    const rawDate = (r.valid_date || '').trim();
+    const datedStr = (!rawDate || rawDate.toUpperCase() === 'PERMANENT') ? '' : rawDate;
+    if (mode === 'permanent') return perm > 0 ? 'Permanent' : '—';
+    if (mode === 'dated') return dated > 0 ? (datedStr || 'Fix-term') : '—';
+    const parts = [];
+    if (perm > 0) parts.push('Permanent');
+    if (dated > 0) {
+        if (datedStr) {
+            for (const d of datedStr.split(',').map(s => s.trim()).filter(Boolean)) {
+                if (d.toUpperCase() !== 'PERMANENT' && !parts.includes(d)) parts.push(d);
+            }
+        } else parts.push('Fix-term');
+    }
+    return parts.length ? parts.join(', ') : (rawDate || '—');
+}
+function rowCells(r, c, firstHtml) {
+    const hasB = c.baseDelta !== null && c.baseDelta !== undefined;
+    const dCls = hasB ? (c.baseDelta > 0 ? 'delta-pos' : (c.baseDelta < 0 ? 'delta-neg' : '')) : '';
+    const dTxt = hasB ? (c.baseDelta > 0 ? '+' + c.baseDelta : (c.baseDelta === 0 ? '0' : c.baseDelta)) : '—';
+    const stTxt = c.status === 'shortage' ? '🔴 Недобор' : (c.status === 'ok' ? '🟢 ОК' : '—');
+    const vdate = formatValidDateForMode(r, activeCapMode), nw = c.newVal ?? '—';
+    const tgt = r.target_val ?? '—', dbv = c.dbVal ?? '—';
+    const baseVal = (INCLUDE_PREV_DB && activeCompareBase === 'db') ? dbv : tgt;
+    const refVal = (INCLUDE_PREV_DB && activeCompareBase === 'db') ? tgt : dbv;
+    return '<td style="font-family:monospace;" title="' + esc(r.key) + '">' + firstHtml + '</td>' +
+        (INCLUDE_PART_NUMBER ? '<td style="font-family:monospace;font-size:0.74rem;color:var(--text-secondary);" title="' + esc(r.part_number) + '">' + (esc(r.part_number) || '—') + '</td>' : '') +
+        '<td style="font-size:0.74rem;color:var(--text-secondary);" title="' + esc(r.description) + '">' + (esc(r.description) || '—') + '</td>' +
+        '<td style="font-size:0.74rem;color:var(--text-secondary);" title="' + esc(r.dimension) + '">' + (esc(r.dimension) || '—') + '</td>' +
+        '<td style="font-size:0.75rem;color:var(--text-secondary);" title="' + esc(vdate) + '">' + esc(vdate) + '</td>' +
+        '<td title="' + baseVal + '">' + baseVal + '</td>' +
+        '<td title="' + nw + '"><b>' + nw + '</b></td>' +
+        '<td class="' + dCls + '" title="' + dTxt + '">' + dTxt + '</td>' +
+        (INCLUDE_PREV_DB ? '<td title="' + refVal + '">' + refVal + '</td>' : '') +
+        '<td title="' + stTxt + '">' + stTxt + '</td>';
+}
+function renderDetail() {
+    const it = compareData.items.find(x => x.id === activeItemId);
+    if (!it) { document.getElementById('md-detail').innerHTML = '<div style="color:var(--text-muted);text-align:center;padding:40px;">Нет данных</div>'; return; }
+    updateExpCityTargets(it);
+    const lsnSibs = getEsnSiblings(it);
+    const lsnSelHtml = lsnSibs.length > 1
+        ? '<label style="display:flex;align-items:center;gap:6px;font-weight:600;font-size:0.82rem;">LSN: <select class="md-search" style="width:auto;margin:0;padding:3px 8px;font-size:0.78rem;" onchange="selectItem(this.value)">' +
+          lsnSibs.map(s => '<option value="' + esc(s.id) + '"' + (s.id === it.id ? ' selected' : '') + '>' + esc((s.lsn || s.original_name || '—') + ' (' + (s.create_time ? s.create_time.split(' ')[0] : '—') + ')') + '</option>').join('') +
+          '</select></label>'
+        : '';
+    if (!INCLUDE_PREV_DB) activeCompareBase = 'target';
+    const colSpan = 8 + (INCLUDE_PREV_DB ? 1 : 0) + (INCLUDE_PART_NUMBER ? 1 : 0);
+    const hasSparts = (it.spart_groups && it.spart_groups.length > 0);
+    let rowsHtml = '';
+    let curSec = '';
+    if (hasSparts) {
+        for (const sg of it.spart_groups) {
+            const sgC = calcRow(sg);
+            const allB = (sg.bparts || []).map(bp => ({ bp, c: calcRow(bp) }));
+            if (allB.some(x => x.c.status === 'shortage')) sgC.status = 'shortage';
+            const visB = allB.filter(x => matchesFilter(x.c));
+            if (!matchesFilter(sgC) && !visB.length) continue;
+            if (sg.section && sg.section !== curSec) {
+                curSec = sg.section;
+                rowsHtml += '<tr class="section-row"><td colspan="' + colSpan + '">📂 ' + esc(curSec) + '</td></tr>';
+            }
+            const spKey = it.id + '::' + sg.key, isOpen = !!expandedSparts[spKey];
+            const arrow = (sg.bparts && sg.bparts.length) ? (isOpen ? '▼' : '▶') : '•';
+            const cnt = (sg.bparts && sg.bparts.length) ? ' <span style="font-size:0.7rem;color:var(--text-muted);">(' + sg.bparts.length + ')</span>' : '';
+            rowsHtml += '<tr class="spart-row ' + (sgC.status === 'shortage' ? 'row-shortage' : '') + '" onclick="toggleSpart(\\'' + esc(spKey) + '\\')">' + rowCells(sg, sgC, '<span class="spart-toggle">' + arrow + '</span>' + esc(sg.key) + cnt) + '</tr>';
+            if (isOpen) {
+                for (const x of visB) rowsHtml += '<tr class="bpart-row ' + (x.c.status === 'shortage' ? 'row-shortage' : '') + '">' + rowCells(x.bp, x.c, '↳ ' + esc(x.bp.key)) + '</tr>';
+            }
+        }
+    }
+    for (const r of (it.flat_rows || [])) {
+        const c = calcRow(r);
+        if (!matchesFilter(c)) continue;
+        if (r.section && r.section !== curSec) {
+            curSec = r.section;
+            rowsHtml += '<tr class="section-row"><td colspan="' + colSpan + '">📂 ' + esc(curSec) + '</td></tr>';
+        }
+        rowsHtml += '<tr class="' + (c.status === 'shortage' ? 'row-shortage' : '') + '">' + rowCells(r, c, esc(r.key)) + '</tr>';
+    }
+    if (!rowsHtml) rowsHtml = '<tr><td colspan="' + colSpan + '" style="text-align:center;color:var(--text-muted);padding:18px;">Нет параметров по выбранному фильтру</td></tr>';
+    const expCtrl = hasSparts ? '<div class="pill-group"><button class="mode-pill" onclick="setAllSparts(true)" title="Развернуть все группы Spart">Развернуть все</button><button class="mode-pill" onclick="setAllSparts(false)" title="Свернуть все группы Spart">Свернуть все</button></div>' : '';
+    const baseCtrl = INCLUDE_PREV_DB ? '<div class="pill-group"><button class="mode-pill ' + (activeCompareBase === 'target' ? 'active' : '') + '" onclick="setCompareBase(\\'target\\')" title="Сравнить новую лицензию с Target">🎯 Target</button><button class="mode-pill ' + (activeCompareBase === 'db' ? 'active' : '') + '" onclick="setCompareBase(\\'db\\')" title="Сравнить новую лицензию с последней в БД">🗄️ Последняя в БД</button></div>' : '';
+    const newTip = esc('Новая лицензия\\nФайл: ' + (it.new_name || it.original_name || '—') + '\\nВерсия: ' + (it.version || '—') + '\\nСоздана: ' + (it.create_time || '—') + '\\nДействует до: ' + (it.valid_date || '—') + '\\nLSN: ' + (it.lsn || '—'));
+    const prevTip = esc(it.db_latest ? ('Предыдущая лицензия (в БД)\\nФайл: ' + (it.db_latest.filename || '—') + '\\nВерсия: ' + (it.db_latest.version || '—') + '\\nСоздана: ' + (it.db_latest.create_time || '—') + '\\nДействует до: ' + (it.db_latest.valid_date || '—') + '\\nLSN: ' + (it.db_latest.lsn || '—')) : 'Предыдущая лицензия в БД отсутствует');
+    const colGroupHtml = INCLUDE_PART_NUMBER
+        ? (INCLUDE_PREV_DB
+            ? '<colgroup><col style="width:16%"><col style="width:9%"><col style="width:20%"><col style="width:7%"><col style="width:9%"><col style="width:8%"><col style="width:8%"><col style="width:7%"><col style="width:9%"><col style="width:7%"></colgroup>'
+            : '<colgroup><col style="width:17%"><col style="width:10%"><col style="width:24%"><col style="width:8%"><col style="width:10%"><col style="width:8%"><col style="width:8%"><col style="width:7%"><col style="width:8%"></colgroup>')
+        : (INCLUDE_PREV_DB
+            ? '<colgroup><col style="width:18%"><col style="width:23%"><col style="width:8%"><col style="width:10%"><col style="width:9%"><col style="width:8%"><col style="width:8%"><col style="width:9%"><col style="width:7%"></colgroup>'
+            : '<colgroup><col style="width:18%"><col style="width:29%"><col style="width:9%"><col style="width:11%"><col style="width:8%"><col style="width:9%"><col style="width:8%"><col style="width:8%"></colgroup>');
+    const baseTh = (INCLUDE_PREV_DB && activeCompareBase === 'db') ? '<th title="' + prevTip + '" style="cursor:help;">Предыдущая лицензия</th>' : '<th title="Target">Target</th>';
+    const refTh = INCLUDE_PREV_DB ? ((activeCompareBase === 'db') ? '<th title="Target">Target</th>' : '<th title="' + prevTip + '" style="cursor:help;">Предыдущая лицензия</th>') : '';
+    document.getElementById('md-detail').innerHTML =
+        '<div class="detail-header"><div><h3 style="margin:0;">' + esc(it.ne_type) + ' · (' + (it.city ? esc(it.city) + ' · ' : '') + esc(it.site) + ') <span style="font-size:0.82rem;color:var(--text-muted);">(' + esc(it.city_full) + ' / ' + esc(it.domain) + ')</span></h3><div style="font-size:0.76rem;color:var(--text-muted);margin-top:2px;">Файл: ' + esc(it.new_name || it.original_name) + '</div></div>' + lsnSelHtml + '</div>' +
+        '<div class="detail-meta"><span><b>ESN:</b> <code>' + esc(it.esn) + '</code></span><span><b>LSN:</b> <code>' + esc(it.lsn) + '</code></span><span><b>Версия:</b> ' + esc(it.version || '—') + '</span><span><b>Создана:</b> ' + esc(it.create_time || '—') + '</span><span><b>Срок действия:</b> <b>' + esc(it.valid_date || '—') + '</b></span></div>' +
+        '<div class="toolbar-row">' + baseCtrl +
+        '<div class="pill-group"><button class="mode-pill ' + (activeCapMode === 'total' ? 'active' : '') + '" onclick="setCapMode(\\'total\\')" title="Суммарная ёмкость (Permanent + Fix-term)">Суммарная</button><button class="mode-pill ' + (activeCapMode === 'permanent' ? 'active' : '') + '" onclick="setCapMode(\\'permanent\\')" title="Только постоянная ёмкость (Permanent)">Permanent</button><button class="mode-pill ' + (activeCapMode === 'dated' ? 'active' : '') + '" onclick="setCapMode(\\'dated\\')" title="Только срочная ёмкость (Fix-term)">Fix-term</button></div>' +
+        '<div class="pill-group"><button class="mode-pill ' + (activeRowFilter === 'no_target' ? 'active' : '') + '" onclick="setRowFilter(\\'no_target\\')" title="Показать позиции, которых нет в Target, но они есть в сравниваемой лицензии">Нет в Target</button><button class="mode-pill ' + (activeRowFilter === 'all' ? 'active' : '') + '" onclick="setRowFilter(\\'all\\')" title="Показать все параметры">Все (' + it.total_params + ')</button><button class="mode-pill ' + (activeRowFilter === 'changes' ? 'active' : '') + '" onclick="setRowFilter(\\'changes\\')" title="Показать параметры с изменениями или недобором">Изменения (' + it.changes_count + ')</button><button class="mode-pill ' + (activeRowFilter === 'shortage' ? 'active' : '') + '" onclick="setRowFilter(\\'shortage\\')" title="Показать только параметры с недобором">Недобор (' + it.shortage_count + ')</button></div>' + expCtrl + '</div>' +
+        '<table class="compare-table">' + colGroupHtml +
+        '<thead><tr><th>Параметр (Spart / Bpart)</th>' + (INCLUDE_PART_NUMBER ? '<th title="Part-number">PART-NUMBER</th>' : '') + '<th>Описание</th><th>Размерность</th><th>Срок действия</th>' + baseTh + '<th title="' + newTip + '" style="cursor:help;">Новая</th><th>Дельта (Δ)</th>' + refTh + '<th>Статус</th></tr></thead><tbody>' + rowsHtml + '</tbody></table>';
+}
+renderDomainPills(); renderCityPills(); renderSidebar(); renderDetail();
+<\/script>
+</body>
+</html>`;
+
+        const blob = new Blob([reportHtml], { type: 'text/html;charset=utf-8' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        const ts = new Date().toISOString().slice(0, 10);
+        a.href = url;
+        a.download = `license_comparison_${CURRENT_OPERATOR}_${ts}.html`;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        URL.revokeObjectURL(url);
+    } finally {
+        if (btn) { btn.disabled = false; btn.textContent = origText; }
+    }
+}
+
+let pkgSessions = [];
+let pkgSelectedSessions = new Set();
+let pkgMode = 'structure';
+let pkgPreviewData = null;
+
+function openPackageTab() {
+    switchTab('package');
+    loadPackageSessions();
+}
+
+function setPkgMode(m) {
+    pkgMode = m;
+    document.getElementById('pkg-mode-structure').classList.toggle('active', m === 'structure');
+    document.getElementById('pkg-mode-flat').classList.toggle('active', m === 'flat');
+    refreshPackagePreview();
+}
+
+async function loadPackageSessions() {
+    const box = document.getElementById('pkg-sessions-list');
+    box.innerHTML = 'Загрузка сессий...';
+    const res = await fetch('/api/staging/sessions?operator=' + encodeURIComponent(CURRENT_OPERATOR));
+    const data = await res.json();
+    pkgSessions = data.sessions || [];
+    if (!pkgSessions.length) {
+        box.innerHTML = '<div style="padding:8px;">Нет загруженных сессий в БД</div>';
+        return;
+    }
+    const esc = s => String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+    box.innerHTML = pkgSessions.map(s => {
+        const chk = pkgSelectedSessions.has(s.session_id) ? 'checked' : '';
+        const doms = (s.domains || []).join(', ');
+        return `<label class="site-item" style="display:flex; align-items:flex-start; gap:8px;">
+            <input type="checkbox" ${chk} onchange="togglePkgSession('${esc(s.session_id)}', this.checked)" style="margin-top:3px;">
+            <div style="min-width:0; flex:1;">
+                <div class="site-title" style="font-size:0.82rem;">${esc(s.label)}</div>
+                <div class="site-sub">Файлов: <b>${s.count}</b> · ${esc(doms)}</div>
+            </div>
+        </label>`;
+    }).join('');
+}
+
+function togglePkgSession(sid, checked) {
+    if (checked) pkgSelectedSessions.add(sid);
+    else pkgSelectedSessions.delete(sid);
+    refreshPackagePreview();
+}
+
+async function refreshPackagePreview() {
+    const ids = Array.from(pkgSelectedSessions);
+    const tbody = document.getElementById('pkg-preview-tbody');
+    document.getElementById('pkg-export-result').style.display = 'none';
+    if (!ids.length) {
+        pkgPreviewData = null;
+        document.getElementById('pkg-target-dir').textContent = '—';
+        document.getElementById('pkg-files-count').textContent = '0';
+        document.getElementById('btn-pkg-export').disabled = true;
+        tbody.innerHTML = '<tr><td colspan="6" style="text-align:center; color:var(--text-muted); padding:24px;">Выберите одну или несколько сессий слева</td></tr>';
+        return;
+    }
+    tbody.innerHTML = '<tr><td colspan="6" style="text-align:center; color:var(--text-muted); padding:24px;">Расчёт путей пакета...</td></tr>';
+    const res = await fetch('/api/staging/package_preview', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({
+            session_ids: ids,
+            operator: CURRENT_OPERATOR,
+            mode: pkgMode,
+            folder_comment: document.getElementById('pkg-comment').value || ''
+        })
+    });
+    const data = await res.json();
+    pkgPreviewData = data;
+    document.getElementById('pkg-target-dir').textContent = data.target_dir || '—';
+    document.getElementById('pkg-files-count').textContent = data.total || 0;
+    document.getElementById('btn-pkg-export').disabled = !(data.total > 0);
+
+    const esc = s => String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+    tbody.innerHTML = (data.items || []).map(it => {
+        const miss = it.file_exists ? '' : ' <span style="color:#EF4444;">(нет файла)</span>';
+        const ver = it.version ? it.version.replace(/^R/i, '') : '—';
+        return `<tr>
+            <td>${esc(it.domain)}</td>
+            <td><b>${esc(it.city_full || it.city || '—')}</b><div style="font-size:0.72rem;color:var(--text-muted);">${esc(it.site || '—')}</div></td>
+            <td><b>${esc(it.ne_type || '—')}</b><div style="font-size:0.72rem;color:var(--text-muted);">${esc(ver)}</div></td>
+            <td style="font-family:monospace;font-size:0.73rem;">${esc(it.esn || '—')}<div style="color:var(--text-muted);">${esc(it.lsn || '')}</div></td>
+            <td style="font-size:0.74rem;">${esc((it.create_time || '—').split(' ')[0])}<div style="color:var(--text-muted);">${esc(it.valid_date || '—')}</div></td>
+            <td style="font-family:monospace;font-size:0.75rem;" title="${esc(it.rel_path)}">./${esc(it.rel_path)}${miss}</td>
+        </tr>`;
+    }).join('');
+}
+
+function buildPackageUnifiedHtml(pkgItems, cmpData) {
+    const esc = s => String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+    const nowStr = new Date().toLocaleString('ru-RU');
+    const manifestRows = pkgItems.map(it =>
+        '<tr><td>' + esc(it.domain) + '</td><td><b>' + esc(it.city_full || it.city || '—') + '</b> / ' + esc(it.site || '—') + '</td>' +
+        '<td>' + esc(it.ne_type) + ' (' + esc((it.version || '').replace(/^R/i, '')) + ')</td>' +
+        '<td style="font-family:monospace;">' + esc(it.esn) + '</td><td style="font-family:monospace;">' + esc(it.lsn) + '</td>' +
+        '<td>' + esc((it.create_time || '—').split(' ')[0]) + ' / <b>' + esc(it.valid_date || '—') + '</b></td>' +
+        '<td style="font-family:monospace;"><a href="./' + esc(it.rel_path) + '" style="color:var(--huawei-red);text-decoration:none;">./' + esc(it.rel_path) + '</a></td></tr>'
+    ).join('');
+    const safeCmp = JSON.stringify(cmpData || {items: [], domains: []}).replace(/<\//g, '<\\/');
+
+    return `<!DOCTYPE html>
+<html lang="ru"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>Пакет лицензий — ${esc(CURRENT_OPERATOR)}</title>
+<style>
+:root{--huawei-red:#E60012;--huawei-red-grad:linear-gradient(135deg,#E60012 0%,#C7000B 100%);--bg-primary:#FFF;--bg-secondary:#F8FAFC;--bg-tertiary:#F1F5F9;--text-primary:#1E293B;--text-secondary:#64748B;--text-muted:#94A3B8;--border-light:#E2E8F0;--radius-sm:6px;--radius-lg:14px;}
+body.dark{--bg-primary:#1E293B;--bg-secondary:#0F172A;--bg-tertiary:#334155;--text-primary:#F8FAFC;--text-secondary:#CBD5E1;--text-muted:#94A3B8;--border-light:#334155;}
+*{box-sizing:border-box;margin:0;padding:0;}
+body{font-family:'Inter',-apple-system,Segoe UI,sans-serif;background:var(--bg-secondary);color:var(--text-primary);padding:16px 20px;line-height:1.45;}
+.top{display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;margin-bottom:14px;padding-bottom:10px;border-bottom:1px solid var(--border-light);}
+.tabs{display:flex;gap:8px;border-bottom:2px solid var(--border-light);margin-bottom:14px;}
+.tab-btn{padding:8px 16px;border:none;background:transparent;font-weight:600;color:var(--text-secondary);cursor:pointer;border-bottom:3px solid transparent;margin-bottom:-2px;}
+.tab-btn.active{color:var(--huawei-red);border-bottom-color:var(--huawei-red);}
+.pane{display:none;}.pane.active{display:block;}
+table{width:100%;border-collapse:collapse;background:var(--bg-primary);border:1px solid var(--border-light);font-size:0.8rem;}
+th,td{padding:8px 10px;border-bottom:1px solid var(--border-light);text-align:left;}
+th{background:var(--bg-tertiary);color:var(--text-secondary);}
+.mode-pill{padding:5px 12px;border-radius:var(--radius-sm);border:1px solid var(--border-light);background:var(--bg-primary);color:var(--text-primary);cursor:pointer;font-size:0.78rem;font-weight:600;}
+</style></head><body>
+<div class="top">
+    <div><h2 style="font-size:1.15rem;">📦 Пакет лицензий (${esc(CURRENT_OPERATOR)})</h2><div style="font-size:0.78rem;color:var(--text-muted);">Сформирован: ${nowStr} · Лицензий: ${pkgItems.length}</div></div>
+    <button class="mode-pill" onclick="toggleTheme()" title="Переключить дневную / ночную тему">🌓 Тема</button>
+</div>
+<div class="tabs">
+    <button class="tab-btn active" onclick="openTab('manifest', this)">📋 Опись лицензий (${pkgItems.length})</button>
+    <button class="tab-btn" onclick="openTab('compare', this)">⚖️ Сводка сравнения</button>
+</div>
+<div id="pane-manifest" class="pane active">
+    <table><thead><tr><th>Домен</th><th>Город / Сайт</th><th>NE / Версия</th><th>ESN</th><th>LSN</th><th>Создана / Действует до</th><th>Путь внутри папки</th></tr></thead>
+    <tbody>${manifestRows}</tbody></table>
+</div>
+<div id="pane-compare" class="pane">
+    <div id="cmp-summary"></div>
+</div>
+<script>
+const mq=window.matchMedia('(prefers-color-scheme: dark)');let manual=false;
+function applyT(){if(!manual)document.body.classList.toggle('dark',mq.matches);}
+applyT();if(mq.addEventListener)mq.addEventListener('change',applyT);
+function toggleTheme(){manual=true;document.body.classList.toggle('dark');}
+function openTab(name,btn){document.querySelectorAll('.tab-btn').forEach(b=>b.classList.remove('active'));btn.classList.add('active');document.querySelectorAll('.pane').forEach(p=>p.classList.remove('active'));document.getElementById('pane-'+name).classList.add('active');}
+const cmp=${safeCmp};
+document.getElementById('cmp-summary').innerHTML = (cmp.items && cmp.items.length)
+    ? '<table><thead><tr><th>Домен</th><th>Город / Сайт</th><th>NE</th><th>LSN</th><th>Статус</th><th>Изменений</th><th>Недобор</th></tr></thead><tbody>' +
+      cmp.items.map(it=>'<tr><td>'+it.domain+'</td><td>'+(it.city_full||it.city||'')+' / '+(it.site||'')+'</td><td>'+it.ne_type+'</td><td style="font-family:monospace;">'+(it.lsn||'—')+'</td><td>'+(it.severity==='red'?'🔴 Недобор':(it.severity==='yellow'?'🟡 Изменения':'🟢 ОК'))+'</td><td>'+it.changes_count+'</td><td>'+it.shortage_count+'</td></tr>').join('') +
+      '</tbody></table>'
+    : '<div style="padding:16px;color:var(--text-muted);">Данные сравнения не загружены.</div>';
+<\/script></body></html>`;
+}
+
+async function runPackageExport() {
+    if (!pkgPreviewData || !pkgPreviewData.items || !pkgPreviewData.items.length) return;
+    const btn = document.getElementById('btn-pkg-export');
+    btn.disabled = true;
+    btn.innerHTML = '⏳ Сборка пакета...';
+
+    const includeHtml = document.getElementById('pkg-opt-html').checked;
+    const includeZip = document.getElementById('pkg-opt-zip').checked;
+    const includeXlsx = document.getElementById('pkg-opt-xlsx').checked;
+
+    let htmlContent = null;
+    if (includeHtml) {
+        const licIds = pkgPreviewData.items.map(x => x.id);
+        await fetch('/api/staging/load_from_db', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({license_ids: licIds, operator: CURRENT_OPERATOR, clear_first: true})
+        });
+        const cmpRes = await fetch('/api/staging/compare?operator=' + encodeURIComponent(CURRENT_OPERATOR));
+        const cmpData = await cmpRes.json();
+        htmlContent = buildPackageUnifiedHtml(pkgPreviewData.items, cmpData);
+    }
+
+    const res = await fetch('/api/staging/package_export', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({
+            session_ids: Array.from(pkgSelectedSessions),
+            operator: CURRENT_OPERATOR,
+            mode: pkgMode,
+            folder_comment: document.getElementById('pkg-comment').value || '',
+            include_html: includeHtml,
+            include_zip: includeZip,
+            include_xlsx: includeXlsx,
+            html_content: htmlContent
+        })
+    });
+    const data = await res.json();
+    const box = document.getElementById('pkg-export-result');
+    box.style.display = 'block';
+    if (data.error) {
+        box.style.background = 'rgba(239,68,68,0.12)';
+        box.style.color = '#EF4444';
+        box.innerHTML = '<b>Ошибка:</b> ' + data.error;
+    } else {
+        box.style.background = 'rgba(16,185,129,0.12)';
+        box.style.color = '#10B981';
+        let msg = `<b>Пакет сохранён!</b> Скопировано файлов: <b>${data.copied}/${data.total}</b><br>Папка: <code>${data.target_dir}</code>`;
+        if (data.html_path) msg += `<br>HTML-отчёт: <code>${data.html_path}</code>`;
+        if (data.xlsx_path) msg += `<br>Excel-опись: <code>${data.xlsx_path}</code>`;
+        if (data.zip_path) msg += `<br>ZIP-архив: <code>${data.zip_path}</code>`;
+        if (data.errors && data.errors.length) msg += '<br><span style="color:#F59E0B;">Предупреждения: ' + data.errors.join('; ') + '</span>';
+        box.innerHTML = msg;
+    }
+    btn.innerHTML = '📦 Сохранить пакет (<span id="pkg-files-count">' + (pkgPreviewData.total || 0) + '</span>)';
+    btn.disabled = false;
+}
+
+let sourceMode = 'new'; // 'new' | 'db'
+let srcDbItems = [];
+let srcDbSelectedIds = new Set();
+
+function updateSourceBadge() {
+    const el = document.getElementById('source-mode-badge');
+    if (!el) return;
+    if (sourceMode === 'new') {
+        const cnt = (stagingState && stagingState.files) ? stagingState.files.filter(f => f.selected).length : 0;
+        el.textContent = `Режим: 🆕 Новые (${cnt} шт.)`;
+    } else {
+        el.textContent = `Режим: 📚 Сессии в БД (${srcDbSelectedIds.size} шт.)`;
+    }
+}
+
+function setSourceMode(mode) {
+    sourceMode = mode;
+    document.getElementById('src-mode-new').classList.toggle('active', mode === 'new');
+    document.getElementById('src-mode-db').classList.toggle('active', mode === 'db');
+    document.getElementById('source-new-block').style.display = mode === 'new' ? 'block' : 'none';
+    document.getElementById('source-db-block').style.display = mode === 'db' ? 'block' : 'none';
+    if (mode === 'db') loadSourceSessions();
+    updateSourceBadge();
+}
+
+async function loadSourceSessions() {
+    const box = document.getElementById('src-sessions-list');
+    box.innerHTML = 'Загрузка сессий...';
+    const res = await fetch('/api/staging/sessions?operator=' + encodeURIComponent(CURRENT_OPERATOR));
+    const data = await res.json();
+    pkgSessions = data.sessions || [];
+    if (!pkgSessions.length) {
+        box.innerHTML = '<div style="padding:8px;">Нет загруженных сессий в БД</div>';
+        return;
+    }
+    const esc = s => String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+    box.innerHTML = pkgSessions.map(s => {
+        const chk = pkgSelectedSessions.has(s.session_id) ? 'checked' : '';
+        const doms = (s.domains || []).join(', ');
+        return `<label class="site-item" style="display:flex; align-items:flex-start; gap:8px;">
+            <input type="checkbox" ${chk} onchange="toggleSourceSession('${esc(s.session_id)}', this.checked)" style="margin-top:3px;">
+            <div style="min-width:0; flex:1;">
+                <div class="site-title" style="font-size:0.82rem;">${esc(s.label)}</div>
+                <div class="site-sub">Файлов: <b>${s.count}</b> · ${esc(doms)}</div>
+            </div>
+        </label>`;
+    }).join('');
+}
+
+async function toggleSourceSession(sid, checked) {
+    if (checked) pkgSelectedSessions.add(sid);
+    else pkgSelectedSessions.delete(sid);
+    await loadSourceSessionLicenses();
+}
+
+async function loadSourceSessionLicenses() {
+    const ids = Array.from(pkgSelectedSessions);
+    const tbody = document.getElementById('src-db-tbody');
+    if (!ids.length) {
+        srcDbItems = [];
+        srcDbSelectedIds.clear();
+        renderSourceDbTable();
+        return;
+    }
+    tbody.innerHTML = '<tr><td colspan="6" style="text-align:center; color:var(--text-muted); padding:24px;">Загрузка лицензий сессии...</td></tr>';
+    const res = await fetch('/api/staging/package_preview', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({session_ids: ids, operator: CURRENT_OPERATOR, mode: pkgMode})
+    });
+    const data = await res.json();
+    srcDbItems = data.items || [];
+    srcDbSelectedIds = new Set(srcDbItems.map(x => x.id));
+    const domSel = document.getElementById('src-db-domain');
+    if (domSel) {
+        const doms = Array.from(new Set(srcDbItems.map(x => x.domain).filter(Boolean))).sort();
+        domSel.innerHTML = '<option value="ALL">Все домены</option>' + doms.map(d => `<option value="${d}">${d}</option>`).join('');
+    }
+    renderSourceDbTable();
+}
+
+function renderSourceDbTable() {
+    const tbody = document.getElementById('src-db-tbody');
+    const esc = s => String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+    const q = (document.getElementById('src-db-search')?.value || '').toLowerCase().trim();
+    const dom = document.getElementById('src-db-domain')?.value || 'ALL';
+    const visible = srcDbItems.filter(it => {
+        if (dom !== 'ALL' && it.domain !== dom) return false;
+        if (q) {
+            const hay = `${it.domain} ${it.city_full} ${it.city} ${it.site} ${it.ne_type} ${it.esn} ${it.lsn} ${it.version}`.toLowerCase();
+            if (!hay.includes(q)) return false;
+        }
+        return true;
+    });
+    if (!visible.length) {
+        tbody.innerHTML = '<tr><td colspan="6" style="text-align:center; color:var(--text-muted); padding:24px;">' + (srcDbItems.length ? 'Нет лицензий по фильтру' : 'Выберите одну или несколько сессий слева') + '</td></tr>';
+    } else {
+        tbody.innerHTML = visible.map(it => {
+            const chk = srcDbSelectedIds.has(it.id) ? 'checked' : '';
+            const ver = it.version ? it.version.replace(/^R/i, '') : '—';
+            return `<tr>
+                <td><input type="checkbox" ${chk} onchange="toggleSourceDbItem(${it.id}, this.checked)"></td>
+                <td>${esc(it.domain)}</td>
+                <td><b>${esc(it.city_full || it.city || '—')}</b><div style="font-size:0.72rem;color:var(--text-muted);">${esc(it.site || '—')}</div></td>
+                <td><b>${esc(it.ne_type || '—')}</b><div style="font-size:0.72rem;color:var(--text-muted);">${esc(ver)}</div></td>
+                <td style="font-family:monospace;font-size:0.73rem;">${esc(it.esn || '—')}<div style="color:var(--text-muted);">${esc(it.lsn || '')}</div></td>
+                <td style="font-size:0.74rem;">${esc((it.create_time || '—').split(' ')[0])}<div style="color:var(--text-muted);">${esc(it.valid_date || '—')}</div></td>
+            </tr>`;
+        }).join('');
+    }
+    const cntEl = document.getElementById('src-db-selected-count');
+    if (cntEl) cntEl.textContent = srcDbSelectedIds.size;
+    const allChk = document.getElementById('chk-src-db-all');
+    if (allChk) allChk.checked = visible.length > 0 && visible.every(it => srcDbSelectedIds.has(it.id));
+    updateSourceBadge();
+}
+
+function toggleSourceDbItem(id, checked) {
+    if (checked) srcDbSelectedIds.add(id);
+    else srcDbSelectedIds.delete(id);
+    renderSourceDbTable();
+}
+
+function toggleAllSourceDb(checked) {
+    srcDbSelectedIds = checked ? new Set(srcDbItems.map(x => x.id)) : new Set();
+    renderSourceDbTable();
+}
+
+const _origRenderState = renderState;
+renderState = function(data) {
+    _origRenderState(data);
+    updateSourceBadge();
+};
+
+let _lastLoadedDbIdsKey = '';
+const _origOpenCompareTab = openCompareTab;
+openCompareTab = async function() {
+    if (sourceMode === 'db') {
+        const ids = Array.from(srcDbSelectedIds);
+        if (!ids.length) {
+            alert('Выберите хотя бы одну лицензию из сессий БД на Шаге 1.');
+            switchTab('upload');
+            return;
+        }
+        const idsKey = ids.slice().sort((a, b) => a - b).join(',');
+        if (idsKey === _lastLoadedDbIdsKey && compareData && compareData.items && compareData.items.length) {
+            switchTab('compare');
+            return;
+        }
+        try {
+            const res = await fetch('/api/staging/load_from_db', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({license_ids: ids, operator: CURRENT_OPERATOR, clear_first: true})
+            });
+            if (!res.ok) throw new Error('HTTP ' + res.status);
+            const data = await res.json();
+            if (data.error) {
+                alert('Ошибка загрузки из БД: ' + data.error);
+                switchTab('upload');
+                return;
+            }
+            if (data.state) renderState(data.state);
+            if (data.errors && data.errors.length) {
+                alert('Загружено: ' + (data.loaded || 0) + '\nПредупреждения:\n' + data.errors.join('\n'));
+            }
+            if (!data.loaded) {
+                alert('Ни одна из выбранных лицензий не была загружена (возможно, файлы отсутствуют на диске).');
+                switchTab('upload');
+                return;
+            }
+            _lastLoadedDbIdsKey = idsKey;
+            activeItemId = null;
+            compareData = null;
+        } catch (err) {
+            alert('Ошибка запроса load_from_db: ' + err.message);
+            switchTab('upload');
+            return;
+        }
+    }
+    await _origOpenCompareTab();
+};
+
+const _origOpenPreviewTab = openPreviewTab;
+openPreviewTab = async function(keepResultBox = false) {
+    switchTab('preview');
+    const isNew = sourceMode === 'new';
+    document.getElementById('action-new-block').style.display = isNew ? 'block' : 'none';
+    document.getElementById('action-db-block').style.display = isNew ? 'none' : 'block';
+    if (isNew) {
+        await _origOpenPreviewTab(keepResultBox);
+    } else {
+        await refreshPackagePreview();
+    }
+};
+
+async function openPackageForBatch(batchId) {
+    pkgSelectedSessions = new Set([batchId]);
+    setSourceMode('db');
+    await loadSourceSessions();
+    await loadSourceSessionLicenses();
+    await openPreviewTab();
+}
+
+let newPkgMode = 'structure';
+function setNewPkgMode(m) {
+    newPkgMode = m;
+    document.getElementById('new-pkg-mode-structure')?.classList.toggle('active', m === 'structure');
+    document.getElementById('new-pkg-mode-flat')?.classList.toggle('active', m === 'flat');
+}
+function toggleNewPkgOptions(checked) {
+    const opts = document.getElementById('new-pkg-options');
+    if (opts) opts.style.display = checked ? 'flex' : 'none';
+    const btn = document.getElementById('btn-confirm-commit');
+    const cnt = document.getElementById('preview-count')?.textContent || '0';
+    if (btn) {
+        btn.innerHTML = checked
+            ? `✅ Загрузить в БД и собрать пакет (<span id="preview-count">${cnt}</span>)`
+            : `✅ Подтвердить и загрузить в БД (<span id="preview-count">${cnt}</span>)`;
+    }
+}
+
+const _origCommitStaging = commitStaging;
+commitStaging = async function() {
+    const alsoPkg = !!document.getElementById('chk-commit-and-package')?.checked;
+    let savedCmpData = compareData;
+    if (alsoPkg && document.getElementById('new-pkg-opt-html')?.checked && !savedCmpData) {
+        try {
+            const cmpRes = await fetch('/api/staging/compare?operator=' + encodeURIComponent(CURRENT_OPERATOR));
+            if (cmpRes.ok) savedCmpData = await cmpRes.json();
+        } catch (_) {}
+    }
+
+    await _origCommitStaging();
+
+    const box = document.getElementById('commit-result-box');
+    if (!box || box.style.display === 'none' || box.innerHTML.includes('Ошибка:')) return;
+
+    const sRes = await fetch('/api/staging/sessions?operator=' + encodeURIComponent(CURRENT_OPERATOR));
+    const sData = await sRes.json();
+    const latest = (sData.sessions || [])[0];
+    if (!latest || !latest.session_id) return;
+
+    const batchId = latest.session_id;
+
+    if (alsoPkg) {
+        box.innerHTML += '<div id="commit-pkg-status" style="margin-top:8px; color:var(--text-secondary);">⏳ Сборка пакета в _New-licenses...</div>';
+        try {
+            const includeHtml = !!document.getElementById('new-pkg-opt-html')?.checked;
+            const includeZip = !!document.getElementById('new-pkg-opt-zip')?.checked;
+            const includeXlsx = !!document.getElementById('new-pkg-opt-xlsx')?.checked;
+            const folderComment = document.getElementById('new-pkg-comment')?.value || '';
+
+            let htmlContent = null;
+            if (includeHtml) {
+                const prevRes = await fetch('/api/staging/package_preview', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({
+                        session_ids: [batchId],
+                        operator: CURRENT_OPERATOR,
+                        mode: newPkgMode,
+                        folder_comment: folderComment
+                    })
+                });
+                const prevData = await prevRes.json();
+                htmlContent = buildPackageUnifiedHtml(prevData.items || [], savedCmpData);
+            }
+
+            const expRes = await fetch('/api/staging/package_export', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({
+                    session_ids: [batchId],
+                    operator: CURRENT_OPERATOR,
+                    mode: newPkgMode,
+                    folder_comment: folderComment,
+                    include_html: includeHtml,
+                    include_zip: includeZip,
+                    include_xlsx: includeXlsx,
+                    html_content: htmlContent
+                })
+            });
+            const expData = await expRes.json();
+            const stEl = document.getElementById('commit-pkg-status');
+            if (expData.error) {
+                if (stEl) stEl.innerHTML = `<span style="color:#EF4444;"><b>Ошибка сборки пакета:</b> ${expData.error}</span>`;
+            } else {
+                let pmsg = `<hr style="border:none;border-top:1px solid var(--border-light);margin:8px 0;"><b>📦 Пакет сохранён!</b> Скопировано файлов: <b>${expData.copied}/${expData.total}</b><br>Папка: <code>${expData.target_dir}</code>`;
+                if (expData.html_path) pmsg += `<br>HTML-отчёт: <code>${expData.html_path}</code>`;
+                if (expData.xlsx_path) pmsg += `<br>Excel-опись: <code>${expData.xlsx_path}</code>`;
+                if (expData.zip_path) pmsg += `<br>ZIP-архив: <code>${expData.zip_path}</code>`;
+                if (expData.errors && expData.errors.length) pmsg += '<br><span style="color:#F59E0B;">Предупреждения: ' + expData.errors.join('; ') + '</span>';
+                if (stEl) stEl.innerHTML = pmsg;
+            }
+        } catch (err) {
+            const stEl = document.getElementById('commit-pkg-status');
+            if (stEl) stEl.innerHTML = `<span style="color:#EF4444;"><b>Ошибка сборки пакета:</b> ${err.message}</span>`;
+        }
+    } else if (!box.innerHTML.includes('openPackageForBatch')) {
+        const sid = batchId.replace(/'/g, "\\'");
+        box.innerHTML += `<div style="margin-top:8px;"><button class="btn-primary" onclick="openPackageForBatch('${sid}')" style="padding:6px 12px; font-size:0.8rem;">📦 Собрать пакет из этой сессии (${batchId})</button></div>`;
+    }
+    toggleNewPkgOptions(alsoPkg);
+};
+
+function renderCityPills() {
+    const slot = document.getElementById('city-pills');
+    if (!slot || !compareData || !compareData.items) return;
+    const baseItems = compareData.items.filter(it => activeDomain === 'ALL' || it.domain === activeDomain);
+    if (!baseItems.length) {
+        slot.innerHTML = '';
+        return;
+    }
+    const seenEsn = new Set();
+    const latestItems = [];
+    for (const it of baseItems) {
+        const esnKey = (it.esn || '').trim();
+        if (!esnKey) {
+            latestItems.push(it);
+        } else if (!seenEsn.has(esnKey)) {
+            seenEsn.add(esnKey);
+            const sibs = getEsnSiblings(it).filter(x => activeDomain === 'ALL' || x.domain === activeDomain);
+            latestItems.push(sibs[0] || it);
+        }
+    }
+    const cityMap = {};
+    for (const it of latestItems) {
+        const c = it.city_full || 'Без города';
+        if (!cityMap[c]) cityMap[c] = { count: 0, red: 0, yellow: 0 };
+        cityMap[c].count++;
+        if (it.severity === 'red') cityMap[c].red++;
+        else if (it.severity === 'yellow') cityMap[c].yellow++;
+    }
+    const cities = Object.keys(cityMap).sort();
+    const esc = s => String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+    let html = `<button class="domain-pill ${activeCity === 'ALL' ? 'active' : ''}" onclick="setCity('ALL')" title="Показать все города">Все города (${latestItems.length})</button>`;
+    for (const c of cities) {
+        const st = cityMap[c];
+        const dotCls = st.red > 0 ? 'dot-red' : (st.yellow > 0 ? 'dot-yellow' : 'dot-green');
+        const cEsc = esc(c).replace(/'/g, "\\'");
+        html += `<button class="domain-pill ${activeCity === c ? 'active' : ''}" onclick="setCity('${cEsc}')" title="Фильтр по городу ${esc(c)}">
+            <span class="dot ${dotCls}"></span> ${esc(c)} (${st.count})
+        </button>`;
+    }
+    slot.innerHTML = html;
+}
+function setCity(city) {
+    activeCity = city;
+    renderCityPills();
+    if (compareData && compareData.items) {
+        const onlyIssues = document.getElementById('only-issues-chk')?.checked;
+        const list = compareData.items.filter(it => {
+            if (activeDomain !== 'ALL' && it.domain !== activeDomain) return false;
+            if (activeCity !== 'ALL' && (it.city_full || 'Без города') !== activeCity) return false;
+            if (onlyIssues && it.severity === 'green') return false;
+            return true;
+        });
+        if (list.length > 0) {
+            const first = getEsnSiblings(list[0])[0] || list[0];
+            selectCompareItem(first.id);
+            return;
+        }
+    }
+    updateCityTargetsSlot();
+    renderSidebar();
+}
+async function scanTemporaryFolder() {
+    const tbody = document.getElementById('queue-tbody');
+    if (tbody) {
+        tbody.innerHTML = '<tr><td colspan="7" style="text-align:center; color:var(--text-muted); padding: 24px;">⏳ Сканирование папки _temporary...</td></tr>';
+    }
+    try {
+        const res = await fetch('/api/staging/scan_temporary', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({operator: CURRENT_OPERATOR})
+        });
+        const data = await res.json();
+        if (data.error) { alert(data.error); await loadState(); return; }
+        renderState(data.state);
+    } catch (err) {
+        alert('Ошибка сканирования _temporary: ' + err.message);
+        await loadState();
+    }
+}
+async function renameInSourceFolder() {
+    if (!confirm('Переименовать выбранные файлы прямо в их исходной папке (без загрузки в БД и раскладки на шаре)?')) return;
+    const btn = document.getElementById('btn-rename-source');
+    const orig = btn ? btn.textContent : '';
+    if (btn) { btn.disabled = true; btn.textContent = '⏳ Переименование...'; }
+    try {
+        const res = await fetch('/api/staging/rename_in_source', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({operator: CURRENT_OPERATOR})
+        });
+        const data = await res.json();
+        const box = document.getElementById('commit-result-box');
+        box.style.display = 'block';
+        if (data.error) {
+            box.style.background = 'rgba(239, 68, 68, 0.12)';
+            box.style.color = '#EF4444';
+            box.innerHTML = `<b>Ошибка переименования:</b> ${data.error}`;
+        } else {
+            box.style.background = 'rgba(16, 185, 129, 0.12)';
+            box.style.color = '#10B981';
+            let msg = `<b>Переименование завершено!</b> Переименовано: <b>${data.renamed}</b>, пропущено: <b>${data.skipped}</b>`;
+            if (data.errors && data.errors.length) {
+                msg += '<br><span style="color:#F59E0B;">Замечания:<br>' + data.errors.join('<br>') + '</span>';
+            }
+            box.innerHTML = msg;
+            if (data.state) renderState(data.state);
+            await openPreviewTab(true);
+        }
+    } catch (err) {
+        alert('Ошибка переименования: ' + err.message);
+    } finally {
+        if (btn) { btn.disabled = false; btn.textContent = orig; }
+    }
+}
+document.addEventListener('DOMContentLoaded', loadState);
+</script>
+{% endblock %}
